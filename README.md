@@ -34,7 +34,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (22 tests : périmètres d'accès, flux de notation, import, comptes automatiques, clé API, sécurité, exports).
+Tests : `pytest -q` (24 tests : périmètres d'accès, flux de notation, import, comptes automatiques, clé API, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 

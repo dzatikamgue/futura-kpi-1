@@ -75,6 +75,33 @@ class ErreurImport(Exception):
     pass
 
 
+def detail_erreur_api(exc) -> str:
+    """Message d'origine renvoyé par Anthropic (le plus précis disponible)."""
+    msg = getattr(exc, "message", "") or ""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        msg = (body.get("error") or {}).get("message") or body.get("message") or msg
+    return str(msg or exc).strip()
+
+
+def traduire_erreur_api(exc) -> str:
+    """Explique une erreur Anthropic en français, avec la vraie cause."""
+    code = getattr(exc, "status_code", "?")
+    detail = detail_erreur_api(exc)
+    bas = detail.lower()
+    if "credit balance" in bas or "billing" in bas:
+        return ("Le compte Anthropic n'a pas de crédit : ajoutez du crédit sur console.anthropic.com → "
+                "Plans & Billing, puis réessayez (quelques minutes peuvent être nécessaires).")
+    if "model" in bas and any(k in bas for k in ("not found", "does not exist", "not supported", "invalid")):
+        return (f"Modèle refusé par Anthropic ({detail[:160]}). Corrigez la variable ANTHROPIC_MODEL "
+                "sur Railway ou supprimez-la.")
+    if code == 413 or "too large" in bas or "exceeds" in bas and ("size" in bas or "mb" in bas):
+        return "Le fichier est trop volumineux pour Claude. Réduisez-le (moins de pages / image plus légère)."
+    if any(k in bas for k in ("image", "pdf", "media_type", "base64", "document")):
+        return f"Claude n'a pas pu lire ce fichier : {detail[:240]}"
+    return f"Anthropic a refusé la demande (code {code}) : {detail[:300] or 'aucun détail fourni'}"
+
+
 def _tableur_en_texte(nom: str, contenu: bytes) -> str:
     """Convertit un Excel/CSV en texte CSV (limité) pour l'envoyer à Claude."""
     if nom.lower().endswith(".csv"):
@@ -163,24 +190,38 @@ def extraire_personnel(nom_fichier: str, type_mime: str, contenu: bytes | None, 
     blocs.append({"type": "text", "text": CONSIGNE.format(entreprise=current_app.config["COMPANY_NAME"])})
 
     client = anthropic.Anthropic(api_key=cle, timeout=120.0, max_retries=2)
+    modele = current_app.config["ANTHROPIC_MODEL"]
+
+    def appeler(tool_choice, max_tokens):
+        return client.messages.create(
+            model=modele, max_tokens=max_tokens, tools=[OUTIL], tool_choice=tool_choice,
+            messages=[{"role": "user", "content": blocs}])
+
     try:
-        reponse = client.messages.create(
-            model=current_app.config["ANTHROPIC_MODEL"],
-            max_tokens=16000,
-            tools=[OUTIL],
-            tool_choice={"type": "tool", "name": OUTIL["name"]},
-            messages=[{"role": "user", "content": blocs}],
-        )
+        try:
+            reponse = appeler({"type": "tool", "name": OUTIL["name"]}, 16000)
+        except anthropic.BadRequestError as exc:
+            # Certains modèles / réglages refusent l'outil forcé ou une longueur de sortie : on adapte.
+            bas = detail_erreur_api(exc).lower()
+            if "tool_choice" in bas or "thinking" in bas:
+                current_app.logger.warning("tool_choice forcé refusé (%s) : repli en mode auto", bas[:200])
+                reponse = appeler({"type": "auto"}, 16000)
+            elif "max_tokens" in bas:
+                current_app.logger.warning("max_tokens refusé (%s) : repli à 8000", bas[:200])
+                reponse = appeler({"type": "tool", "name": OUTIL["name"]}, 8000)
+            else:
+                raise
     except anthropic.AuthenticationError as exc:
         raise ErreurImport("Clé API Claude invalide. Corrigez-la dans Administration RH → Clé API Claude.") from exc
+    except anthropic.PermissionDeniedError as exc:
+        raise ErreurImport("Cette clé n'a pas le droit d'utiliser ce modèle : " + detail_erreur_api(exc)[:200]) from exc
     except anthropic.RateLimitError as exc:
         raise ErreurImport("Le service Claude est momentanément saturé. Réessayez dans une minute.") from exc
     except anthropic.APIConnectionError as exc:
         raise ErreurImport("Connexion au service Claude impossible. Vérifiez la connexion du serveur.") from exc
     except anthropic.APIStatusError as exc:
-        current_app.logger.warning("Erreur API Claude %s : %s", exc.status_code, exc.message)
-        raise ErreurImport(f"Le service Claude a refusé la demande (code {exc.status_code}). "
-                           "Essayez avec une image plus nette ou un fichier plus petit.") from exc
+        current_app.logger.warning("Erreur API Claude %s : %s", exc.status_code, detail_erreur_api(exc))
+        raise ErreurImport(traduire_erreur_api(exc)) from exc
 
     for bloc in reponse.content:
         if getattr(bloc, "type", "") == "tool_use":

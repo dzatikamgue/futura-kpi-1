@@ -394,3 +394,55 @@ def test_cle_api_saisie_dans_l_application(app, monkeypatch):
     c2 = app.test_client()
     login(c2, email_de("FOTSO"))
     assert c2.get("/parametres/claude").status_code == 403
+
+
+def test_erreurs_claude_expliquees():
+    """Un compte sans crédit renvoie 400 : le message doit donner la vraie cause, pas « image plus nette »."""
+    from app.services.import_ia import traduire_erreur_api
+
+    class Exc:
+        status_code = 400
+        def __init__(self, message):
+            self.message = message
+    credit = traduire_erreur_api(Exc("Your credit balance is too low to access the Anthropic API."))
+    assert "crédit" in credit and "Billing" in credit
+    modele = traduire_erreur_api(Exc("model: claude-xyz not found"))
+    assert "ANTHROPIC_MODEL" in modele
+    autre = traduire_erreur_api(Exc("messages.0.content: something unexpected"))
+    assert "something unexpected" in autre and "code 400" in autre
+
+
+def test_repli_tool_choice_refuse(app, monkeypatch):
+    """Si le modèle refuse l'outil forcé (400), l'import réessaie en mode auto."""
+    import anthropic
+
+    class Refus(anthropic.BadRequestError):
+        def __init__(self, message):  # pas de vraie réponse HTTP dans le test
+            Exception.__init__(self, message)
+            self.message, self.status_code = message, 400
+            self.body = {"error": {"type": "invalid_request_error", "message": message}}
+
+    appels = []
+
+    class Bloc:
+        type = "tool_use"
+        input = {"personnes": [{"nom": "TEST", "prenom": "Un", "confiance": "haute"}]}
+
+    class Messages:
+        def create(self, **kw):
+            appels.append(kw["tool_choice"]["type"])
+            if kw["tool_choice"]["type"] == "tool":
+                raise Refus("tool_choice: forced tool use is not compatible with thinking")
+            return type("R", (), {"content": [Bloc()]})()
+
+    class Client:
+        def __init__(self, **kw):
+            self.messages = Messages()
+
+    monkeypatch.setattr(anthropic, "Anthropic", Client)
+    app.config["ANTHROPIC_API_KEY"] = "sk-test"
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    r = c.post("/import/analyser", data={"texte": "TEST Un"}, content_type="multipart/form-data")
+    assert r.status_code == 302 and "/verifier" in r.location
+    assert appels == ["tool", "auto"]

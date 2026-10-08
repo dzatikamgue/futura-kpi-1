@@ -86,20 +86,31 @@ def supprimer_cle_api() -> None:
 
 
 def tester_cle_api(cle: str) -> tuple[bool, str]:
-    """Vérifie la clé auprès d'Anthropic (appel léger, sans coût de génération)."""
+    """Vérifie la clé avec un vrai appel minimal (même format que l'import).
+
+    Un simple contrôle de la clé ne suffit pas : un compte sans crédit passe ce contrôle
+    mais échoue à l'import. Le coût de ce test est négligeable (quelques jetons).
+    """
     import anthropic
+
+    from .import_ia import OUTIL, detail_erreur_api, traduire_erreur_api
+    modele = current_app.config["ANTHROPIC_MODEL"]
     try:
-        client = anthropic.Anthropic(api_key=cle, timeout=20.0, max_retries=0)
-        client.models.retrieve(current_app.config["ANTHROPIC_MODEL"])
-        return True, "Connexion réussie : la clé est valide et le modèle est accessible."
+        client = anthropic.Anthropic(api_key=cle, timeout=30.0, max_retries=0)
+        client.messages.create(
+            model=modele, max_tokens=64, tools=[OUTIL], tool_choice={"type": "auto"},
+            messages=[{"role": "user", "content": "Test de connexion : réponds simplement « ok »."}])
+        return True, f"Connexion réussie : la clé est valide, le compte a du crédit et le modèle {modele} répond."
     except anthropic.AuthenticationError:
         return False, "Clé refusée par Anthropic : vérifiez qu'elle est complète et active."
-    except anthropic.PermissionDeniedError:
-        return False, "Clé valide mais sans accès à ce modèle : vérifiez les droits du compte Anthropic."
+    except anthropic.PermissionDeniedError as exc:
+        return False, "Clé valide mais sans accès à ce modèle : " + detail_erreur_api(exc)[:200]
     except anthropic.NotFoundError:
-        return False, (f"Clé valide, mais le modèle « {current_app.config['ANTHROPIC_MODEL']} » est introuvable. "
-                       "Corrigez la variable ANTHROPIC_MODEL.")
+        return False, (f"Clé valide, mais le modèle « {modele} » est introuvable. "
+                       "Corrigez la variable ANTHROPIC_MODEL sur Railway ou supprimez-la.")
+    except anthropic.RateLimitError:
+        return True, "Clé valide (le service est momentanément saturé, réessayez plus tard)."
     except anthropic.APIConnectionError:
         return False, "Le serveur n'arrive pas à joindre Anthropic. Réessayez plus tard."
     except anthropic.APIStatusError as exc:
-        return False, f"Anthropic a répondu avec une erreur (code {exc.status_code})."
+        return False, traduire_erreur_api(exc)
