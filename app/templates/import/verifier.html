@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "import" %}
+{% block title %}Vérifier l'import{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('import_personnel.index') }}">Importer le personnel</a><span class="sep crumb-mid">/</span><span aria-current="page">Vérification</span>{% endblock %}
+{% macro liste(i, champ, p, options, w, libelle) -%}
+<td><select class="select select--sm" name="r{{ i }}_{{ champ }}" style="min-width:{{ w }}px" aria-label="{{ libelle }} ligne {{ i + 1 }}">
+  <option value="">—</option>
+  {% if p["_" ~ champ ~ "_nouveau"] %}<option value="{{ p['_' ~ champ ~ '_val'] }}" selected>＋ Créer « {{ p['_' ~ champ ~ '_val'] }} »</option>{% endif %}
+  {% for o in options %}<option value="{{ o }}" {% if not p["_" ~ champ ~ "_nouveau"] and p["_" ~ champ ~ "_val"] == o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+</select></td>
+{%- endmacro %}
+{% block content %}
+{% set douteux = personnes|selectattr("confiance", "equalto", "basse")|list|length %}
+<div class="page-head">
+  <div><h1>Vérifier avant d'enregistrer</h1>
+    <p>{{ personnes|length }} personne(s) détectée(s) dans « {{ b.source_nom }} »
+      — {{ "lecture directe du modèle" if methode == "modele" else "extraction par Claude" }}.
+      Corrigez directement dans le tableau.</p></div>
+</div>
+
+{% if douteux %}<div class="alert alert--warn" style="margin-bottom:12px">{{ icon('alert') }}<span>{{ douteux }} ligne(s) lue(s) avec une faible confiance sont surlignées : vérifiez-les attentivement.</span></div>{% endif %}
+{% if b.remarques %}<div class="alert alert--info" style="margin-bottom:12px">{{ icon('info') }}<span><strong>Remarque de Claude :</strong> {{ b.remarques }}</span></div>{% endif %}
+
+<form method="post" action="{{ url_for('import_personnel.valider', brouillon_id=b.id) }}" data-loading data-overlay>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="nb_lignes" value="{{ personnes|length }}">
+  <section class="card">
+    <div class="toolbar">
+      <label class="checkbox"><input type="checkbox" checked data-check-all=".chk-ligne"> Tout sélectionner</label>
+      <span class="spacer"></span>
+      <span class="small muted">Matricule vide = généré automatiquement (FUT-0001…)</span>
+    </div>
+    <div class="table-wrap"><table class="table table--compact">
+      <thead><tr>
+        <th><span class="sr-only">Inclure</span></th><th>Matricule</th><th>Nom<span style="color:var(--danger)">*</span></th><th>Prénom</th><th>Poste</th>
+        <th>E-mail</th><th>Téléphone</th><th>Département</th><th>Projet</th><th>N+1</th><th>Contrôles</th>
+      </tr></thead>
+      <tbody>
+      {% for p in personnes %}
+      {% set i = loop.index0 %}
+      <tr {% if p.confiance == "basse" %}style="background:var(--warn-soft)"{% endif %}>
+        <td><input class="chk-ligne" type="checkbox" name="r{{ i }}_inclure" value="1" checked aria-label="Inclure la ligne {{ loop.index }}" style="width:16px;height:16px;accent-color:var(--brand)"></td>
+        {% for k, w in [("matricule", 110), ("nom", 140), ("prenom", 140)] %}
+        <td><input class="input input--sm" name="r{{ i }}_{{ k }}" value="{{ p.get(k, '') }}" style="min-width:{{ w }}px" aria-label="{{ k }} ligne {{ loop.index }}" {% if k == "nom" %}required{% endif %}></td>
+        {% endfor %}
+        {{ liste(i, "poste", p, postes, 170, "Poste") }}
+        {% for k, w in [("email", 190), ("telephone", 130)] %}
+        <td><input class="input input--sm" name="r{{ i }}_{{ k }}" value="{{ p.get(k, '') }}" style="min-width:{{ w }}px" aria-label="{{ k }} ligne {{ loop.index }}"></td>
+        {% endfor %}
+        {{ liste(i, "departement", p, departements, 170, "Département") }}
+        {{ liste(i, "projet", p, projets, 170, "Projet") }}
+        <td><select class="select select--sm" name="r{{ i }}_n_plus_1" style="min-width:190px" aria-label="N+1 ligne {{ i + 1 }}">
+          <option value="">— Responsable de l'entité —</option>
+          {% if not p._n1_ok %}<option value="{{ p._n1_val }}" selected>⚠ {{ p._n1_val }} (introuvable)</option>{% endif %}
+          {% if importes %}<optgroup label="Dans ce fichier">{% for n in importes %}<option value="{{ n }}" {% if p._n1_ok and p._n1_val == n %}selected{% endif %}>{{ n }}</option>{% endfor %}</optgroup>{% endif %}
+          {% if employes %}<optgroup label="Personnel existant">{% for x in employes %}<option value="{{ x.matricule }}" {% if p._n1_ok and p._n1_val == x.matricule %}selected{% endif %}>{{ x.nom_complet }} · {{ x.matricule }}</option>{% endfor %}</optgroup>{% endif %}
+        </select></td>
+        <td style="min-width:200px">
+          {% if p._existe %}<span class="badge badge--info">Matricule existant</span>{% else %}<span class="badge badge--ok">Nouveau</span>{% endif %}
+          {% if p._poste_nouveau %}<span class="badge badge--warn" title="Sera ajouté à la liste si l'option est cochée">Nouveau poste</span>{% endif %}
+          {% if p._departement_nouveau %}<span class="badge badge--warn" title="Sera créé si l'option est cochée">Nouveau dépt.</span>{% endif %}
+          {% if p._projet_nouveau %}<span class="badge badge--warn" title="Sera créé si l'option est cochée">Nouveau projet</span>{% endif %}
+          {% if not p._n1_ok %}<span class="badge badge--danger">N+1 introuvable</span>{% endif %}
+          {% if p.remarque %}<div class="small muted" style="margin-top:4px">{{ p.remarque }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="card__foot">
+      <div class="row" style="gap:20px">
+        <label class="checkbox"><input type="checkbox" name="creer_contextes" value="1" checked> Créer les postes, départements et projets nouveaux</label>
+        <label class="checkbox"><input type="checkbox" name="mettre_a_jour" value="1"> Mettre à jour les salariés dont le matricule existe déjà</label>
+        <span class="spacer"></span>
+        <button class="btn btn--ghost" type="submit" form="form-abandon">Abandonner</button>
+        <button class="btn btn--primary" type="submit">{{ icon('check') }} Valider l'import</button>
+      </div>
+    </div>
+  </section>
+</form>
+<form id="form-abandon" method="post" action="{{ url_for('import_personnel.abandonner', brouillon_id=b.id) }}" data-confirm="Abandonner cet import ? Rien ne sera enregistré.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+<p class="small muted" style="margin-top:12px">Les N+1 et responsables qui ont un e-mail reçoivent automatiquement leur compte ; générez ensuite leurs mots de passe dans <a href="{{ url_for('parametres.utilisateurs') }}">Comptes &amp; accès</a>.</p>
+{% endblock %}

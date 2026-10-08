@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "import" %}
+{% block title %}Importer le personnel{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Importer le personnel</span>{% endblock %}
+{% block loading_text %}Claude lit votre document. Comptez 10 à 60 secondes selon sa taille.{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Importer le personnel</h1><p>Photo d'une liste, PDF, fichier Excel ou texte collé. Vous vérifiez tout avant enregistrement.</p></div>
+  <div class="page-head__actions">
+    <a class="btn btn--secondary" href="{{ url_for('import_personnel.modele') }}">{{ icon('download') }} Modèle Excel</a>
+    <a class="btn btn--secondary" href="{{ url_for('personnel.nouveau') }}">{{ icon('plus') }} Saisie manuelle</a>
+  </div>
+</div>
+
+{% if not ia_disponible %}
+<div class="alert alert--warn" style="margin-bottom:16px;align-items:center">{{ icon('alert') }}<span style="flex:1">La lecture par Claude (photo, PDF, texte) n'est pas activée : aucune clé API n'est configurée. En attendant, seuls les fichiers au format du modèle Excel peuvent être importés.</span>
+  <a class="btn btn--primary btn--sm" href="{{ url_for('parametres.claude') }}">{{ icon('key') }} Saisir la clé API</a></div>
+{% endif %}
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="tabs" role="tablist" data-tabs>
+      <button type="button" role="tab" aria-selected="true" aria-controls="tab-fichier" id="t-fichier">{{ "Fichier ou photo" }}</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="tab-texte" id="t-texte">Coller une liste</button>
+    </div>
+    <form method="post" action="{{ url_for('import_personnel.analyser') }}" enctype="multipart/form-data" data-loading data-overlay>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="card__body" id="tab-fichier" role="tabpanel" aria-labelledby="t-fichier">
+        <label class="dropzone" for="fichier">
+          {{ icon('camera') }}
+          <strong>Déposez un fichier ou prenez une photo</strong>
+          <span class="muted small">JPG, PNG, WEBP, PDF, Excel (.xlsx) ou CSV — 10 Mo maximum</span>
+          <input id="fichier" name="fichier" type="file" accept="image/*,.pdf,.xlsx,.xlsm,.csv">
+          <div class="file-name" aria-live="polite"></div>
+        </label>
+        <p class="small muted" style="margin-top:12px">Sur téléphone, le bouton propose directement l'appareil photo. Prenez la liste à plat, bien éclairée, sans reflet.</p>
+      </div>
+      <div class="card__body" id="tab-texte" role="tabpanel" aria-labelledby="t-texte" hidden>
+        <div class="field">
+          <label for="texte">Liste du personnel</label>
+          <textarea class="textarea" id="texte" name="texte" rows="10" disabled
+                    placeholder="Ex. : ESSOMBA Martin — Conducteur de travaux — Projet BALI — N+1 : FOTSO Jean-Marc&#10;NJOYA Ibrahim, chef de chantier, CHR Buea…"></textarea>
+          <span class="hint">Copiez depuis un e-mail, WhatsApp ou Word : Claude structure la liste.</span>
+        </div>
+      </div>
+      <div class="card__foot form-actions" style="padding-top:12px">
+        <button class="btn btn--primary" type="submit">{{ icon('sparkles') }} Analyser</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="card">
+    <div class="card__head"><h2>Comment ça marche</h2></div>
+    <div class="card__body stack small ink-2">
+      <p><strong class="ink">1. Analyse.</strong> Un fichier au format du modèle Excel est lu directement. Tout autre document (photo, PDF, Excel libre, texte) est lu par Claude.</p>
+      <p><strong class="ink">2. Vérification.</strong> Vous corrigez chaque ligne : nom, poste, département, projet, N+1. Les lectures douteuses sont signalées.</p>
+      <p><strong class="ink">3. Validation.</strong> Rien n'est enregistré avant votre clic. Les départements et projets inconnus peuvent être créés automatiquement.</p>
+      <hr style="margin:4px 0">
+      <p class="muted">Confidentialité : le document est transmis à l'API Claude d'Anthropic uniquement pour l'extraction ; il n'est pas conservé par l'application.</p>
+    </div>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, note, badge_niveau, badge_statut with context %}
+{% set nav = "evaluations" if per.est_evaluateur or per.voit_tout else "personnel" %}
+{% block title %}Évaluation {{ ev.employe.nom_complet }} — {{ periode }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.fiche', employe_id=ev.employe_id) }}">{{ ev.employe.nom_complet }}</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ periode }}</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ ev.employe.nom_complet }} — {{ periode }}</h1>
+    <p>{{ ev.contexte_libelle }} · Évalué par {{ ev.evaluateur.nom_complet if ev.evaluateur else "—" }}</p>
+  </div>
+  <div class="page-head__actions">
+    {% if peut_modifier %}<a class="btn btn--primary" href="{{ url_for('evaluations.noter', affectation_id=ev.affectation_id, annee=ev.annee, mois=ev.mois) }}">{{ icon('edit') }} Modifier</a>{% endif %}
+    <a class="btn btn--secondary" href="{{ url_for('personnel.fiche', employe_id=ev.employe_id, annee=ev.annee) }}">Fiche du salarié</a>
+  </div>
+</div>
+
+<div class="grid grid-main">
+  <div class="stack">
+    <section class="card">
+      <div class="card__head"><h2>Détail par critère</h2>{{ badge_statut(ev) }}</div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Critère</th><th class="num">Coef.</th><th class="num">Note</th><th>Appréciation</th><th>Commentaire</th></tr></thead>
+        <tbody>
+          {% for n in ev.notes %}
+          <tr><td><strong>{{ n.critere.libelle }}</strong></td><td class="num">×{{ n.poids }}</td>
+            <td class="num"><strong>{{ n.note }}</strong><span class="muted">/100</span></td>
+            <td>{{ badge_niveau(n.note) }}</td><td class="ink-2">{{ n.commentaire or "—" }}</td></tr>
+          {% else %}
+          <tr><td colspan="5" class="muted center">Aucun critère noté.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><td colspan="2">Note globale</td><td class="num">{{ ev.note_globale|note }}<span class="muted">/100</span></td><td colspan="2">{{ badge_niveau(ev.note_globale) }}</td></tr></tfoot>
+      </table></div>
+    </section>
+    <section class="card">
+      <div class="card__head"><h2>Appréciation générale</h2></div>
+      <div class="card__body stack">
+        <div><div class="label">Commentaire du N+1</div><p class="ink-2" style="margin-top:4px;white-space:pre-line">{{ ev.commentaire or "Aucun commentaire." }}</p></div>
+        <div><div class="label">Axes d'amélioration</div><p class="ink-2" style="margin-top:4px;white-space:pre-line">{{ ev.axes_amelioration or "—" }}</p></div>
+      </div>
+    </section>
+  </div>
+  <aside class="stack">
+    <div class="card"><div class="card__body">
+      <div class="kpi__label">Note globale</div>
+      <div class="score-big" style="margin-top:8px">{{ ev.note_globale|note(1) }}<small>/100</small></div>
+      <div style="margin-top:12px">{{ badge_niveau(ev.note_globale) }}</div>
+    </div></div>
+    <div class="card"><div class="card__body">
+      <h3 style="margin-bottom:12px">Traçabilité</h3>
+      <dl class="dl">
+        <dt>Créée le</dt><dd>{{ ev.created_at|date_fr(True) }}</dd>
+        <dt>Par</dt><dd>{{ ev.created_by.nom_affiche if ev.created_by else "—" }}</dd>
+        <dt>Modifiée le</dt><dd>{{ ev.updated_at|date_fr(True) }}</dd>
+        <dt>Par</dt><dd>{{ ev.updated_by.nom_affiche if ev.updated_by else "—" }}</dd>
+        <dt>Soumise le</dt><dd>{{ ev.soumise_le|date_fr(True) }}</dd>
+      </dl>
+    </div></div>
+    {% if current_user.est_rh and ev.est_soumise %}
+    <div class="card"><form class="card__body stack" method="post" action="{{ url_for('evaluations.rouvrir', evaluation_id=ev.id) }}"
+          data-confirm="Rouvrir cette évaluation ? Elle repassera en brouillon pour l'évaluateur." data-validate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h3>Rouvrir l'évaluation</h3>
+      <div class="field"><label for="motif">Motif<span class="req">*</span></label>
+        <input class="input" id="motif" name="motif" required maxlength="300" placeholder="Ex. erreur de saisie signalée par le N+1"></div>
+      <button class="btn btn--danger" type="submit">Rouvrir</button>
+    </form></div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

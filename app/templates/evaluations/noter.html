@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, note, badge_niveau with context %}
+{% set nav = "evaluations" %}
+{% block title %}Évaluer {{ aff.employe.nom_complet }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('evaluations.campagne', annee=annee, mois=mois) }}">Évaluations — {{ periode }}</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ aff.employe.nom_complet }}</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="row" style="gap:16px;align-items:center">
+    <div class="avatar avatar--lg" aria-hidden="true">{{ aff.employe.initiales }}</div>
+    <div>
+      <h1>{{ aff.employe.nom_complet }}</h1>
+      <p>{{ aff.employe.poste or "Poste non renseigné" }} · {{ aff.contexte_libelle }} · <strong>{{ periode }}</strong></p>
+    </div>
+  </div>
+  <div class="page-head__actions">
+    <a class="btn btn--ghost" href="{{ url_for('evaluations.campagne', annee=annee, mois=mois) }}">{{ icon('arrow-left') }} Retour</a>
+  </div>
+</div>
+
+{% if ev and ev.rouverte %}<div class="alert alert--warn" style="margin-bottom:16px">{{ icon('info') }}<span>Cette évaluation a été rouverte par la RH. Corrigez-la puis soumettez-la à nouveau.</span></div>{% endif %}
+{% if not modifiable %}<div class="alert alert--info" style="margin-bottom:16px">{{ icon('lock') }}<span>Cette période est clôturée : la saisie n'est plus possible. Contactez la RH pour une réouverture.</span></div>{% endif %}
+<div class="alert alert--info" data-restore-banner hidden style="margin-bottom:16px">{{ icon('info') }}
+  <span>Une saisie non enregistrée a été retrouvée sur cet appareil et restaurée.</span>
+  <button class="btn btn--ghost btn--sm" type="button" data-restore-discard style="margin-left:auto">Ignorer et recharger</button>
+</div>
+
+<form method="post" data-eval-form data-loading
+      data-autosave-key="futura-eval-{{ current_user.id }}-{{ aff.id }}-{{ annee }}-{{ mois }}"
+      data-server-ts="{{ server_ts }}" data-seuil="{{ seuil }}" {% if not modifiable %}data-readonly{% endif %}
+      action="{{ url_for('evaluations.noter', affectation_id=aff.id, annee=annee, mois=mois) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grid grid-main">
+    <div class="stack">
+      <section class="card">
+        <div class="card__head">
+          <div><h2>Grille d'évaluation</h2><p>Notez chaque critère de 0 à 100. Le coefficient (×) pondère la note globale.</p></div>
+        </div>
+        <div class="card__body" style="padding-top:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">
+          <div class="rating-legend">{% for borne, lib, desc in ECHELLE %}<span title="{{ desc }}"><b>{{ "≥ " ~ borne if borne else "< 50" }}</b> {{ lib }}</span>{% endfor %}</div>
+        </div>
+        <div class="criteria">
+          {% for c in criteres %}
+          {% set v = valeurs.get(c.id, {}) %}
+          {% set err = erreurs.get('note_' ~ c.id) or erreurs.get('commentaire_' ~ c.id) %}
+          <div class="criterion {% if err %}has-error{% endif %}" data-critere data-poids="{{ c.poids }}">
+            <div>
+              <div class="criterion__title" id="lbl-{{ c.id }}">{{ c.libelle }} <span class="criterion__weight" title="Coefficient">×{{ c.poids }}</span></div>
+              {% if c.description %}<div class="criterion__desc">{{ c.description }}</div>{% endif %}
+            </div>
+            <div class="score-input {% if not v.note %}is-empty{% endif %}">
+              <input class="score-input__range" type="range" min="0" max="100" step="1" value="{{ v.note or 50 }}"
+                     aria-labelledby="lbl-{{ c.id }}" tabindex="-1" data-range {% if not modifiable %}disabled{% endif %}>
+              <label class="sr-only" for="n{{ c.id }}">Note de {{ c.libelle }} sur 100</label>
+              <input class="input score-input__num" id="n{{ c.id }}" name="note_{{ c.id }}" type="number" inputmode="numeric"
+                     min="0" max="100" step="1" value="{{ v.note }}" placeholder="—" data-note {% if not modifiable %}disabled{% endif %}
+                     {% if erreurs.get('note_' ~ c.id) %}aria-invalid="true"{% endif %}>
+              <span class="badge badge--aucun" data-note-niveau>Non noté</span>
+            </div>
+            <div class="criterion__comment">
+              <label class="sr-only" for="c{{ c.id }}">Commentaire sur {{ c.libelle }}</label>
+              <input class="input" id="c{{ c.id }}" name="commentaire_{{ c.id }}" maxlength="500" value="{{ v.commentaire or '' }}"
+                     placeholder="Commentaire (facultatif, obligatoire si note < {{ seuil }})" data-critere-comment {% if not modifiable %}disabled{% endif %}>
+              <span class="error" data-critere-error>{{ err or "" }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head"><div><h2>Appréciation générale</h2><p>Visible par le salarié une fois l'évaluation soumise.</p></div></div>
+        <div class="card__body stack">
+          <div class="field">
+            <label for="commentaire">Commentaire du N+1</label>
+            <textarea class="textarea" id="commentaire" name="commentaire" maxlength="4000" placeholder="Faits marquants du mois, réussites, difficultés rencontrées…" {% if not modifiable %}disabled{% endif %}>{{ commentaire }}</textarea>
+          </div>
+          <div class="field">
+            <label for="axes">Axes d'amélioration / objectifs du mois prochain</label>
+            <textarea class="textarea" id="axes" name="axes_amelioration" maxlength="4000" placeholder="Actions concrètes, formations, objectifs mesurables…" {% if not modifiable %}disabled{% endif %}>{{ axes }}</textarea>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside>
+      <div class="card score-panel">
+        <div class="card__body">
+          <div class="kpi__label">Note globale calculée</div>
+          <div class="score-big" style="margin-top:8px"><span data-score>—</span><small>/100</small></div>
+          <div style="margin-top:12px"><span class="badge" data-score-niveau>Aucune note</span></div>
+          <div class="score-meta"><span>Critères notés</span><span class="num" data-score-count>0 / {{ criteres|length }}</span></div>
+          <div class="progress"><span data-score-progress style="width:0"></span></div>
+          {% if modifiable %}
+          <div class="stack" style="margin-top:20px">
+            <button class="btn btn--secondary" type="submit" name="action" value="brouillon" style="width:100%">Enregistrer le brouillon</button>
+            <button class="btn btn--primary" type="submit" name="action" value="soumettre" style="width:100%"
+                    data-confirm-after="Soumettre l'évaluation ? Elle ne sera plus modifiable sans réouverture par la RH.">{{ icon('check') }} Soumettre l'évaluation</button>
+            <div class="save-state" data-save-state>{{ "Brouillon enregistré le " ~ (ev.updated_at|date_fr(True)) if ev else "Nouvelle évaluation" }}</div>
+          </div>
+          {% endif %}
+        </div>
+        {% if historique %}
+        <div class="card__foot">
+          <div class="label" style="margin-bottom:8px">Mois précédents</div>
+          <div class="timeline">
+            {% for h in historique %}<div class="chip"><span class="muted">{{ h.mois|mois_court }}</span><b>{{ h.note_globale|note(0) }}</b></div>{% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </aside>
+  </div>
+</form>
+{% endblock %}

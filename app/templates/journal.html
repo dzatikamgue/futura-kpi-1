@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, pagination with context %}
+{% set nav = "journal" %}
+{% block title %}Journal des actions{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Journal des actions</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Journal des actions</h1><p>Connexions, notations, modifications et exports — conservés pour l'audit.</p></div>
+  <div class="page-head__actions"><a class="btn btn--secondary" href="{{ url_avec(export='xlsx') }}">{{ icon('download') }} Excel</a></div></div>
+<section class="card">
+  <form class="toolbar" method="get" role="search">
+    <div class="search">{{ icon('search') }}<label class="sr-only" for="q">Rechercher</label>
+      <input class="input" id="q" name="q" value="{{ request.args.get('q', '') }}" placeholder="Utilisateur, cible, détail…"></div>
+    <label class="sr-only" for="action">Action</label>
+    <select class="select select--sm" id="action" name="action" data-autosubmit style="width:auto">
+      <option value="">Toutes les actions</option>
+      {% for a in actions %}<option value="{{ a }}" {% if request.args.get('action') == a %}selected{% endif %}>{{ a|replace('_', ' ') }}</option>{% endfor %}
+    </select>
+    <button class="btn btn--secondary btn--sm" type="submit">Filtrer</button>
+  </form>
+  {% if page.items %}
+  <div class="table-wrap"><table class="table table--compact">
+    <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Cible</th><th class="hide-mobile">Détails</th><th class="hide-mobile">IP</th></tr></thead>
+    <tbody>
+      {% for j in page.items %}
+      <tr><td class="nowrap">{{ j.created_at|date_fr(True) }}</td>
+        <td>{{ j.utilisateur.nom_affiche if j.utilisateur else "—" }}</td>
+        <td><span class="badge badge--plain {% if 'echec' in j.action %}badge--danger{% endif %}">{{ j.action|replace('_', ' ') }}</span></td>
+        <td>{{ j.cible or "—" }}</td>
+        <td class="hide-mobile ink-2 small" style="max-width:320px">{{ j.details or "" }}</td>
+        <td class="hide-mobile small muted">{{ j.ip or "" }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, "entrées") }}
+  {% else %}{{ vide("Journal vide", "Aucune action ne correspond à ces critères.", "log") }}{% endif %}
+</section>
+{% endblock %}

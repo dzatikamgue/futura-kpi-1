@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion · {{ app_name }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/logo-icon.svg') }}" type="image/svg+xml">
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=2">
+</head>
+<body>
+<div class="auth">
+  <section class="auth__brand">
+    <img src="{{ url_for('static', filename='img/logo-white.svg') }}" alt="{{ company_name }}" width="115" height="44">
+    <div>
+      <h2>Le suivi de la performance de nos équipes, mois après mois.</h2>
+      <p>Évaluations mensuelles par les N+1, synthèses trimestrielles et annuelles, en toute confidentialité.</p>
+    </div>
+    <small style="color:rgba(255,255,255,.55)">© {{ annee_courante }} {{ company_name }} — Usage interne</small>
+    <img class="stripes" src="{{ url_for('static', filename='img/logo-icon-white.svg') }}" alt="">
+  </section>
+  <section class="auth__panel">
+    <form class="auth__form" method="post" data-validate data-loading>
+      <img class="auth__mobile-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="{{ company_name }}">
+      <h1>Connexion</h1>
+      <p>Accédez à votre espace {{ app_name }}.</p>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}<div class="alert alert--{{ cat }}" style="margin-bottom:16px"><span>{{ msg }}</span></div>{% endfor %}
+      {% endwith %}
+      {% if erreur %}<div class="alert alert--erreur" role="alert" style="margin-bottom:16px"><span>{{ erreur }}</span></div>{% endif %}
+      <div class="stack">
+        <div class="field">
+          <label for="email">Adresse e-mail</label>
+          <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="mdp">Mot de passe</label>
+          <input class="input" id="mdp" name="mot_de_passe" type="password" autocomplete="current-password" required>
+        </div>
+        <label class="checkbox"><input type="checkbox" name="se_souvenir" value="1"> Rester connecté sur cet appareil</label>
+        <button class="btn btn--primary" type="submit">Se connecter</button>
+        <p class="small muted center">Mot de passe oublié ? Contactez le service RH, qui le réinitialisera.</p>
+      </div>
+    </form>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=2" defer></script>
+</body>
+</html>

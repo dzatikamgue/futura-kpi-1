@@ -1,0 +1,91 @@
+# Futura Performance — suivi mensuel des KPI du personnel
+
+Application RH de FUTURA : chaque N+1 note ses N-1 chaque mois (critères de 0 à 100), avec un suivi trimestriel et annuel. L'accès est cloisonné par département et par projet.
+
+## Fonctionnalités
+
+| Domaine | Ce que fait l'application |
+|---|---|
+| **Notation mensuelle** | Grille KPI configurable (0–100 par critère, coefficients 1–5), note globale pondérée sur 100, commentaire par critère et appréciation générale, brouillon puis soumission. |
+| **Confidentialité** | Un collaborateur ne voit que ses N-1, les entités qu'il dirige et ses propres notes soumises. RH et Direction voient tout. |
+| **Double rattachement** | Un salarié peut être affecté à un département **et** à un ou plusieurs projets, avec un N+1 par affectation. Chaque note reste visible dans son seul contexte. |
+| **Suivi** | Vues mensuelle, trimestrielle et annuelle (carte de chaleur), filtres département / projet, exports Excel et PDF. |
+| **Import du personnel** | Saisie manuelle, modèle Excel (lu sans IA), ou photo / PDF / Excel libre / texte collé lu par **Claude**. La RH valide sur un écran de vérification avant tout enregistrement. |
+| **Saisie rapide** | Fiche salarié en un écran : poste, département, projet et N+1 choisis dans des listes déroulantes. Matricule automatique si vide. Sans N+1 choisi, le responsable de l'entité note. |
+| **Comptes automatiques** | L'identifiant est l'e-mail de la fiche. Tout salarié qui a des N-1 (N+1 ou responsable) reçoit son compte automatiquement ; un compte existant est relié à la fiche portant le même e-mail. La RH génère tous les mots de passe en un clic. |
+| **Sécurité** | Mots de passe hachés, CSRF, blocage après 5 échecs, changement de mot de passe obligatoire à la 1re connexion, en-têtes CSP/HSTS, journal des actions. |
+| **Terrain** | Responsive (téléphone de chantier) ; la saisie est sauvegardée sur l'appareil en cas de coupure réseau ; polices et graphiques servis localement (aucun CDN). |
+
+**Barème** (note globale et critères, sur 100) : Excellent ≥ 80 · Très bien ≥ 70 · Bien ≥ 60 · Passable ≥ 50 · Insuffisant < 50. Un critère noté sous 40 doit être justifié par un commentaire.
+
+**Calendrier** : le mois en cours est ouvert à la saisie, ainsi que le mois précédent jusqu'au 10 (`SAISIE_JOUR_LIMITE`). Au-delà, seule la RH peut rouvrir une évaluation, avec un motif journalisé.
+
+## Lancer en local
+
+```bash
+python -m venv .venv && source .venv/bin/activate      # Windows : .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env                                    # puis éditer SECRET_KEY
+export FLASK_APP=wsgi.py                                # Windows : set FLASK_APP=wsgi.py
+flask db upgrade
+flask demo                 # optionnel : données de démonstration (mot de passe Futura2026!)
+flask run                  # http://127.0.0.1:5000
+```
+
+Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
+
+Tests : `pytest -q` (22 tests : périmètres d'accès, flux de notation, import, comptes automatiques, clé API, sécurité, exports).
+
+## Déployer : GitHub → Railway
+
+1. **GitHub** : créez un dépôt **privé**, puis :
+   ```bash
+   git init && git add . && git commit -m "Futura Performance v1"
+   git branch -M main && git remote add origin https://github.com/<compte>/futura-kpi.git
+   git push -u origin main
+   ```
+2. **Railway** : *New Project* → *Deploy from GitHub repo* → choisissez le dépôt.
+3. Dans le projet : *+ New* → *Database* → **PostgreSQL**.
+4. Dans le service web → *Variables* :
+
+   | Variable | Valeur |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (référence Railway) |
+   | `APP_ENV` | `production` |
+   | `SECRET_KEY` | chaîne aléatoire longue (`python -c "import secrets;print(secrets.token_hex(32))"`) |
+   | `ADMIN_EMAIL` | e-mail du compte RH initial |
+   | `ADMIN_PASSWORD` | mot de passe initial (≥ 10 caractères), à changer à la 1re connexion |
+   | `ANTHROPIC_API_KEY` | facultatif : la clé peut aussi être saisie dans l'application (*Clé API Claude*) |
+   | `ANTHROPIC_MODEL` | facultatif, par défaut `claude-sonnet-5-5` |
+
+5. *Settings* → *Networking* → **Generate Domain**.
+
+Au démarrage, `start.sh` applique les migrations, crée le compte RH initial et la grille KPI par défaut, puis lance gunicorn. Railway surveille `/sante`.
+
+**Ne lancez jamais `flask demo` en production.**
+
+## Premiers pas après déploiement
+
+1. Connectez-vous avec `ADMIN_EMAIL`, puis changez le mot de passe. Créez votre propre fiche salarié **avec le même e-mail** : votre compte y est relié automatiquement et vous pouvez noter vos N-1.
+2. **Clé API Claude** (menu Administration RH) : collez la clé `sk-ant-…` créée sur console.anthropic.com. Elle est vérifiée, puis stockée chiffrée. Si `ANTHROPIC_API_KEY` est définie sur Railway, elle reste prioritaire.
+3. **Départements**, **Projets** (avec leur responsable) et **Postes**.
+4. **Personnel** : importez la liste, ou saisissez chaque salarié (poste, département / projet, N+1 dans des listes).
+5. **Comptes & accès** → « Générer les accès », puis transmettez identifiants et mots de passe temporaires.
+
+**Clé API et SECRET_KEY** : la clé saisie dans l'application est chiffrée avec une clé dérivée de `SECRET_KEY`. Si vous changez `SECRET_KEY`, ressaisissez la clé API.
+
+## Structure
+
+```
+app/
+  models.py          Modèle de données (Employe, Affectation, Evaluation, EvaluationNote…)
+  permissions.py     Règles de périmètre — toute liste passe par ici
+  blueprints/        Écrans : auth, tableau_bord, evaluations, personnel, suivi, import, parametres, journal
+  services/          notation, statistiques, exports, import_ia (Claude), comptes (liaison auto),
+                     organisation (affectations, postes), reglages (clé API chiffrée), audit
+  templates/ static/ Interface (design system dans static/css/app.css)
+migrations/          Alembic (flask db migrate / upgrade)
+tests/               pytest
+```
+
+Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m "description"` et versionnez le fichier généré.

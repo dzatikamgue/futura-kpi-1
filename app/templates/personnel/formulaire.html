@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "macros.html" import champ, icon with context %}
+{% set nav = "personnel" %}
+{% block title %}{{ "Modifier " ~ employe.nom_complet if employe else "Nouveau salarié" }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.liste') }}">Personnel</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ employe.nom_complet if employe else "Nouveau" }}</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ "Modifier la fiche" if employe else "Nouveau salarié" }}</h1>
+  <p>Les champs marqués <span style="color:var(--danger)">*</span> sont obligatoires.</p></div></div>
+
+{% macro select_champ(nom, libelle, aide="") -%}
+<div class="field">
+  <label for="f-{{ nom }}">{{ libelle }}</label>
+  <select class="select" id="f-{{ nom }}" name="{{ nom }}" {% if erreurs.get(nom) %}aria-invalid="true"{% endif %}>{{ caller() }}</select>
+  {% if aide %}<span class="hint">{{ aide }}</span>{% endif %}
+  {% if erreurs.get(nom) %}<span class="error">{{ erreurs[nom] }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+<form class="card" method="post" data-validate data-loading style="max-width:860px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card__head"><h2>Identité</h2></div>
+  <div class="card__body form-grid">
+    {{ champ("nom", "Nom", donnees.get('nom'), erreurs, requis=True, attrs='maxlength="80" autocomplete="off" autofocus') }}
+    {{ champ("prenom", "Prénom(s)", donnees.get('prenom'), erreurs, attrs='maxlength="80" autocomplete="off"') }}
+    {{ champ("email", "E-mail professionnel", donnees.get('email'), erreurs, "email",
+             aide="Sert d'identifiant de connexion : un responsable qui a un e-mail reçoit automatiquement son compte.", attrs='maxlength="160" autocomplete="off"') }}
+    {{ champ("telephone", "Téléphone", donnees.get('telephone'), erreurs, "tel", attrs='maxlength="40" placeholder="+237 6XX XX XX XX"') }}
+    {{ champ("matricule", "Matricule", donnees.get('matricule'), erreurs, requis=employe is not none,
+             aide=("Identifiant unique." if employe else "Laissez vide pour une numérotation automatique (FUT-0001…)."), attrs='maxlength="30" autocomplete="off"') }}
+    {{ champ("date_embauche", "Date d'embauche", donnees.get('date_embauche'), erreurs, "date") }}
+  </div>
+
+  <div class="card__head" style="border-top:1px solid var(--line)"><h2>Poste{% if not employe %} et rattachement{% endif %}</h2></div>
+  <div class="card__body form-grid">
+    <div class="field">
+      <label for="f-poste">Poste / fonction</label>
+      <select class="select" id="f-poste" name="poste" data-autre="#bloc-poste-nouveau" {% if erreurs.get('poste') %}aria-invalid="true"{% endif %}>
+        <option value="">— Choisir un poste —</option>
+        {% for p in postes %}<option value="{{ p }}" {% if donnees.get('poste') == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+        <option value="__nouveau__" {% if donnees.get('poste_nouveau') %}selected{% endif %}>＋ Nouveau poste…</option>
+      </select>
+      {% if erreurs.get('poste') %}<span class="error">{{ erreurs.poste }}</span>{% endif %}
+    </div>
+    <div class="field" id="bloc-poste-nouveau" {% if not donnees.get('poste_nouveau') %}hidden{% endif %}>
+      <label for="f-poste_nouveau">Libellé du nouveau poste</label>
+      <input class="input" id="f-poste_nouveau" name="poste_nouveau" value="{{ donnees.get('poste_nouveau', '') }}" maxlength="120" placeholder="Ex. Chef de chantier">
+      <span class="hint">Il sera ajouté à la liste des postes.</span>
+    </div>
+
+    {% if not employe %}
+    {% call select_champ("departement_id", "Département") %}
+      <option value="">— Aucun —</option>
+      {% for d in departements %}<option value="{{ d.id }}" {% if donnees.get('departement_id') == d.id|string %}selected{% endif %}>{{ d.nom }}{{ " · resp. " ~ d.responsable.nom_complet if d.responsable }}</option>{% endfor %}
+    {% endcall %}
+    {% call select_champ("projet_id", "Projet") %}
+      <option value="">— Aucun —</option>
+      {% for p in projets %}<option value="{{ p.id }}" {% if donnees.get('projet_id') == p.id|string %}selected{% endif %}>{{ p.nom }}{{ " · resp. " ~ p.responsable.nom_complet if p.responsable }}</option>{% endfor %}
+    {% endcall %}
+    {% call select_champ("evaluateur_id", "N+1 (qui le note)", "Laissez vide : le responsable du département ou du projet sera retenu.") %}
+      <option value="">— Responsable de l'entité —</option>
+      {% for x in evaluateurs %}<option value="{{ x.id }}" {% if donnees.get('evaluateur_id') == x.id|string %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}
+    {% endcall %}
+    {% endif %}
+  </div>
+  {% if not departements and not projets and not employe %}
+  <div class="card__body" style="padding-top:0"><div class="alert alert--info">{{ icon('info') }}<span>Aucun département ni projet : créez-les dans <a href="{{ url_for('parametres.departements') }}">Départements</a> et <a href="{{ url_for('parametres.projets') }}">Projets</a> pour pouvoir rattacher le personnel.</span></div></div>
+  {% endif %}
+  <div class="card__foot form-actions" style="padding-top:12px">
+    <a class="btn btn--ghost" href="{{ url_for('personnel.fiche', employe_id=employe.id) if employe else url_for('personnel.liste') }}">Annuler</a>
+    {% if not employe %}<button class="btn btn--secondary" type="submit" name="suivant" value="1">Enregistrer et ajouter un autre</button>{% endif %}
+    <button class="btn btn--primary" type="submit">Enregistrer</button>
+  </div>
+</form>
+{% endblock %}

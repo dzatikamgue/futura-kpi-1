@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "macros.html" import champ with context %}
+{% block title %}Mot de passe{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Mot de passe</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Changer mon mot de passe</h1>
+  <p>{% if current_user.doit_changer_mdp %}Pour sécuriser votre compte, choisissez un mot de passe personnel avant de continuer.{% else %}Au moins 10 caractères, avec des lettres et des chiffres.{% endif %}</p></div></div>
+<div class="card" style="max-width:520px">
+  <form class="card__body stack" method="post" data-validate data-loading>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ champ("actuel", "Mot de passe actuel", "", erreurs, "password", True, attrs='autocomplete="current-password"') }}
+    {{ champ("nouveau", "Nouveau mot de passe", "", erreurs, "password", True, "10 caractères minimum, lettres et chiffres.", 'autocomplete="new-password" minlength="10"') }}
+    {{ champ("confirmation", "Confirmer le nouveau mot de passe", "", erreurs, "password", True, attrs='autocomplete="new-password" minlength="10"') }}
+    <div class="form-actions"><button class="btn btn--primary" type="submit">Enregistrer</button></div>
+  </form>
+</div>
+{% endblock %}

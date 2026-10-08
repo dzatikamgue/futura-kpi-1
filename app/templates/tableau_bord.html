@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, badge_niveau, badge_statut, note with context %}
+{% set nav = "tableau" %}
+{% block title %}Tableau de bord{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Bonjour{{ ", " ~ current_user.employe.prenom if current_user.employe and current_user.employe.prenom }}</h1>
+    <p>Vue d'ensemble — {{ periode }}{% if not per.voit_tout %} · votre périmètre uniquement{% endif %}</p>
+  </div>
+  <form class="page-head__actions" method="get">
+    <label class="sr-only" for="p-mois">Mois</label>
+    <select class="select" id="p-mois" name="mois" data-autosubmit style="width:auto">
+      {% for m in range(1, 13) %}<option value="{{ m }}" {% if m == mois %}selected{% endif %}>{{ MOIS[m-1] }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="p-annee">Année</label>
+    <select class="select" id="p-annee" name="annee" data-autosubmit style="width:auto">
+      {% for a in range(annee_courante - 3, annee_courante + 1) %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    {% if per.est_evaluateur %}<a class="btn btn--primary" href="{{ url_for('evaluations.campagne') }}">{{ icon('star') }} Noter mes équipes</a>{% endif %}
+  </form>
+</div>
+
+{% if per.voit_tout or per.est_evaluateur %}
+<div class="grid grid-4" style="margin-bottom:16px">
+  <div class="card kpi">
+    <div class="kpi__label">Taux de complétion</div>
+    <div class="kpi__value">{{ kpi.taux }}<small>%</small></div>
+    <div class="progress" role="progressbar" aria-valuenow="{{ kpi.taux }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ kpi.taux }}%"></span></div>
+    <div class="kpi__meta">{{ kpi.soumises }} soumise(s) sur {{ kpi.attendues }} attendue(s)</div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi__label">Moyenne du mois</div>
+    <div class="kpi__value">{{ kpi.moyenne|note(1) }}<small>/100</small></div>
+    <div class="kpi__meta">{{ badge_niveau(kpi.moyenne) }}</div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi__label">Moyenne T{{ trimestre }} {{ annee }}</div>
+    <div class="kpi__value">{{ moyenne_t|note(1) }}<small>/100</small></div>
+    <div class="kpi__meta">Annuelle : <strong class="num">{{ moyenne_a|note(1) }}</strong></div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi__label">Restant à noter</div>
+    <div class="kpi__value">{{ kpi.restantes }}</div>
+    <div class="kpi__meta">{{ kpi.brouillons }} brouillon(s) en cours</div>
+  </div>
+</div>
+
+<div class="grid grid-main" style="margin-bottom:16px">
+  <section class="card">
+    <div class="card__head"><div><h2>Évolution de la moyenne — {{ annee }}</h2><p>Moyenne des évaluations soumises, sur 100</p></div></div>
+    <div class="card__body">
+      {% if evolution|select("ne", none)|list %}
+      <div class="chart-box"><canvas data-chart="data-evolution" aria-label="Graphique de l'évolution mensuelle de la moyenne" role="img"></canvas></div>
+      <script type="application/json" id="data-evolution">{{ {"type": "line", "labels": mois_courts, "min": 0, "max": 100, "step": 20, "suffix": "/100", "series": [{"label": "Moyenne", "data": evolution}]}|tojson }}</script>
+      {% else %}
+      {{ vide("Pas encore de données", "Les courbes apparaîtront dès les premières évaluations soumises.", "chart") }}
+      {% endif %}
+    </div>
+  </section>
+  <section class="card">
+    <div class="card__head"><div><h2>Répartition — {{ periode }}</h2><p>Par niveau de performance</p></div></div>
+    <div class="card__body">
+      {% set total_rep = repartition.values()|sum %}
+      {% if total_rep %}
+      <div class="bars">
+        {% for code, lib in [("excellent","Excellent ≥80"),("tres-bien","Très bien ≥70"),("bien","Bien ≥60"),("passable","Passable ≥50"),("insuffisant","Insuffisant <50")] %}
+        <div class="bars__row">
+          <span>{{ lib }}</span>
+          <div class="bars__track"><div class="bars__fill fill--{{ code }}" style="width:{{ (100 * repartition[code] / total_rep)|round(1) }}%"></div></div>
+          <span class="num right">{{ repartition[code] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      {{ vide("Aucune note ce mois-ci", "La répartition s'affichera après les premières soumissions.", "chart") }}
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endif %}
+
+<div class="grid {% if (per.est_evaluateur and contextes) %}grid-2{% endif %}">
+  {% if per.est_evaluateur %}
+  <section class="card">
+    <div class="card__head">
+      <div><h2>À noter</h2><p>Périodes ouvertes à la saisie</p></div>
+      {% if nb_a_faire %}<span class="badge badge--warn badge--plain">{{ nb_a_faire }} en attente</span>{% endif %}
+    </div>
+    {% if a_faire %}
+    <ul class="list">
+      {% for r in a_faire %}
+      <li>
+        <div class="avatar" aria-hidden="true">{{ r.affectation.employe.initiales }}</div>
+        <div class="grow"><strong>{{ r.affectation.employe.nom_complet }}</strong>
+          <span>{{ r.affectation.contexte_libelle }} · {{ MOIS[r.mois-1] }} {{ r.annee }}</span></div>
+        {{ badge_statut(r.evaluation) }}
+        <a class="btn btn--secondary btn--sm" href="{{ url_for('evaluations.noter', affectation_id=r.affectation.id, annee=r.annee, mois=r.mois) }}">{{ "Reprendre" if r.evaluation else "Noter" }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if nb_a_faire > a_faire|length %}<div class="card__foot"><a href="{{ url_for('evaluations.campagne', statut='non_soumise') }}">Voir les {{ nb_a_faire }} évaluations en attente →</a></div>{% endif %}
+    {% else %}
+    {{ vide("Tout est à jour", "Toutes les évaluations des périodes ouvertes sont soumises. Merci !", "check") }}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if contextes %}
+  <section class="card">
+    <div class="card__head"><div><h2>Moyennes par entité</h2><p>{{ periode }}</p></div></div>
+    {% if contextes.departements or contextes.projets %}
+    <div class="table-wrap"><table class="table table--compact">
+      <thead><tr><th>Entité</th><th class="num">Évaluations</th><th class="num">Moyenne</th><th>Niveau</th></tr></thead>
+      <tbody>
+        {% for d in contextes.departements %}<tr><td><span class="muted small">Dépt.</span> {{ d.nom }}</td><td class="num">{{ d.nb }}</td><td class="num">{{ d.moyenne|note }}</td><td>{{ badge_niveau(d.moyenne) }}</td></tr>{% endfor %}
+        {% for p in contextes.projets %}<tr><td><span class="muted small">Projet</span> {{ p.nom }}</td><td class="num">{{ p.nb }}</td><td class="num">{{ p.moyenne|note }}</td><td>{{ badge_niveau(p.moyenne) }}</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    {{ vide("Aucune moyenne disponible", "Aucune évaluation soumise pour " ~ periode ~ ".", "chart") }}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if mes_notes and not per.voit_tout %}
+  <section class="card">
+    <div class="card__head"><div><h2>Mes dernières évaluations</h2><p>Évaluations soumises par mes N+1</p></div>
+      <a class="btn btn--ghost btn--sm" href="{{ url_for('personnel.fiche', employe_id=current_user.employe_id) }}">Voir tout</a></div>
+    <ul class="list">
+      {% for ev in mes_notes %}
+      <li><div class="grow"><strong>{{ MOIS[ev.mois-1] }} {{ ev.annee }}</strong><span>{{ ev.contexte_libelle }}</span></div>
+        {{ note(ev.note_globale) }} {{ badge_niveau(ev.note_globale) }}
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('evaluations.detail', evaluation_id=ev.id) }}">Détail</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% elif not per.voit_tout and not per.est_evaluateur %}
+  <section class="card">{{ vide("Aucune évaluation pour le moment", "Vos évaluations mensuelles apparaîtront ici dès que votre N+1 les aura soumises.", "star") }}</section>
+  {% endif %}
+</div>
+{% endblock %}

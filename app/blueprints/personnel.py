@@ -1,0 +1,312 @@
+"""Gestion du personnel : liste, fiche, création, modification, affectations."""
+from collections import defaultdict
+
+from flask import (Blueprint, abort, flash, redirect, render_template, request,
+                   url_for)
+from flask_login import login_required
+from sqlalchemy import exists, func, or_, select
+from sqlalchemy.orm import selectinload
+
+from ..extensions import db
+from ..models import (Affectation, Departement, Employe, Evaluation, Projet,
+                      StatutEvaluation)
+from ..permissions import perimetre, rh_requis
+from ..services.audit import journaliser
+from ..services.comptes import aligner_email, synchroniser_comptes
+from ..services.organisation import (affecter, matricule_auto, poste_canonique,
+                                     postes_actifs)
+from ..services.exports import export_excel, export_pdf
+from ..services.notation import MOIS_COURTS, moyenne, mois_du_trimestre, niveau
+from ..utils import lire_date, paginer
+
+bp = Blueprint("personnel", __name__, url_prefix="/personnel")
+
+CHAMPS = ("matricule", "nom", "prenom", "poste", "email", "telephone", "date_embauche")
+
+
+def _requete_liste(per):
+    q = (select(Employe).options(selectinload(Employe.affectations).selectinload(Affectation.departement),
+                                 selectinload(Employe.affectations).selectinload(Affectation.projet),
+                                 selectinload(Employe.affectations).selectinload(Affectation.evaluateur))
+         .where(per.filtre_employes()))
+    statut = request.args.get("statut", "actif")
+    if statut == "actif":
+        q = q.where(Employe.actif.is_(True))
+    elif statut == "inactif":
+        q = q.where(Employe.actif.is_(False))
+    if terme := (request.args.get("q") or "").strip():
+        like = f"%{terme}%"
+        q = q.where(or_(Employe.nom.ilike(like), Employe.prenom.ilike(like),
+                        Employe.matricule.ilike(like), Employe.poste.ilike(like), Employe.email.ilike(like)))
+    if dep := request.args.get("departement", type=int):
+        q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id == dep,
+                                   Affectation.actif.is_(True)))
+    if proj := request.args.get("projet", type=int):
+        q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.projet_id == proj,
+                                   Affectation.actif.is_(True)))
+    if request.args.get("sans_affectation") == "1":
+        q = q.where(~exists().where(Affectation.employe_id == Employe.id, Affectation.actif.is_(True)))
+    tri, sens = request.args.get("tri", "nom"), request.args.get("sens", "asc")
+    col = {"nom": Employe.nom, "matricule": Employe.matricule, "poste": Employe.poste,
+           "embauche": Employe.date_embauche}.get(tri, Employe.nom)
+    return q.order_by(col.desc().nulls_last() if sens == "desc" else col.asc().nulls_last(), Employe.prenom)
+
+
+@bp.get("/")
+@login_required
+def liste():
+    per = perimetre()
+    q = _requete_liste(per)
+    fmt = request.args.get("export")
+    if fmt in ("xlsx", "pdf"):
+        employes = db.session.scalars(q).all()
+        entetes = ["Matricule", "Nom", "Prénom", "Poste", "Affectations", "Email", "Téléphone", "Embauche"]
+        lignes = [[e.matricule, e.nom, e.prenom, e.poste or "",
+                   " / ".join(a.contexte_libelle for a in e.affectations_actives),
+                   e.email or "", e.telephone or "",
+                   e.date_embauche.strftime("%d/%m/%Y") if e.date_embauche else ""] for e in employes]
+        journaliser("export_personnel", fmt, f"{len(lignes)} lignes", commit=True)
+        if fmt == "xlsx":
+            return export_excel("Liste du personnel", entetes, lignes, "personnel")
+        return export_pdf("Liste du personnel", entetes, lignes, "personnel")
+    page = paginer(q, request.args.get("page", 1, type=int), 25)
+    return render_template("personnel/liste.html", page=page,
+                           departements=per.departements_visibles(), projets=per.projets_visibles())
+
+
+def _choix_formulaire(employe: Employe | None):
+    """Listes déroulantes du formulaire salarié."""
+    postes = [p.libelle for p in postes_actifs()]
+    if employe and employe.poste and employe.poste not in postes:
+        postes.append(employe.poste)  # poste historique hors référentiel
+    actifs = select(Employe).where(Employe.actif.is_(True))
+    if employe:
+        actifs = actifs.where(Employe.id != employe.id)
+    return dict(
+        postes=sorted(postes, key=str.lower),
+        departements=db.session.scalars(select(Departement).where(Departement.actif.is_(True)).order_by(Departement.nom)).all(),
+        projets=db.session.scalars(select(Projet).where(Projet.actif.is_(True)).order_by(Projet.nom)).all(),
+        evaluateurs=db.session.scalars(actifs.order_by(Employe.nom, Employe.prenom)).all())
+
+
+def _lire_formulaire(employe: Employe | None):
+    donnees = {k: (request.form.get(k) or "").strip() for k in CHAMPS + ("poste_nouveau", "departement_id",
+                                                                            "projet_id", "evaluateur_id")}
+    erreurs = {}
+    if len(donnees["matricule"]) > 30:
+        erreurs["matricule"] = "30 caractères maximum."
+    elif donnees["matricule"]:
+        doublon = db.session.scalar(select(Employe.id).where(Employe.matricule == donnees["matricule"]))
+        if doublon and (not employe or doublon != employe.id):
+            erreurs["matricule"] = "Ce matricule est déjà attribué."
+    elif employe:
+        erreurs["matricule"] = "Le matricule est obligatoire."
+    if not donnees["nom"]:
+        erreurs["nom"] = "Le nom est obligatoire."
+    if donnees["poste"] == "__nouveau__":
+        if not donnees["poste_nouveau"]:
+            erreurs["poste"] = "Saisissez le libellé du nouveau poste."
+        donnees["poste"] = donnees["poste_nouveau"][:120]
+        donnees["poste_cree"] = True
+    if donnees["email"]:
+        if "@" not in donnees["email"] or "." not in donnees["email"].split("@")[-1]:
+            erreurs["email"] = "Adresse e-mail invalide."
+        else:
+            q = select(Employe.id).where(func.lower(Employe.email) == donnees["email"].lower())
+            if employe:
+                q = q.where(Employe.id != employe.id)
+            if db.session.scalar(q):
+                erreurs["email"] = "Cet e-mail est déjà utilisé par un autre salarié (il sert d'identifiant de connexion)."
+    try:
+        donnees["date_embauche_val"] = lire_date(donnees["date_embauche"])
+    except ValueError as exc:
+        erreurs["date_embauche"] = str(exc)
+    return donnees, erreurs
+
+
+def _apres_enregistrement(e: Employe):
+    """Liaison automatique du compte d'accès + message si l'identifiant n'a pas pu suivre l'e-mail."""
+    alerte = aligner_email(e)
+    stats = synchroniser_comptes()
+    if alerte:
+        flash(alerte, "info")
+    if e.compte and stats["lies"]:
+        flash(f"Compte d'accès {e.compte.email} lié à cette fiche.", "info")
+
+
+@bp.route("/nouveau", methods=["GET", "POST"])
+@login_required
+@rh_requis
+def nouveau():
+    donnees, erreurs = {}, {}
+    if request.method == "POST":
+        donnees, erreurs = _lire_formulaire(None)
+        dep = db.session.get(Departement, int(donnees["departement_id"])) if donnees["departement_id"].isdigit() else None
+        proj = db.session.get(Projet, int(donnees["projet_id"])) if donnees["projet_id"].isdigit() else None
+        if not erreurs:
+            poste = poste_canonique(donnees["poste"], creer=True) if donnees["poste"] else None
+            e = Employe(matricule=donnees["matricule"] or matricule_auto(), nom=donnees["nom"].upper(),
+                        prenom=donnees["prenom"], poste=poste,
+                        email=donnees["email"].lower() or None, telephone=donnees["telephone"] or None,
+                        date_embauche=donnees["date_embauche_val"])
+            db.session.add(e)
+            db.session.flush()
+            n1 = int(donnees["evaluateur_id"]) if donnees["evaluateur_id"].isdigit() else None
+            affs = [affecter(e, departement=dep, evaluateur_id=n1) if dep else None,
+                    affecter(e, projet=proj, evaluateur_id=n1) if proj else None]
+            affs = [a for a in affs if a]
+            journaliser("employe_cree", e.nom_complet, e.matricule)
+            _apres_enregistrement(e)
+            db.session.commit()
+            if affs:
+                sans_n1 = [a for a in affs if not a.evaluateur_id]
+                msg = f"{e.nom_complet} ajouté ({', '.join(a.contexte_libelle for a in affs)})."
+                if sans_n1:
+                    msg += " Aucun N+1 : choisissez-le ci-dessous ou nommez un responsable pour l'entité."
+                flash(msg, "succes")
+            else:
+                flash(f"{e.nom_complet} ajouté. Rattachez-le à un département ou un projet pour qu'il soit noté.", "succes")
+            if request.form.get("suivant") == "1":
+                return redirect(url_for("personnel.nouveau", departement_id=dep.id if dep else None,
+                                        projet_id=proj.id if proj else None, evaluateur_id=n1))
+            return redirect(url_for("personnel.fiche", employe_id=e.id))
+    else:
+        # « Enregistrer et ajouter un autre » : on garde le rattachement précédent
+        donnees = {k: request.args.get(k, "") for k in ("departement_id", "projet_id", "evaluateur_id")}
+    return render_template("personnel/formulaire.html", employe=None, donnees=donnees, erreurs=erreurs,
+                           **_choix_formulaire(None))
+
+
+@bp.route("/<int:employe_id>/modifier", methods=["GET", "POST"])
+@login_required
+@rh_requis
+def modifier(employe_id):
+    e = db.session.get(Employe, employe_id) or abort(404)
+    erreurs = {}
+    if request.method == "POST":
+        donnees, erreurs = _lire_formulaire(e)
+        if not erreurs:
+            e.matricule = donnees["matricule"]
+            e.nom = donnees["nom"].upper()
+            e.prenom = donnees["prenom"]
+            e.poste = poste_canonique(donnees["poste"], creer=bool(donnees.get("poste_cree"))) if donnees["poste"] else None
+            e.email = donnees["email"].lower() or None
+            e.telephone = donnees["telephone"] or None
+            e.date_embauche = donnees["date_embauche_val"]
+            journaliser("employe_modifie", e.nom_complet, e.matricule)
+            _apres_enregistrement(e)
+            db.session.commit()
+            flash("Fiche mise à jour.", "succes")
+            return redirect(url_for("personnel.fiche", employe_id=e.id))
+    else:
+        donnees = {k: getattr(e, k) or "" for k in CHAMPS}
+        donnees["date_embauche"] = e.date_embauche.isoformat() if e.date_embauche else ""
+    return render_template("personnel/formulaire.html", employe=e, donnees=donnees, erreurs=erreurs,
+                           **_choix_formulaire(e))
+
+
+@bp.post("/<int:employe_id>/statut")
+@login_required
+@rh_requis
+def basculer_statut(employe_id):
+    e = db.session.get(Employe, employe_id) or abort(404)
+    e.actif = not e.actif
+    if not e.actif:
+        for a in e.affectations:
+            a.actif = False
+        if e.compte:
+            e.compte.actif = False
+    journaliser("employe_" + ("reactive" if e.actif else "desactive"), e.nom_complet)
+    db.session.commit()
+    flash(f"{e.nom_complet} {'réactivé' if e.actif else 'désactivé (affectations et compte suspendus)'}.", "succes")
+    return redirect(url_for("personnel.fiche", employe_id=e.id))
+
+
+@bp.get("/<int:employe_id>")
+@login_required
+def fiche(employe_id):
+    per = perimetre()
+    e = db.session.get(Employe, employe_id) or abort(404)
+    if not per.peut_voir_employe(e):
+        abort(403)
+    annees = sorted(set(db.session.scalars(
+        select(Evaluation.annee).where(Evaluation.employe_id == e.id, per.filtre_evaluations()).distinct())),
+        reverse=True)
+    annee = request.args.get("annee", type=int) or (annees[0] if annees else None)
+    from datetime import date
+    annee = annee or date.today().year
+
+    evals = db.session.scalars(
+        select(Evaluation).options(selectinload(Evaluation.notes))
+        .where(Evaluation.employe_id == e.id, Evaluation.annee == annee, per.filtre_evaluations())
+        .order_by(Evaluation.mois.desc(), Evaluation.id)).all()
+
+    par_mois = defaultdict(list)
+    for ev in evals:
+        if ev.est_soumise and ev.note_globale is not None:
+            par_mois[ev.mois].append(ev.note_globale)
+    mensuel = {m: moyenne(v) for m, v in par_mois.items()}
+    trimestres = [(t, moyenne(mensuel.get(m) for m in mois_du_trimestre(t))) for t in range(1, 5)]
+    annuel = moyenne(mensuel.values())
+
+    affs_visibles = [a for a in e.affectations if per.voit_tout or per.peut_noter(a) or a.employe_id == per.employe_id]
+    return render_template(
+        "personnel/fiche.html", e=e, annee=annee, annees=annees or [annee], evals=evals,
+        serie=[mensuel.get(m) for m in range(1, 13)], mois_courts=MOIS_COURTS,
+        trimestres=trimestres, annuel=annuel, niveau_annuel=niveau(annuel),
+        affectations=affs_visibles,
+        departements=db.session.scalars(select(Departement).where(Departement.actif.is_(True)).order_by(Departement.nom)).all() if per.voit_tout else [],
+        projets=db.session.scalars(select(Projet).where(Projet.actif.is_(True)).order_by(Projet.nom)).all() if per.voit_tout else [],
+        evaluateurs=db.session.scalars(select(Employe).where(Employe.actif.is_(True), Employe.id != e.id).order_by(Employe.nom)).all() if per.user.est_rh else [])
+
+
+@bp.post("/<int:employe_id>/affectations")
+@login_required
+@rh_requis
+def ajouter_affectation(employe_id):
+    e = db.session.get(Employe, employe_id) or abort(404)
+    type_ctx, _, brut_id = (request.form.get("contexte") or "").partition(":")
+    ctx_id = int(brut_id) if brut_id.isdigit() else None
+    eval_id = request.form.get("evaluateur_id", type=int)
+    if type_ctx not in ("departement", "projet") or not ctx_id:
+        flash("Choisissez un département ou un projet.", "erreur")
+        return redirect(url_for("personnel.fiche", employe_id=e.id))
+    if eval_id == e.id:
+        flash("Un salarié ne peut pas être son propre N+1.", "erreur")
+        return redirect(url_for("personnel.fiche", employe_id=e.id))
+    model = Departement if type_ctx == "departement" else Projet
+    ctx = db.session.get(model, ctx_id) or abort(404)
+    a = affecter(e, departement=ctx if model is Departement else None,
+                 projet=ctx if model is Projet else None, evaluateur_id=eval_id)
+    synchroniser_comptes()
+    journaliser("affectation_ajoutee", e.nom_complet, a.contexte_libelle)
+    db.session.commit()
+    msg = f"Affectation « {a.contexte_libelle} » enregistrée."
+    if a.evaluateur and not eval_id:
+        msg += f" N+1 retenu : {a.evaluateur.nom_complet} (responsable)."
+    flash(msg, "succes")
+    return redirect(url_for("personnel.fiche", employe_id=e.id))
+
+
+@bp.post("/affectations/<int:affectation_id>")
+@login_required
+@rh_requis
+def maj_affectation(affectation_id):
+    a = db.session.get(Affectation, affectation_id) or abort(404)
+    action = request.form.get("action")
+    if action == "retirer":
+        # On ne supprime pas : l'historique des notes reste rattaché
+        a.actif = False
+        journaliser("affectation_retiree", a.employe.nom_complet, a.contexte_libelle)
+        flash("Affectation clôturée. L'historique des notes est conservé.", "succes")
+    elif action == "evaluateur":
+        nouvel = request.form.get("evaluateur_id", type=int)
+        if nouvel == a.employe_id:
+            flash("Un salarié ne peut pas être son propre N+1.", "erreur")
+        else:
+            a.evaluateur_id = nouvel
+            journaliser("affectation_n1_modifie", a.employe.nom_complet, a.contexte_libelle)
+            synchroniser_comptes()
+            flash("N+1 mis à jour.", "succes")
+    db.session.commit()
+    return redirect(url_for("personnel.fiche", employe_id=a.employe_id))

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, heat, badge_niveau, filtres_contexte with context %}
+{% set nav = "suivi" %}
+{% block title %}Suivi {{ annee }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Suivi trimestriel &amp; annuel</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Suivi des performances</h1><p>{{ sous_titre }} · notes sur 100, évaluations soumises uniquement</p></div>
+  <div class="page-head__actions">
+    <a class="btn btn--secondary" href="{{ url_avec(export='xlsx') }}">{{ icon('download') }} Excel</a>
+    <a class="btn btn--secondary" href="{{ url_avec(export='pdf') }}">{{ icon('file') }} PDF</a>
+  </div>
+</div>
+
+<section class="card">
+  <form class="toolbar" method="get">
+    <nav class="segmented" aria-label="Type de vue">
+      {% for v, l in vues.items() %}<a href="{{ url_avec(vue=v) }}" aria-current="{{ 'true' if v == vue else 'false' }}">{{ l }}</a>{% endfor %}
+    </nav>
+    <input type="hidden" name="vue" value="{{ vue }}">
+    <label class="sr-only" for="annee">Année</label>
+    <select class="select select--sm" id="annee" name="annee" data-autosubmit style="width:auto">
+      {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    {{ filtres_contexte(departements, projets) }}
+    <div class="search">{{ icon('search') }}<label class="sr-only" for="q">Rechercher</label>
+      <input class="input" id="q" name="q" value="{{ request.args.get('q', '') }}" placeholder="Rechercher un salarié…"></div>
+    <button class="btn btn--secondary btn--sm" type="submit">Filtrer</button>
+  </form>
+
+  {% if data.lignes %}
+  <div class="table-wrap"><table class="table table--compact">
+    <thead><tr>
+      <th>Salarié</th>
+      {% for _, lib in data.colonnes %}<th class="num">{{ lib }}</th>{% endfor %}
+      <th class="num">Moy. annuelle</th><th>Niveau</th><th class="num hide-mobile">Mois notés</th>
+    </tr></thead>
+    <tbody>
+      {% for l in data.lignes %}
+      <tr>
+        <td><a href="{{ url_for('personnel.fiche', employe_id=l.employe.id, annee=annee) }}" style="color:inherit"><strong>{{ l.employe.nom_complet }}</strong></a>
+          <div class="small muted">{{ l.employe.poste or "—" }}</div></td>
+        {% for v in l.valeurs %}<td class="num">{{ heat(v) }}</td>{% endfor %}
+        <td class="num"><strong>{{ l.annuel|note }}</strong></td>
+        <td>{{ badge_niveau(l.annuel) }}</td>
+        <td class="num hide-mobile">{{ l.nb_mois }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr>
+      <td>Moyenne générale ({{ data.lignes|length }} salarié{{ "s" if data.lignes|length > 1 }})</td>
+      {% for v in data.totaux %}<td class="num">{{ v|note }}</td>{% endfor %}
+      <td class="num">{{ data.total_annuel|note }}</td><td>{{ badge_niveau(data.total_annuel) }}</td><td class="hide-mobile"></td>
+    </tr></tfoot>
+  </table></div>
+  <div class="card__foot small muted">Trimestre = moyenne des mois notés du trimestre · Année = moyenne des mois notés de l'année · Seuils : Excellent ≥80, Très bien ≥70, Bien ≥60, Passable ≥50.</div>
+  {% else %}
+  {{ vide("Aucune note pour ces critères", "Aucune évaluation soumise en " ~ annee ~ " pour cette sélection.", "chart") }}
+  {% endif %}
+</section>
+{% endblock %}

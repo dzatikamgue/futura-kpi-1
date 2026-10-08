@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, champ with context %}
+{% set nav = "postes" %}
+{% block title %}Postes{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Postes</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Postes</h1>
+  <p>La liste proposée dans les fiches salariés et à l'import. Un poste archivé disparaît des listes sans modifier les fiches existantes.</p></div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    {% if elements %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Poste</th><th class="num">Effectif</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for x in elements %}
+        <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
+          <td><strong>{{ x.libelle }}</strong></td>
+          <td class="num">{{ effectifs.get(x.libelle, 0) }}</td>
+          <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
+          <td class="actions">
+            <a class="btn btn--ghost btn--sm" href="?modifier={{ x.id }}#formulaire">Renommer</a>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ x.id }}"><input type="hidden" name="action" value="basculer">
+              <button class="btn btn--ghost btn--sm" type="submit">{{ "Archiver" if x.actif else "Réactiver" }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    {{ vide("Aucun poste", "Ajoutez les postes de l'entreprise : conducteur de travaux, chef de chantier, comptable…", "list") }}
+    {% endif %}
+  </section>
+
+  <section class="card" id="formulaire">
+    <div class="card__head"><h2>{{ "Renommer « " ~ edition.libelle ~ " »" if edition and edition.id else "Nouveau poste" }}</h2>
+      {% if edition and edition.id %}<a class="btn btn--ghost btn--sm" href="{{ request.path }}">Annuler</a>{% endif %}</div>
+    <form class="card__body stack" method="post" data-validate data-loading>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if edition and edition.id %}<input type="hidden" name="id" value="{{ edition.id }}">{% endif %}
+      {{ champ("libelle", "Libellé", donnees.get('libelle'), erreurs, requis=True,
+               aide=("Le nouveau libellé sera appliqué aux fiches qui portent ce poste." if edition and edition.id else "Ex. Conducteur de travaux"), attrs='maxlength="120" autofocus') }}
+      <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

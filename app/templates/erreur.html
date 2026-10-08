@@ -1,0 +1,9 @@
+{% extends "base.html" if current_user.is_authenticated else "erreur_public.html" %}
+{% from "macros.html" import vide with context %}
+{% block title %}{{ titre }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">{{ titre }}</span>{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:40px auto">
+  {{ vide(titre ~ " (" ~ code ~ ")", message, "alert", url_for("tableau_bord.index"), "Retour au tableau de bord") }}
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "claude" %}
+{% block title %}Clé API Claude{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Clé API Claude</span>{% endblock %}
+{% block loading_text %}Vérification de la clé auprès d'Anthropic…{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Clé API Claude</h1>
+  <p>Nécessaire pour importer le personnel à partir d'une photo, d'un PDF, d'un Excel libre ou d'un texte collé.</p></div></div>
+
+{% if resultat_test %}
+<div class="alert alert--{{ 'succes' if resultat_test[0] else 'erreur' }}" style="margin-bottom:16px">{{ icon('check' if resultat_test[0] else 'alert') }}<span>{{ resultat_test[1] }}</span></div>
+{% endif %}
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card__head"><h2>État</h2>
+      {% if etat.source %}<span class="badge badge--ok">Activée</span>{% else %}<span class="badge badge--warn">Non configurée</span>{% endif %}</div>
+    <div class="card__body">
+      <dl class="dl">
+        <dt>Clé utilisée</dt><dd>{% if etat.source %}<span class="code">{{ etat.masquee }}</span>{% else %}<span class="muted">Aucune</span>{% endif %}</dd>
+        <dt>Origine</dt><dd>{% if etat.source == "env" %}Variable <span class="code">ANTHROPIC_API_KEY</span> du serveur (Railway){% elif etat.source == "app" %}Saisie dans l'application{% if etat.maj_par %} par {{ etat.maj_par }}{% endif %}, le {{ etat.maj_le|date_fr(True) }}{% else %}—{% endif %}</dd>
+        <dt>Modèle</dt><dd><span class="code">{{ modele }}</span></dd>
+      </dl>
+      {% if etat.illisible %}<div class="alert alert--warn" style="margin-top:12px">{{ icon('alert') }}<span>Une clé est enregistrée mais n'est plus lisible (la variable SECRET_KEY du serveur a changé). Saisissez-la à nouveau.</span></div>{% endif %}
+    </div>
+    {% if etat.source %}
+    <div class="card__foot row" style="gap:8px">
+      <form method="post" data-loading data-overlay><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="tester">
+        <button class="btn btn--secondary btn--sm" type="submit">{{ icon('check') }} Tester la connexion</button></form>
+      {% if etat.source == "app" %}
+      <form method="post" data-confirm="Supprimer la clé ? L'import par Claude sera désactivé."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="supprimer">
+        <button class="btn btn--ghost btn--sm" type="submit">Supprimer la clé</button></form>
+      {% endif %}
+      <span class="spacer"></span>
+      <a class="btn btn--primary btn--sm" href="{{ url_for('import_personnel.index') }}">{{ icon('upload') }} Importer le personnel</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card__head"><h2>{{ "Remplacer la clé" if etat.source == "app" else "Saisir la clé" }}</h2></div>
+    {% if etat.source == "env" %}
+    <div class="card__body small ink-2"><p>La clé est définie sur le serveur (Railway → service → <em>Variables</em>) et reste prioritaire. Pour gérer la clé ici, supprimez cette variable sur Railway.</p></div>
+    {% else %}
+    <form class="card__body stack" method="post" data-validate data-loading data-overlay autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="enregistrer">
+      <div class="field">
+        <label for="f-cle">Clé API<span class="req">*</span></label>
+        <input class="input" id="f-cle" name="cle" type="password" required autocomplete="new-password" spellcheck="false"
+               placeholder="sk-ant-api03-…" {% if erreurs.get('cle') %}aria-invalid="true"{% endif %}>
+        {% if erreurs.get('cle') %}<span class="error">{{ erreurs.cle }}</span>{% endif %}
+      </div>
+      {% if erreurs.get('cle') and 'refusée' not in erreurs.cle and 'sk-ant' not in erreurs.cle %}
+      <label class="checkbox"><input type="checkbox" name="forcer" value="1"> Enregistrer quand même sans vérification</label>
+      {% endif %}
+      <button class="btn btn--primary" type="submit">{{ icon('lock') }} Vérifier et enregistrer</button>
+      <div class="small muted stack" style="gap:6px">
+        <p><strong class="ink">Où trouver la clé ?</strong> Sur <span class="code">console.anthropic.com</span> → <em>API Keys</em> → <em>Create Key</em>. Le compte doit avoir du crédit (facturation à l'usage, quelques dizaines de FCFA par import).</p>
+        <p>La clé est vérifiée auprès d'Anthropic, puis stockée chiffrée. Elle n'est plus jamais affichée en entier.</p>
+      </div>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

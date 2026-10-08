@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, th_tri, pagination, badge_statut, badge_niveau, note, filtres_contexte with context %}
+{% set nav = "evaluations" %}
+{% block title %}Évaluations — {{ periode }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Évaluations du mois</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Évaluations — {{ periode }}</h1>
+    <p>{% if ouverte %}Période ouverte à la saisie.{% else %}<span class="badge badge--plain">{{ icon('lock') }} Période clôturée</span> Consultation uniquement.{% endif %}
+       {% if not per.voit_tout %} Seuls vos N-1 et les membres des entités que vous dirigez apparaissent ici.{% endif %}</p>
+  </div>
+  <div class="page-head__actions">
+    {% for (a, m) in periodes_ouvertes %}
+    <a class="btn {{ 'btn--primary' if (a, m) == (annee, mois) else 'btn--secondary' }}" href="{{ url_for('evaluations.campagne', annee=a, mois=m) }}">{{ MOIS[m-1] }} {{ a }}</a>
+    {% endfor %}
+    <a class="btn btn--secondary" href="{{ url_avec(export='xlsx') }}">{{ icon('download') }} Excel</a>
+  </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom:16px">
+  <a class="card kpi" href="{{ url_avec(statut='', page=1) }}" style="text-decoration:none;color:inherit"><div class="kpi__label">Attendues</div><div class="kpi__value">{{ compteurs.total }}</div></a>
+  <a class="card kpi" href="{{ url_avec(statut='a_faire', page=1) }}" style="text-decoration:none;color:inherit"><div class="kpi__label">À faire</div><div class="kpi__value">{{ compteurs.a_faire }}</div></a>
+  <a class="card kpi" href="{{ url_avec(statut='brouillon', page=1) }}" style="text-decoration:none;color:inherit"><div class="kpi__label">Brouillons</div><div class="kpi__value">{{ compteurs.brouillons }}</div></a>
+  <a class="card kpi" href="{{ url_avec(statut='soumise', page=1) }}" style="text-decoration:none;color:inherit"><div class="kpi__label">Soumises</div><div class="kpi__value">{{ compteurs.soumises }}</div>
+    <div class="progress"><span style="width:{{ (100 * compteurs.soumises / compteurs.total)|round if compteurs.total else 0 }}%"></span></div></a>
+</div>
+
+<section class="card">
+  <form class="toolbar" method="get" role="search">
+    <input type="hidden" name="annee" value="{{ annee }}"><input type="hidden" name="mois" value="{{ mois }}">
+    <div class="search">{{ icon('search') }}<label class="sr-only" for="q">Rechercher</label>
+      <input class="input" id="q" name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, matricule, poste…"></div>
+    <label class="sr-only" for="statut">Statut</label>
+    <select class="select select--sm" id="statut" name="statut" data-autosubmit style="width:auto">
+      {% for v, l in [("", "Tous les statuts"), ("non_soumise", "Non soumises"), ("a_faire", "À faire"), ("brouillon", "Brouillons"), ("soumise", "Soumises")] %}
+      <option value="{{ v }}" {% if request.args.get('statut', '') == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    {{ filtres_contexte(departements, projets) }}
+    {% if per.voit_tout %}<label class="checkbox"><input type="checkbox" name="sans_evaluateur" value="1" data-autosubmit {% if request.args.get('sans_evaluateur') %}checked{% endif %}> Sans N+1</label>{% endif %}
+    <button class="btn btn--secondary btn--sm" type="submit">Filtrer</button>
+    {% if request.args.get('q') or request.args.get('statut') or request.args.get('departement') or request.args.get('projet') %}<a class="btn btn--ghost btn--sm" href="{{ url_for('evaluations.campagne', annee=annee, mois=mois) }}">Réinitialiser</a>{% endif %}
+  </form>
+
+  {% if lignes %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr>
+        {{ th_tri("Salarié", "nom") }}
+        <th>Contexte</th>
+        {{ th_tri("Évaluateur (N+1)", "evaluateur", "hide-mobile") }}
+        {{ th_tri("Statut", "statut") }}
+        {{ th_tri("Note", "note", "num") }}
+        <th class="hide-mobile">Niveau</th>
+        <th class="actions"><span class="sr-only">Actions</span></th>
+      </tr></thead>
+      <tbody>
+      {% for aff, ev in lignes %}
+        <tr>
+          <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ aff.employe.initiales }}</div>
+            <div><strong><a href="{{ url_for('personnel.fiche', employe_id=aff.employe.id) }}" style="color:inherit">{{ aff.employe.nom_complet }}</a></strong><span>{{ aff.employe.poste or "—" }} · {{ aff.employe.matricule }}</span></div></div></td>
+          <td>{{ aff.contexte_libelle }}</td>
+          <td class="hide-mobile">{% if aff.evaluateur %}{{ aff.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Non défini</span>{% endif %}</td>
+          <td>{{ badge_statut(ev) }}</td>
+          <td class="num">{{ note(ev.note_globale if ev else none) }}</td>
+          <td class="hide-mobile">{{ badge_niveau(ev.note_globale if ev else none) }}</td>
+          <td class="actions">
+            {% if per.peut_noter(aff) and (not ev or not ev.est_soumise) and (ouverte or (ev and ev.rouverte)) %}
+              <a class="btn btn--primary btn--sm" href="{{ url_for('evaluations.noter', affectation_id=aff.id, annee=annee, mois=mois) }}">{{ "Reprendre" if ev else "Noter" }}</a>
+            {% elif ev and per.peut_voir_evaluation(ev) %}
+              <a class="btn btn--secondary btn--sm" href="{{ url_for('evaluations.detail', evaluation_id=ev.id) }}">Voir</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ pagination(page, "lignes") }}
+  {% elif compteurs.total == 0 %}
+    {% if current_user.est_rh %}
+      {{ vide("Aucune affectation à évaluer", "Importez le personnel puis définissez pour chacun son département ou projet et son N+1.", "users", url_for('import_personnel.index'), "Importer le personnel") }}
+    {% else %}
+      {{ vide("Personne à évaluer", "Aucun collaborateur ne vous est rattaché comme N+1. Contactez la RH si c'est une erreur.", "users") }}
+    {% endif %}
+  {% else %}
+    {{ vide("Aucun résultat", "Aucune ligne ne correspond à ces filtres.", "search", url_for('evaluations.campagne', annee=annee, mois=mois), "Effacer les filtres") }}
+  {% endif %}
+</section>
+{% endblock %}

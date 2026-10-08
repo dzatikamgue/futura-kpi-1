@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, champ with context %}
+{% set nav = "projets" if avec_projet else "departements" %}
+{% set singulier = "projet" if avec_projet else "département" %}
+{% block title %}{{ titre }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">{{ titre }}</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ titre }}</h1>
+  <p>Le responsable d'un {{ singulier }} voit et peut noter toutes les personnes qui y sont affectées.</p></div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    {% if elements %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Code</th><th>Nom</th><th>Responsable</th>{% if avec_projet %}<th class="hide-mobile">Localisation</th><th class="hide-mobile">Période</th>{% endif %}<th class="num">Effectif</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for x in elements %}
+        <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
+          <td><span class="code">{{ x.code }}</span></td>
+          <td><strong>{{ x.nom }}</strong></td>
+          <td>{{ x.responsable.nom_complet if x.responsable else "—" }}</td>
+          {% if avec_projet %}<td class="hide-mobile">{{ x.localisation or "—" }}</td><td class="hide-mobile nowrap">{{ x.date_debut|date_fr }} → {{ x.date_fin|date_fr }}</td>{% endif %}
+          <td class="num">{{ effectifs.get(x.id, 0) }}</td>
+          <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
+          <td class="actions">
+            <a class="btn btn--ghost btn--sm" href="?modifier={{ x.id }}">Modifier</a>
+            <form method="post" style="display:inline" data-confirm="{{ 'Archiver' if x.actif else 'Réactiver' }} « {{ x.nom }} » ?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ x.id }}"><input type="hidden" name="action" value="basculer">
+              <button class="btn btn--ghost btn--sm" type="submit">{{ "Archiver" if x.actif else "Réactiver" }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    {{ vide("Aucun " ~ singulier, "Créez votre premier " ~ singulier ~ " avec le formulaire, ou laissez l'import du personnel les créer.", "building" if not avec_projet else "folder") }}
+    {% endif %}
+  </section>
+
+  <section class="card" id="formulaire">
+    <div class="card__head"><h2>{{ "Modifier « " ~ edition.nom ~ " »" if edition and edition.id else "Nouveau " ~ singulier }}</h2>
+      {% if edition and edition.id %}<a class="btn btn--ghost btn--sm" href="{{ request.path }}">Annuler</a>{% endif %}</div>
+    <form class="card__body stack" method="post" data-validate data-loading>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if edition and edition.id %}<input type="hidden" name="id" value="{{ edition.id }}">{% endif %}
+      {{ champ("code", "Code", donnees.get('code'), erreurs, requis=True, aide="Court et unique, ex. " ~ ("BALI" if avec_projet else "TECH"), attrs='maxlength="20" style="text-transform:uppercase"') }}
+      {{ champ("nom", "Nom", donnees.get('nom'), erreurs, requis=True, attrs='maxlength="160"') }}
+      <div class="field"><label for="f-resp">Responsable</label>
+        <select class="select" id="f-resp" name="responsable_id">
+          <option value="">— Aucun —</option>
+          {% for e in employes %}<option value="{{ e.id }}" {% if donnees.get('responsable_id') == e.id|string %}selected{% endif %}>{{ e.nom_complet }}{{ " — " ~ e.poste if e.poste }}</option>{% endfor %}
+        </select>
+        <span class="hint">{{ "Chef de projet" if avec_projet else "Chef de département" }} : il voit les notes de ce {{ singulier }}, note par défaut les personnes affectées sans N+1, et reçoit automatiquement son compte (e-mail de sa fiche).</span></div>
+      {% if avec_projet %}
+      {{ champ("localisation", "Localisation", donnees.get('localisation'), erreurs, attrs='maxlength="160" placeholder="Ex. Douala, Bonapriso"') }}
+      <div class="grid grid-2" style="gap:12px">
+        {{ champ("date_debut", "Début", donnees.get('date_debut'), erreurs, "date") }}
+        {{ champ("date_fin", "Fin prévue", donnees.get('date_fin'), erreurs, "date") }}
+      </div>
+      {% endif %}
+      <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

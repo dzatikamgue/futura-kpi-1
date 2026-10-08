@@ -1,0 +1,94 @@
+{% from "macros.html" import icon with context %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}{% endblock %} · {{ app_name }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/logo-icon.svg') }}" type="image/svg+xml">
+  <link rel="alternate icon" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="preload" href="{{ url_for('static', filename='fonts/inter-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=2">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+{% set nav = nav|default("") %}
+<div class="app">
+  <aside class="sidebar" aria-label="Navigation principale">
+    <a class="sidebar__logo" href="{{ url_for('tableau_bord.index') }}" aria-label="Accueil {{ company_name }}">
+      <img class="logo-light" src="{{ url_for('static', filename='img/logo.svg') }}" alt="{{ company_name }}" width="96" height="38">
+      <img class="logo-dark" src="{{ url_for('static', filename='img/logo-white.svg') }}" alt="" width="96" height="38">
+    </a>
+    <div class="sidebar__product">Performance &amp; KPI</div>
+    <nav class="nav">
+      <a href="{{ url_for('tableau_bord.index') }}" {% if nav == 'tableau' %}aria-current="page"{% endif %}>{{ icon('dashboard') }} Tableau de bord</a>
+      {% if per.est_evaluateur or per.voit_tout %}
+      <a href="{{ url_for('evaluations.campagne') }}" {% if nav == 'evaluations' %}aria-current="page"{% endif %}>{{ icon('star') }} Évaluations du mois</a>
+      {% endif %}
+      <a href="{{ url_for('suivi.index') }}" {% if nav == 'suivi' %}aria-current="page"{% endif %}>{{ icon('chart') }} Suivi trimestriel &amp; annuel</a>
+      <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur else "Ma fiche" }}</a>
+      {% if current_user.est_rh %}
+      <div class="nav__section">Administration RH</div>
+      <a href="{{ url_for('import_personnel.index') }}" {% if nav == 'import' %}aria-current="page"{% endif %}>{{ icon('upload') }} Importer le personnel</a>
+      <a href="{{ url_for('parametres.departements') }}" {% if nav == 'departements' %}aria-current="page"{% endif %}>{{ icon('building') }} Départements</a>
+      <a href="{{ url_for('parametres.projets') }}" {% if nav == 'projets' %}aria-current="page"{% endif %}>{{ icon('folder') }} Projets</a>
+      <a href="{{ url_for('parametres.postes') }}" {% if nav == 'postes' %}aria-current="page"{% endif %}>{{ icon('list') }} Postes</a>
+      <a href="{{ url_for('parametres.criteres') }}" {% if nav == 'criteres' %}aria-current="page"{% endif %}>{{ icon('star') }} Grille KPI</a>
+      <a href="{{ url_for('parametres.utilisateurs') }}" {% if nav == 'utilisateurs' %}aria-current="page"{% endif %}>{{ icon('key') }} Comptes &amp; accès</a>
+      <a href="{{ url_for('parametres.claude') }}" {% if nav == 'claude' %}aria-current="page"{% endif %}>{{ icon('sparkles') }} Clé API Claude</a>
+      <a href="{{ url_for('journal.index') }}" {% if nav == 'journal' %}aria-current="page"{% endif %}>{{ icon('log') }} Journal des actions</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar__foot">
+      <div class="user-chip">
+        <div class="avatar" aria-hidden="true">{{ current_user.employe.initiales if current_user.employe else current_user.email[:2]|upper }}</div>
+        <div style="min-width:0">
+          <div class="user-chip__name">{{ current_user.nom_affiche }}</div>
+          <div class="user-chip__role">{{ current_user.role_libelle }}</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('auth.changer_mot_de_passe') }}">{{ icon('lock') }} Mot de passe</a>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn--ghost btn--sm" type="submit">{{ icon('logout') }} Quitter</button>
+        </form>
+      </div>
+    </div>
+  </aside>
+  <div class="overlay" aria-hidden="true"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn btn--ghost btn--icon menu-toggle" type="button" data-nav-toggle aria-expanded="false" aria-label="Ouvrir le menu">{{ icon('menu') }}</button>
+      <nav class="breadcrumb" aria-label="Fil d'Ariane">
+        <a href="{{ url_for('tableau_bord.index') }}">Accueil</a>
+        {% block breadcrumb %}{% endblock %}
+      </nav>
+      <div class="topbar__actions">
+        <button class="btn btn--ghost btn--icon" type="button" data-theme-toggle aria-label="Basculer mode clair / sombre" title="Mode clair / sombre">{{ icon('moon') }}</button>
+      </div>
+    </header>
+
+    <main class="content" id="contenu" tabindex="-1">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flashes" role="status" aria-live="polite">
+        {% for cat, msg in messages %}
+        <div class="alert alert--{{ cat }}">{{ icon('check' if cat == 'succes' else 'alert' if cat == 'erreur' else 'info') }}<span>{{ msg }}</span><button class="alert__close" type="button" aria-label="Fermer">×</button></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+<div class="offline-banner" role="alert">Connexion perdue — vos saisies sont conservées sur cet appareil.</div>
+<div class="loading-overlay" aria-hidden="true"><div class="box"><div class="spinner"></div><strong>Traitement en cours…</strong><p class="muted small" style="margin-top:4px">{% block loading_text %}Merci de patienter.{% endblock %}</p></div></div>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=2" defer></script>
+</body>
+</html>

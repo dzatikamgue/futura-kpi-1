@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, champ with context %}
+{% set nav = "criteres" %}
+{% block title %}Grille KPI{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Grille KPI</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Grille KPI</h1>
+  <p>Critères notés de 0 à 100 chaque mois. Note globale = moyenne pondérée des critères, sur 100.</p></div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    {% if elements %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th class="num">Ordre</th><th>Critère</th><th class="num">Coef.</th><th class="num">Poids réel</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for c in elements %}
+        <tr {% if not c.actif %}style="opacity:.6"{% endif %}>
+          <td class="num">{{ c.ordre }}</td>
+          <td><strong>{{ c.libelle }}</strong><div class="small muted">{{ c.description or "" }}</div></td>
+          <td class="num">×{{ c.poids }}</td>
+          <td class="num">{% if c.actif and total_poids %}{{ (100 * c.poids / total_poids)|round(0)|int }} %{% else %}—{% endif %}</td>
+          <td>{% if c.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Inactif</span>{% endif %}</td>
+          <td class="actions">
+            <a class="btn btn--ghost btn--sm" href="?modifier={{ c.id }}">Modifier</a>
+            <form method="post" style="display:inline" data-confirm="{{ 'Désactiver' if c.actif else 'Activer' }} ce critère ? Les évaluations déjà soumises ne sont pas modifiées.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ c.id }}"><input type="hidden" name="action" value="basculer">
+              <button class="btn btn--ghost btn--sm" type="submit">{{ "Désactiver" if c.actif else "Activer" }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td></td><td>Total des coefficients actifs</td><td class="num">{{ total_poids }}</td><td class="num">100 %</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    {% else %}
+    {{ vide("Aucun critère", "Ajoutez au moins un critère pour pouvoir noter.", "list") }}
+    {% endif %}
+    <div class="card__foot small muted">Les critères ne sont jamais supprimés : désactivez-les. Chaque note conserve le coefficient en vigueur au moment de la saisie, pour un historique fidèle.</div>
+  </section>
+
+  <section class="card">
+    <div class="card__head"><h2>{{ "Modifier le critère" if edition and edition.id else "Nouveau critère" }}</h2>
+      {% if edition and edition.id %}<a class="btn btn--ghost btn--sm" href="{{ request.path }}">Annuler</a>{% endif %}</div>
+    <form class="card__body stack" method="post" data-validate data-loading>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if edition and edition.id %}<input type="hidden" name="id" value="{{ edition.id }}">{% endif %}
+      {{ champ("libelle", "Libellé", donnees.get('libelle'), erreurs, requis=True, attrs='maxlength="120"') }}
+      <div class="field"><label for="f-desc">Description (aide pour l'évaluateur)</label>
+        <textarea class="textarea" id="f-desc" name="description" maxlength="400" rows="3">{{ donnees.get('description', '') }}</textarea></div>
+      <div class="grid grid-2" style="gap:12px">
+        {{ champ("poids", "Coefficient (1–5)", donnees.get('poids', '1'), erreurs, "number", True, attrs='min="1" max="5" step="1"') }}
+        {{ champ("ordre", "Ordre d'affichage", donnees.get('ordre', (elements|length + 1)|string), erreurs, "number", attrs='min="0" step="1"') }}
+      </div>
+      <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

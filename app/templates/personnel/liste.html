@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, th_tri, pagination, filtres_contexte with context %}
+{% set nav = "personnel" %}
+{% block title %}Personnel{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Personnel</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Personnel</h1><p>{% if per.voit_tout %}Ensemble des salariés de l'entreprise.{% else %}Salariés de votre périmètre.{% endif %}</p></div>
+  <div class="page-head__actions">
+    <a class="btn btn--secondary" href="{{ url_avec(export='xlsx') }}">{{ icon('download') }} Excel</a>
+    <a class="btn btn--secondary" href="{{ url_avec(export='pdf') }}">{{ icon('file') }} PDF</a>
+    {% if current_user.est_rh %}
+    <a class="btn btn--secondary" href="{{ url_for('import_personnel.index') }}">{{ icon('upload') }} Importer</a>
+    <a class="btn btn--primary" href="{{ url_for('personnel.nouveau') }}">{{ icon('plus') }} Nouveau salarié</a>
+    {% endif %}
+  </div>
+</div>
+
+<section class="card">
+  <form class="toolbar" method="get" role="search">
+    <div class="search">{{ icon('search') }}<label class="sr-only" for="q">Rechercher</label>
+      <input class="input" id="q" name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, matricule, poste, e-mail…"></div>
+    {{ filtres_contexte(departements, projets) }}
+    <label class="sr-only" for="statut">Statut</label>
+    <select class="select select--sm" id="statut" name="statut" data-autosubmit style="width:auto">
+      {% for v, l in [("actif", "Actifs"), ("inactif", "Inactifs"), ("tous", "Tous")] %}<option value="{{ v }}" {% if request.args.get('statut', 'actif') == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    {% if current_user.est_rh %}<label class="checkbox"><input type="checkbox" name="sans_affectation" value="1" data-autosubmit {% if request.args.get('sans_affectation') %}checked{% endif %}> Sans affectation</label>{% endif %}
+    <button class="btn btn--secondary btn--sm" type="submit">Filtrer</button>
+  </form>
+  {% if page.items %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr>
+      {{ th_tri("Salarié", "nom") }}
+      {{ th_tri("Matricule", "matricule", "hide-mobile") }}
+      <th>Affectations</th>
+      <th class="hide-mobile">N+1</th>
+      {{ th_tri("Embauche", "embauche", "hide-mobile") }}
+      <th class="actions"><span class="sr-only">Actions</span></th>
+    </tr></thead>
+    <tbody>
+    {% for e in page.items %}
+      <tr>
+        <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div>
+          <div><strong>{{ e.nom_complet }}</strong><span>{{ e.poste or "—" }}</span></div></div></td>
+        <td class="hide-mobile num" style="text-align:left">{{ e.matricule }}</td>
+        <td>{% for a in e.affectations_actives %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="badge badge--warn">Aucune</span>{% endfor %}
+            {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</td>
+        <td class="hide-mobile ink-2">{{ e.affectations_actives|map(attribute='evaluateur')|select|map(attribute='nom_complet')|unique|join(', ') or "—" }}</td>
+        <td class="hide-mobile">{{ e.date_embauche|date_fr }}</td>
+        <td class="actions"><a class="btn btn--secondary btn--sm" href="{{ url_for('personnel.fiche', employe_id=e.id) }}">Fiche</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, "salariés") }}
+  {% elif request.args.get('q') or request.args.get('departement') or request.args.get('projet') or request.args.get('sans_affectation') %}
+    {{ vide("Aucun résultat", "Aucun salarié ne correspond à ces critères.", "search", url_for('personnel.liste'), "Effacer les filtres") }}
+  {% elif current_user.est_rh %}
+    {{ vide("Aucun salarié enregistré", "Commencez par importer votre liste du personnel (Excel, photo ou PDF) ou ajoutez un salarié manuellement.", "users", url_for('import_personnel.index'), "Importer le personnel") }}
+  {% else %}
+    {{ vide("Aucun salarié dans votre périmètre", "Aucun collaborateur ne vous est rattaché.", "users") }}
+  {% endif %}
+</section>
+{% endblock %}

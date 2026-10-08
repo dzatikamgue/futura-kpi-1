@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide, note, badge_niveau, badge_statut with context %}
+{% set nav = "personnel" %}
+{% block title %}{{ e.nom_complet }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.liste') }}">Personnel</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ e.nom_complet }}</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="row" style="gap:16px;align-items:center">
+    <div class="avatar avatar--lg" aria-hidden="true">{{ e.initiales }}</div>
+    <div>
+      <h1>{{ e.nom_complet }} {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</h1>
+      <p>{{ e.poste or "Poste non renseigné" }} · Matricule {{ e.matricule }}</p>
+    </div>
+  </div>
+  <div class="page-head__actions">
+    <form method="get" class="row">
+      <label class="sr-only" for="annee">Année</label>
+      <select class="select" id="annee" name="annee" data-autosubmit style="width:auto">
+        {% for a in annees %}<option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select>
+    </form>
+    {% if current_user.est_rh %}
+    <a class="btn btn--secondary" href="{{ url_for('personnel.modifier', employe_id=e.id) }}">{{ icon('edit') }} Modifier</a>
+    <form method="post" action="{{ url_for('personnel.basculer_statut', employe_id=e.id) }}"
+          data-confirm="{{ 'Désactiver ce salarié ? Ses affectations et son compte seront suspendus ; l\'historique est conservé.' if e.actif else 'Réactiver ce salarié ?' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn {{ 'btn--danger' if e.actif else 'btn--secondary' }}" type="submit">{{ "Désactiver" if e.actif else "Réactiver" }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom:16px">
+  {% for t, v in trimestres %}
+  <div class="card kpi"><div class="kpi__label">Trimestre {{ t }} — {{ annee }}</div>
+    <div class="kpi__value">{{ v|note(1) }}<small>/100</small></div><div class="kpi__meta">{{ badge_niveau(v) }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="grid grid-main" style="margin-bottom:16px">
+  <section class="card">
+    <div class="card__head"><div><h2>Évolution mensuelle {{ annee }}</h2><p>Moyenne des évaluations soumises</p></div>
+      <div class="right"><div class="kpi__label">Moyenne annuelle</div><div style="font-size:20px;font-weight:650" class="num">{{ annuel|note(1) }}<span class="muted small">/100</span></div></div></div>
+    <div class="card__body">
+      {% if serie|select("ne", none)|list %}
+      <div class="chart-box chart-box--sm"><canvas data-chart="data-emp" role="img" aria-label="Évolution des notes mensuelles"></canvas></div>
+      <script type="application/json" id="data-emp">{{ {"type": "bar", "labels": mois_courts, "min": 0, "max": 100, "step": 20, "suffix": "/100", "series": [{"label": "Note mensuelle", "data": serie}]}|tojson }}</script>
+      {% else %}{{ vide("Aucune note en " ~ annee, "Les notes apparaîtront après la première évaluation soumise.", "chart") }}{% endif %}
+    </div>
+  </section>
+  <section class="card">
+    <div class="card__head"><h2>Informations</h2></div>
+    <div class="card__body">
+      <dl class="dl">
+        <dt>E-mail</dt><dd>{{ e.email or "—" }}</dd>
+        <dt>Téléphone</dt><dd>{{ e.telephone or "—" }}</dd>
+        <dt>Embauche</dt><dd>{{ e.date_embauche|date_fr }}</dd>
+        <dt>Compte d'accès</dt><dd>{% if e.compte %}{{ e.compte.role_libelle }}
+          {% if not e.compte.actif %}<span class="badge badge--plain">Désactivé</span>
+          {% elif e.compte.en_attente_acces %}<span class="badge badge--warn">Accès à remettre</span>
+          {% elif e.compte.doit_changer_mdp %}<span class="badge badge--info">1re connexion</span>
+          {% else %}<span class="badge badge--ok">Actif</span>{% endif %}
+          {% else %}<span class="muted">Aucun</span>{% endif %}</dd>
+        <dt>Mise à jour</dt><dd>{{ e.updated_at|date_fr(True) }}</dd>
+      </dl>
+    </div>
+    {% if current_user.est_rh and e.actif %}
+    <div class="card__foot">
+      {% if e.compte %}
+      <form method="post" action="{{ url_for('parametres.utilisateurs') }}" class="row" style="gap:8px"
+            data-confirm="Générer un nouveau mot de passe temporaire pour {{ e.compte.email }} ? L'ancien ne fonctionnera plus.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ e.compte.id }}"><input type="hidden" name="action" value="reinitialiser">
+        <span class="small muted" style="flex:1">Identifiant : <span class="code">{{ e.compte.email }}</span></span>
+        <button class="btn btn--secondary btn--sm" type="submit">{{ icon('key') }} {{ "Générer l'accès" if e.compte.en_attente_acces else "Nouveau mot de passe" }}</button>
+      </form>
+      {% elif e.email %}
+      <form method="post" action="{{ url_for('parametres.utilisateurs') }}" class="row" style="gap:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="employe_id" value="{{ e.id }}">
+        <input type="hidden" name="role" value="collaborateur"><input type="hidden" name="action" value="creer">
+        <span class="small muted" style="flex:1">Pas de compte : il est créé automatiquement dès que ce salarié a des N-1.</span>
+        <button class="btn btn--secondary btn--sm" type="submit">{{ icon('key') }} Créer l'accès</button>
+      </form>
+      {% else %}
+      <p class="small muted">Ajoutez un e-mail à la fiche pour que ce salarié puisse se connecter.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card" style="margin-bottom:16px">
+  <div class="card__head"><div><h2>Affectations</h2><p>Chaque affectation a son propre N+1, qui note ce salarié chaque mois.</p></div></div>
+  {% if affectations %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Contexte</th><th>N+1 (évaluateur)</th><th>Statut</th>{% if current_user.est_rh %}<th class="actions"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <tbody>
+      {% for a in affectations %}
+      <tr>
+        <td><strong>{{ a.contexte_libelle }}</strong></td>
+        <td>{% if current_user.est_rh and a.actif %}
+          <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="evaluateur">
+            <label class="sr-only" for="n1-{{ a.id }}">N+1</label>
+            <select class="select select--sm" id="n1-{{ a.id }}" name="evaluateur_id" data-autosubmit style="max-width:260px">
+              <option value="">— Aucun N+1 —</option>
+              {% for x in evaluateurs %}<option value="{{ x.id }}" {% if x.id == a.evaluateur_id %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}
+            </select>
+          </form>
+          {% else %}{{ a.evaluateur.nom_complet if a.evaluateur else "—" }}{% endif %}</td>
+        <td>{% if a.actif %}<span class="badge badge--ok">Active</span>{% else %}<span class="badge badge--plain">Clôturée</span>{% endif %}</td>
+        {% if current_user.est_rh %}<td class="actions">{% if a.actif %}
+          <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" data-confirm="Clôturer cette affectation ? L'historique des notes est conservé.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retirer">
+            <button class="btn btn--ghost btn--sm" type="submit">Clôturer</button></form>{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="card__body"><p class="muted">Aucune affectation. {% if current_user.est_rh %}Ce salarié ne peut pas être évalué tant qu'il n'est pas rattaché à un département ou à un projet.{% endif %}</p></div>
+  {% endif %}
+  {% if current_user.est_rh and e.actif %}
+  <form class="card__foot row" method="post" action="{{ url_for('personnel.ajouter_affectation', employe_id=e.id) }}" style="gap:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <strong class="small" style="margin-right:4px">Ajouter :</strong>
+    <label class="sr-only" for="aff-ctx">Département ou projet</label>
+    <select class="select select--sm" id="aff-ctx" name="contexte" required style="width:auto;min-width:220px" data-aff-select>
+      <option value="">Département ou projet…</option>
+      <optgroup label="Départements">{% for d in departements %}<option value="departement:{{ d.id }}">{{ d.nom }}</option>{% endfor %}</optgroup>
+      <optgroup label="Projets">{% for p in projets %}<option value="projet:{{ p.id }}">{{ p.nom }}</option>{% endfor %}</optgroup>
+    </select>
+    <label class="sr-only" for="aff-n1">N+1</label>
+    <select class="select select--sm" id="aff-n1" name="evaluateur_id" style="width:auto;min-width:220px">
+      <option value="">N+1 : responsable de l'entité</option>
+      {% for x in evaluateurs %}<option value="{{ x.id }}">{{ x.nom_complet }}</option>{% endfor %}
+    </select>
+    <button class="btn btn--primary btn--sm" type="submit">{{ icon('plus') }} Ajouter</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card__head"><div><h2>Évaluations {{ annee }}</h2><p>{% if not per.voit_tout and e.id != per.employe_id %}Limitées aux contextes de votre périmètre.{% endif %}</p></div></div>
+  {% if evals %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Mois</th><th>Contexte</th><th class="hide-mobile">Évaluateur</th><th>Statut</th><th class="num">Note</th><th class="hide-mobile">Commentaire</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+      {% for ev in evals %}
+      <tr>
+        <td class="nowrap"><strong>{{ ev.mois|mois }}</strong></td>
+        <td>{{ ev.contexte_libelle }}</td>
+        <td class="hide-mobile">{{ ev.evaluateur.nom_complet if ev.evaluateur else "—" }}</td>
+        <td>{{ badge_statut(ev) }}</td>
+        <td class="num">{{ note(ev.note_globale) }}</td>
+        <td class="hide-mobile ink-2" style="max-width:340px">{{ (ev.commentaire or "—")|truncate(110) }}</td>
+        <td class="actions"><a class="btn btn--ghost btn--sm" href="{{ url_for('evaluations.detail', evaluation_id=ev.id) }}">Détail</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ vide("Aucune évaluation en " ~ annee, "Aucune évaluation visible pour cette année.", "star") }}{% endif %}
+</section>
+{% endblock %}

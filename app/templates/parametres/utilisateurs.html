@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide with context %}
+{% set nav = "utilisateurs" %}
+{% block title %}Comptes & accès{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Comptes &amp; accès</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Comptes &amp; accès</h1>
+    <p>L'identifiant de chaque personne est l'e-mail de sa fiche. Tout salarié qui a des N-1 à noter reçoit automatiquement son compte.</p></div>
+  <form class="page-head__actions" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="synchroniser">
+    <button class="btn btn--ghost" type="submit" title="Relie les comptes aux fiches par e-mail et crée ceux des responsables">{{ icon('users') }} Resynchroniser</button>
+  </form>
+</div>
+
+{% if identifiants %}
+<div class="card" style="margin-bottom:16px;border-color:var(--brand)">
+  <div class="card__head"><div><h2>Accès à transmettre maintenant</h2>
+    <p>Ces mots de passe ne seront plus affichés. Chacun choisira son propre mot de passe à la première connexion.</p></div></div>
+  <div class="table-wrap"><table class="table table--compact">
+    <thead><tr><th>Personne</th><th>Identifiant (e-mail)</th><th>Mot de passe temporaire</th></tr></thead>
+    <tbody>{% for u, mdp in identifiants %}<tr><td>{{ u.nom_affiche }}</td><td><span class="code kbd-copy" title="Cliquer pour copier">{{ u.email }}</span></td><td><span class="code kbd-copy" title="Cliquer pour copier">{{ mdp }}</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="card__foot small muted">Adresse de connexion : <span class="code">{{ request.host_url }}</span> — transmettez de préférence par SMS ou en main propre.</div>
+</div>
+{% endif %}
+
+{% if nb_attente %}
+<div class="alert alert--warn" style="margin-bottom:16px;align-items:center">{{ icon('key') }}
+  <span style="flex:1"><strong>{{ nb_attente }} responsable(s)</strong> ont un compte mais n'ont pas encore reçu leur mot de passe.</span>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="generer_attente">
+    <button class="btn btn--primary btn--sm" type="submit">Générer les accès</button></form>
+</div>
+{% endif %}
+{% if resp_sans_email %}
+<div class="alert alert--info" style="margin-bottom:16px">{{ icon('info') }}
+  <span>Ces responsables n'ont pas d'e-mail, donc pas de compte :
+    {% for e in resp_sans_email %}<a href="{{ url_for('personnel.modifier', employe_id=e.id) }}">{{ e.nom_complet }}</a>{{ ", " if not loop.last }}{% endfor %}.
+    Ajoutez leur e-mail sur la fiche.</span>
+</div>
+{% endif %}
+
+<div class="stack">
+  <section class="card">
+    {% if comptes %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Personne</th><th>Rôle</th><th class="hide-mobile">Dernière connexion</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for u in comptes %}
+      <tr {% if not u.actif %}style="opacity:.6"{% endif %}>
+        <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ u.employe.initiales if u.employe else u.email[:2]|upper }}</div>
+          <div><strong>{% if u.employe %}<a href="{{ url_for('personnel.fiche', employe_id=u.employe.id) }}">{{ u.nom_affiche }}</a>{% else %}{{ u.email }}{% endif %}</strong>
+            <span>{% if u.employe %}{{ u.email }}{% if u.employe_id in responsables %} · a des N-1{% endif %}{% else %}<span style="color:var(--warn)">Non lié à une fiche : ne peut noter personne</span>{% endif %}</span></div></div></td>
+        <td>
+          {% if u.id != current_user.id %}
+          <form method="post" class="row"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="role">
+            <label class="sr-only" for="role-{{ u.id }}">Rôle</label>
+            <select class="select select--sm" id="role-{{ u.id }}" name="role" data-autosubmit style="width:auto">
+              {% for k, l in roles.items() %}<option value="{{ k }}" {% if u.role == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+            </select></form>
+          {% else %}{{ u.role_libelle }} <span class="muted small">(vous)</span>{% endif %}
+        </td>
+        <td class="hide-mobile">{{ u.derniere_connexion|date_fr(True) }}</td>
+        <td>{% if not u.actif %}<span class="badge badge--plain">Désactivé</span>{% elif u.en_attente_acces %}<span class="badge badge--warn">Accès à remettre</span>{% elif u.doit_changer_mdp %}<span class="badge badge--info">1re connexion</span>{% else %}<span class="badge badge--ok">Actif</span>{% endif %}</td>
+        <td class="actions">
+          <form method="post" style="display:inline" data-confirm="Générer un nouveau mot de passe temporaire pour {{ u.email }} ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="reinitialiser">
+            <button class="btn btn--ghost btn--sm" type="submit">{{ "Générer l'accès" if u.en_attente_acces else "Nouveau mot de passe" }}</button></form>
+          {% if u.id != current_user.id %}
+          <form method="post" style="display:inline" data-confirm="{{ 'Désactiver' if u.actif else 'Activer' }} le compte {{ u.email }} ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="basculer">
+            <button class="btn btn--ghost btn--sm" type="submit">{{ "Désactiver" if u.actif else "Activer" }}</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}{{ vide("Aucun compte", "Les comptes des responsables se créent automatiquement.", "key") }}{% endif %}
+  </section>
+
+  <div class="grid grid-2">
+    <section class="card">
+      <div class="card__head"><div><h2>Donner un accès</h2><p>Pour une personne sans N-1 (ex. Direction, RH).</p></div></div>
+      <form class="card__body stack" method="post" data-validate data-loading>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="creer">
+        <div class="field"><label for="f-emp">Salarié<span class="req">*</span></label>
+          <select class="select" id="f-emp" name="employe_id" required {% if erreurs.get('employe_id') %}aria-invalid="true"{% endif %}>
+            <option value="">— Choisir —</option>
+            {% for e in sans_compte %}<option value="{{ e.id }}" {% if donnees.get('employe_id') == e.id|string %}selected{% endif %}>{{ e.nom_complet }} — {{ e.email }}</option>{% endfor %}
+          </select>
+          <span class="hint">Seuls les salariés avec un e-mail et sans compte sont proposés.</span>
+          {% if erreurs.get('employe_id') %}<span class="error">{{ erreurs.employe_id }}</span>{% endif %}</div>
+        <div class="field"><label for="f-role">Rôle<span class="req">*</span></label>
+          <select class="select" id="f-role" name="role" required>
+            {% for k, l in roles.items() %}<option value="{{ k }}" {% if donnees.get('role', 'collaborateur') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select></div>
+        <div class="form-actions" style="padding-top:4px"><button class="btn btn--primary" type="submit">Créer et afficher le mot de passe</button></div>
+      </form>
+    </section>
+    <section class="card">
+      <div class="card__body small ink-2 stack">
+        <p><strong class="ink">Ressources humaines</strong> : voit tout, administre.</p>
+        <p><strong class="ink">Direction</strong> : voit toutes les notes, note ses N-1.</p>
+        <p><strong class="ink">Collaborateur</strong> : note ses N-1, ne voit que son périmètre.</p>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
