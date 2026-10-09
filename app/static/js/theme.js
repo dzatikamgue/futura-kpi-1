@@ -5,4 +5,5 @@
   var sombre = choix ? choix === "dark"
     : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.setAttribute("data-theme", sombre ? "dark" : "light");
+  document.documentElement.classList.add("js");
 })();

@@ -6,8 +6,8 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Bonjour{{ ", " ~ current_user.employe.prenom if current_user.employe and current_user.employe.prenom }}</h1>
-    <p>Vue d'ensemble — {{ periode }}{% if not per.voit_tout %} · votre périmètre uniquement{% endif %}</p>
+    <h1>{{ salutation }}{{ " " ~ current_user.employe.prenom if current_user.employe and current_user.employe.prenom }}</h1>
+    <p>Les évaluations de {{ periode|lower }} chez {{ entite.nom }}{% if not per.voit_tout %}, pour votre périmètre{% endif %}.</p>
   </div>
   <form class="page-head__actions" method="get">
     <label class="sr-only" for="p-mois">Mois</label>
@@ -24,25 +24,29 @@
 
 {% if per.voit_tout or per.est_evaluateur or per.est_responsable %}
 <div class="grid grid-4" style="margin-bottom:16px">
-  <div class="card kpi">
-    <div class="kpi__label">Taux de complétion</div>
-    <div class="kpi__value">{{ kpi.taux }}<small>%</small></div>
-    <div class="progress" role="progressbar" aria-valuenow="{{ kpi.taux }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ kpi.taux }}%"></span></div>
-    <div class="kpi__meta">{{ kpi.soumises }} soumise(s) sur {{ kpi.attendues }} attendue(s)</div>
+  <div class="card kpi kpi--anneau">
+    <div>
+      <div class="kpi__label">Évaluations soumises</div>
+      <div class="kpi__value"><span data-compter="{{ kpi.taux }}">{{ kpi.taux }}</span><small>%</small></div>
+      <div class="kpi__meta">{{ kpi.soumises }} sur {{ kpi.attendues }} attendue(s)</div>
+    </div>
+    <svg class="anneau" viewBox="0 0 44 44" role="img" aria-label="{{ kpi.taux }} % des évaluations soumises" style="--p: {{ kpi.taux }}">
+      <circle class="anneau__fond" cx="22" cy="22" r="18"/><circle class="anneau__val" cx="22" cy="22" r="18" pathLength="100"/>
+    </svg>
   </div>
   <div class="card kpi">
     <div class="kpi__label">Moyenne du mois</div>
-    <div class="kpi__value">{{ kpi.moyenne|note(1) }}<small>/100</small></div>
+    <div class="kpi__value">{% if kpi.moyenne is not none %}<span data-compter="{{ kpi.moyenne }}" data-decimales="1">{{ kpi.moyenne|note(1) }}</span>{% else %}—{% endif %}<small>/100</small></div>
     <div class="kpi__meta">{{ badge_niveau(kpi.moyenne) }}</div>
   </div>
   <div class="card kpi">
     <div class="kpi__label">Moyenne T{{ trimestre }} {{ annee }}</div>
-    <div class="kpi__value">{{ moyenne_t|note(1) }}<small>/100</small></div>
+    <div class="kpi__value">{% if moyenne_t is not none %}<span data-compter="{{ moyenne_t }}" data-decimales="1">{{ moyenne_t|note(1) }}</span>{% else %}—{% endif %}<small>/100</small></div>
     <div class="kpi__meta">Annuelle : <strong class="num">{{ moyenne_a|note(1) }}</strong></div>
   </div>
   <div class="card kpi">
     <div class="kpi__label">Restant à noter</div>
-    <div class="kpi__value">{{ kpi.restantes }}</div>
+    <div class="kpi__value"><span data-compter="{{ kpi.restantes }}">{{ kpi.restantes }}</span></div>
     <div class="kpi__meta">{{ kpi.brouillons }} brouillon(s) en cours</div>
   </div>
 </div>

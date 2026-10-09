@@ -67,8 +67,12 @@ def index():
                                      Evaluation.statut == StatutEvaluation.SOUMISE)
             .order_by(Evaluation.annee.desc(), Evaluation.mois.desc()).limit(6)).all()
 
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    heure = datetime.now(ZoneInfo("Africa/Douala")).hour
+    salutation = "Bonsoir" if heure >= 18 or heure < 4 else "Bonjour"
     return render_template(
-        "tableau_bord.html", annee=annee, mois=mois, periode=libelle_periode(annee, mois),
+        "tableau_bord.html", salutation=salutation, annee=annee, mois=mois, periode=libelle_periode(annee, mois),
         kpi=kpi, evolution=evolution, mois_courts=MOIS_COURTS, trimestre=t,
         moyenne_t=moyenne_t, moyenne_a=moyenne_a, repartition=repartition,
         contextes=contextes, a_faire=a_faire[:12], nb_a_faire=len(a_faire), mes_notes=mes_notes)

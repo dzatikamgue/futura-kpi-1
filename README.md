@@ -97,7 +97,7 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 ## Multi-entités
 
 - **Entité principale** : les données existantes (avant le multi-entités) forment l'entité principale (FUTURA). Elles ne sont pas réécrites : leur colonne `entite_id` reste vide, ce qui veut dire « entité principale ».
-- **Créer une entité** : *Administration RH → Entités*. Saisissez le nom, un code court (préfixe des matricules, ex. `BSB-0001`) et le logo (PNG, JPG ou WEBP). La couleur de la charte est déduite du logo, modifiable. La grille KPI par défaut est copiée pour l'entité.
+- **Créer une entité** : *Administration RH → Entités*. Saisissez le nom, un code court (préfixe des matricules, ex. `ABC-0001`) et le logo (PNG, JPG ou WEBP). La couleur de la charte est déduite du logo, modifiable. La grille KPI par défaut est copiée pour l'entité.
 - **Rôles** :
   - *Superadmin* (variables `ADMIN_EMAIL`, `SUPERADMIN_EMAILS`) : tout, y compris nommer la RH.
   - *RH du groupe* : toutes les entités, administration, création d'entités.

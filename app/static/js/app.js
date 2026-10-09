@@ -113,6 +113,66 @@
     });
     if (couleur) couleur.addEventListener("input", function () { if (auto) auto.checked = false; peindre(); });
   });
+  /* ---------- Connexion : choix de l'entreprise ---------- */
+  var auth = $("[data-auth]");
+  if (auth) {
+    var tuiles = $$(".tuile", auth), champ = $("[data-entite-choisie]"), titre = $("[data-titre-connexion]");
+    function choisir(t, memoriser) {
+      tuiles.forEach(function (x) { x.setAttribute("aria-checked", x === t ? "true" : "false"); x.tabIndex = x === t ? 0 : -1; });
+      auth.style.setProperty("--accent", t.getAttribute("data-couleur"));
+      if (champ) champ.value = t.getAttribute("data-entite");
+      if (titre) titre.textContent = "Connexion à " + t.getAttribute("data-nom");
+      if (memoriser) { try { localStorage.setItem("futura-entite", t.getAttribute("data-entite")); } catch (e) {} }
+    }
+    tuiles.forEach(function (t, i) {
+      t.addEventListener("click", function () { choisir(t, true); });
+      t.addEventListener("keydown", function (e) {
+        var d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!d) return;
+        e.preventDefault();
+        var n = tuiles[(i + d + tuiles.length) % tuiles.length];
+        choisir(n, true); n.focus();
+      });
+    });
+    // Dernière entreprise choisie sur cet appareil (si le serveur n'en impose pas une)
+    if (champ && !champ.value && tuiles.length) {
+      var dernier = null;
+      try { dernier = localStorage.getItem("futura-entite"); } catch (e) {}
+      var t0 = tuiles.filter(function (x) { return x.getAttribute("data-entite") === dernier; })[0];
+      if (t0) choisir(t0, false);
+      else tuiles.forEach(function (x, i) { x.tabIndex = i === 0 ? 0 : -1; });
+    }
+  }
+
+  /* ---------- Un peu de vie : avatars colorés, chiffres, messages ---------- */
+  // Couleur stable par personne (même nom = même teinte partout)
+  $$(".avatar").forEach(function (a) {
+    var voisin = a.nextElementSibling, cle = (voisin ? voisin.textContent : "") + a.textContent, h = 0;
+    for (var i = 0; i < cle.length; i++) h = (h * 31 + cle.charCodeAt(i)) % 360;
+    a.style.setProperty("--h", h);
+    a.classList.add("avatar--teinte");
+  });
+  var mouvementReduit = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Indicateurs du tableau de bord : montée des chiffres et des jauges, une seule fois au chargement
+  $$("[data-compter]").forEach(function (el) {
+    var cible = parseFloat(el.getAttribute("data-compter")), dec = parseInt(el.getAttribute("data-decimales") || "0", 10);
+    if (isNaN(cible) || mouvementReduit) return;
+    var debut = null, duree = 900;
+    function ecrire(v) { el.textContent = v.toFixed(dec).replace(".", ","); }
+    function pas(ts) {
+      if (!debut) debut = ts;
+      var t = Math.min(1, (ts - debut) / duree), e = 1 - Math.pow(1 - t, 3);
+      ecrire(cible * e);
+      if (t < 1) requestAnimationFrame(pas);
+    }
+    ecrire(0); requestAnimationFrame(pas);
+  });
+  requestAnimationFrame(function () { document.documentElement.classList.add("anime"); });
+  // Les confirmations disparaissent d'elles-mêmes ; les erreurs restent
+  $$(".flashes .alert--succes").forEach(function (a) {
+    setTimeout(function () { a.classList.add("alert--sortie"); setTimeout(function () { a.remove(); }, 400); }, 6000);
+  });
+
   $$("[data-autosubmit]").forEach(function (el) {
     el.addEventListener("change", function () { el.form && el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit(); });
   });
@@ -140,7 +200,8 @@
   $$("form[data-validate]").forEach(function (form) {
     form.setAttribute("novalidate", "");
     $$("input, select, textarea", form).forEach(function (i) {
-      i.addEventListener("blur", function () { if (i.value || i.required) verifierChamp(i); });
+      // À la sortie du champ, on ne signale que les valeurs incorrectes ; les champs vides le sont à l'envoi
+      i.addEventListener("blur", function () { if (i.value) verifierChamp(i); });
       i.addEventListener("input", function () { if (i.getAttribute("aria-invalid") === "true") verifierChamp(i); });
     });
     form.addEventListener("submit", function (e) {

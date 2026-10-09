@@ -35,6 +35,10 @@ def app():
 
     with app.app_context():
         db.create_all()
+        # Comme la migration multi-entités : l'entité principale existe d'emblée
+        from app.models import Entite
+        db.session.add(Entite(id=1, code="FUT", nom="FUTURA", couleur="#213E70", principale=True, actif=True))
+        db.session.commit()
         runner = app.test_cli_runner()
         res = runner.invoke(args=["demo", "--mdp", MDP])
         assert "Démo chargée" in res.output, res.output
@@ -525,7 +529,7 @@ def _png(couleur=(200, 30, 40)):
     return buf
 
 
-def _creer_entite(c, nom="BuildSmart BTP", code="BSB"):
+def _creer_entite(c, nom="Société Test", code="STE"):
     r = c.post("/parametres/entites", data={"nom": nom, "code": code, "couleur": "#213E70", "couleur_auto": "1",
                                             "logo": (_png(), "logo.png")}, content_type="multipart/form-data")
     assert r.status_code == 302, r.get_data(as_text=True)[-2000:]
@@ -544,7 +548,7 @@ def test_creation_entite_avec_logo_et_grille(app):
     assert db.session.scalar(select(db.func.count(Critere.id)).where(Critere.entite_id == ent.id)) == 8
     # On bascule dans l'espace de la nouvelle entité ; les onglets apparaissent
     page = c.get("/").get_data(as_text=True)
-    assert "entite-tabs" in page and "BuildSmart BTP" in page and f"/entite/{ent.id}/logo" in page
+    assert "entite-tabs" in page and "Société Test" in page and f"/entite/{ent.id}/logo" in page
     assert c.get(f"/entite/{ent.id}/logo").status_code == 200
     # SVG refusé (risque XSS)
     r = c.post("/parametres/entites", data={"nom": "X", "code": "X", "logo": (io.BytesIO(b"<svg/>"), "l.svg")},
@@ -580,7 +584,7 @@ def test_cloisonnement_et_role_par_entite(app):
     c = app.test_client()
     login(c, email_de("MBALLA"))
     ent = _creer_entite(c)
-    # Organisation et personnel de la nouvelle entité (l'onglet actif est BSB)
+    # Organisation et personnel de la nouvelle entité (l'onglet actif est STE)
     c.post("/parametres/departements", data={"code": "DAF", "nom": "Administration & Finances"})  # même code qu'à FUTURA
     dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
     assert dep is not None
@@ -589,17 +593,17 @@ def test_cloisonnement_et_role_par_entite(app):
                                       "evaluateur_id": str(tchoua.id)})  # matricule déjà pris à FUTURA : autorisé ici
     onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))
     assert onana.entite_id == ent.id and onana.matricule == "FUT-001"
-    # La liste du personnel de l'onglet BSB ne montre que BSB
+    # La liste du personnel de l'onglet STE ne montre que STE
     page = c.get("/personnel/").get_data(as_text=True)
     assert "ONANA" in page and "ESSOMBA" not in page
-    # La Direction de FUTURA ne voit pas BSB
+    # La Direction de FUTURA ne voit pas STE
     c2 = app.test_client()
     login(c2, email_de("NGUEMA"))
     assert "ONANA" not in c2.get("/personnel/").get_data(as_text=True)
     assert c2.get(f"/personnel/{onana.id}").status_code == 403
     assert c2.get(f"/entite/{ent.id}").status_code == 403
 
-    # Rôle par entité : FOTSO, collaborateur à FUTURA, devient Direction à BSB
+    # Rôle par entité : FOTSO, collaborateur à FUTURA, devient Direction à STE
     fotso_u = db.session.scalar(select(Utilisateur).where(Utilisateur.email == email_de("FOTSO")))
     c.post(f"/parametres/utilisateurs/{fotso_u.id}/acces", data={f"role_{ent.id}": "direction"})
     assert db.session.get(AccesEntite, (fotso_u.id, ent.id)).role == "direction"
@@ -609,7 +613,7 @@ def test_cloisonnement_et_role_par_entite(app):
     assert "NDJOCK" not in c3.get("/personnel/").get_data(as_text=True)  # FUTURA : pas tout le personnel
     c3.get(f"/entite/{ent.id}")
     page = c3.get("/personnel/").get_data(as_text=True)
-    assert "ONANA" in page and "ESSOMBA" not in page  # BSB : Direction, voit tout BSB
+    assert "ONANA" in page and "ESSOMBA" not in page  # STE : Direction, voit tout STE
 
 
 def test_n1_dans_une_autre_entite(app):
@@ -634,19 +638,41 @@ def test_n1_dans_une_autre_entite(app):
     c2 = app.test_client()
     login(c2, tchoua.compte.email)
     page = c2.get("/").get_data(as_text=True)
-    assert "BuildSmart BTP" in page  # onglet obtenu automatiquement
+    assert "Société Test" in page  # onglet obtenu automatiquement
     c2.get(f"/entite/{ent.id}")
     an, mo = periode_courante()
     camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
     assert "ONANA" in camp and "BEKONO" not in camp  # ne voit que la personne qu'il note
     r = c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}")
     assert r.status_code == 200
-    # La grille utilisée est celle de BSB
-    crit_bsb = db.session.scalars(select(Critere).where(Critere.entite_id == ent.id)).all()
+    # La grille utilisée est celle de STE
+    crit_ste = db.session.scalars(select(Critere).where(Critere.entite_id == ent.id)).all()
     form = {"action": "soumettre", "commentaire": "Bon début"}
-    for cr in crit_bsb:
+    for cr in crit_ste:
         form[f"note_{cr.id}"] = "75"
     r = c2.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
     assert r.status_code == 302
     ev = db.session.scalar(select(Evaluation).where(Evaluation.affectation_id == aff.id))
-    assert ev.est_soumise and ev.note_globale == 75 and {n.critere_id for n in ev.notes} == {x.id for x in crit_bsb}
+    assert ev.est_soumise and ev.note_globale == 75 and {n.critere_id for n in ev.notes} == {x.id for x in crit_ste}
+
+
+def test_page_connexion_liste_les_entreprises(app):
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    anonyme = app.test_client()
+    page = anonyme.get("/connexion").get_data(as_text=True)
+    assert "Choisissez votre entreprise" in page and "FUTURA" in page and "Société Test" in page
+    assert f"/entite/{ent.id}/logo" in page
+    assert anonyme.get(f"/entite/{ent.id}/logo").status_code == 200  # logo visible avant connexion
+    # Connexion en choisissant l'entreprise : on arrive dans son espace
+    rh = app.test_client()
+    rh.post("/connexion", data={"email": email_de("MBALLA"), "mot_de_passe": MDP, "entite": ent.id})
+    assert "Les évaluations de" in rh.get("/").get_data(as_text=True)
+    assert "chez Société Test" in rh.get("/").get_data(as_text=True)
+    # Sans accès à cette entreprise : message clair, espace habituel
+    d = app.test_client()
+    r = d.post("/connexion", data={"email": email_de("NGUEMA"), "mot_de_passe": MDP, "entite": ent.id},
+               follow_redirects=True)
+    html = r.get_data(as_text=True)
+    assert "pas accès à Société Test" in html and "chez FUTURA" in html

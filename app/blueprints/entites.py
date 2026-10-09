@@ -32,17 +32,17 @@ def basculer(entite_id):
 
 
 @bp.get("/entite/<int:entite_id>/logo")
-@login_required
 def logo(entite_id):
+    """Public : affiché sur la page de connexion (logos des entreprises actives uniquement)."""
     e = db.session.get(Entite, entite_id) or abort(404)
-    if not e.logo:
+    if not e.logo or (not e.actif and not current_user.is_authenticated):
         abort(404)
     etag = hashlib.sha1(e.logo).hexdigest()[:16]
     if request.if_none_match and etag in request.if_none_match:
         return "", 304
     resp = make_response(e.logo)
     resp.headers["Content-Type"] = e.logo_mime or "image/png"
-    resp.headers["Cache-Control"] = "private, max-age=86400"
+    resp.headers["Cache-Control"] = "public, max-age=86400"
     resp.headers["Content-Security-Policy"] = "default-src 'none'"
     resp.set_etag(etag)
     return resp
@@ -100,8 +100,8 @@ def gestion():
         elif db.session.scalar(select(Entite.id).where(func.lower(Entite.nom) == donnees["nom"].lower(),
                                                        Entite.id != (e.id if e else -1))):
             erreurs["nom"] = "Une entité porte déjà ce nom."
-        if not code:
-            erreurs["code"] = "Le code est obligatoire (lettres et chiffres, ex. BSB)."
+        if len(code) < 2:
+            erreurs["code"] = "Le code est obligatoire : 2 à 12 lettres ou chiffres."
         elif db.session.scalar(select(Entite.id).where(Entite.code == code, Entite.id != (e.id if e else -1))):
             erreurs["code"] = "Ce code est déjà utilisé."
         couleur = donnees["couleur"]

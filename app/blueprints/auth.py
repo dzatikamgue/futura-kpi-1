@@ -7,7 +7,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import select
 
 from ..extensions import db
-from ..models import Utilisateur, utcnow
+from ..models import Entite, Utilisateur, utcnow
 from ..services.audit import journaliser
 
 bp = Blueprint("auth", __name__)
@@ -37,6 +37,9 @@ def login():
         return redirect(url_for("tableau_bord.index"))
     erreur = None
     email = ""
+    entites = db.session.scalars(select(Entite).where(Entite.actif.is_(True))
+                                 .order_by(Entite.principale.desc(), Entite.nom)).all()
+    choisie = request.form.get("entite", type=int) or request.args.get("entite", type=int)
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         mdp = request.form.get("mot_de_passe") or ""
@@ -52,6 +55,15 @@ def login():
             session.pop("entite_id", None)  # l'onglet par défaut est recalculé (entité de rattachement)
             journaliser("connexion", u.email)
             db.session.commit()
+            # Entreprise choisie sur la page de connexion : ouverte si le compte y a accès
+            if choisie:
+                from ..services.entites import roles_par_entite
+                if choisie in roles_par_entite(u):
+                    session["entite_id"] = choisie
+                else:
+                    e = db.session.get(Entite, choisie)
+                    if e:
+                        flash(f"Votre compte n'a pas accès à {e.nom}. Vous êtes dans votre espace habituel.", "info")
             suivant = request.args.get("next")
             return redirect(suivant if _url_sure(suivant) else url_for("tableau_bord.index"))
         else:
@@ -64,7 +76,7 @@ def login():
                 db.session.commit()
             # Message identique que le compte existe ou non (pas d'énumération)
             erreur = erreur or "Adresse e-mail ou mot de passe incorrect."
-    return render_template("auth/login.html", erreur=erreur, email=email)
+    return render_template("auth/login.html", erreur=erreur, email=email, entites=entites, choisie=choisie)
 
 
 @bp.post("/deconnexion")

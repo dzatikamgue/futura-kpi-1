@@ -40,8 +40,8 @@
     <form class="card__body stack" method="post" enctype="multipart/form-data" data-validate data-loading data-charte>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if edition and edition.id %}<input type="hidden" name="id" value="{{ edition.id }}">{% endif %}
-      {{ champ("nom", "Nom de l'entité", donnees.get('nom'), erreurs, requis=True, attrs='maxlength="120" placeholder="Ex. BuildSmart BTP"') }}
-      {{ champ("code", "Code", donnees.get('code'), erreurs, requis=True, aide="Court, sert de préfixe aux matricules (ex. BSB → BSB-0001).", attrs='maxlength="12" style="text-transform:uppercase"') }}
+      {{ champ("nom", "Nom de l'entité", donnees.get('nom'), erreurs, requis=True, attrs='maxlength="120" placeholder="Nom complet de la société"') }}
+      {{ champ("code", "Code", donnees.get('code'), erreurs, requis=True, aide="2 à 12 lettres ou chiffres. Sert de préfixe aux matricules : ABC donne ABC-0001.", attrs='maxlength="12" style="text-transform:uppercase"') }}
       <div class="field">
         <label for="f-logo">Logo</label>
         <input class="input" id="f-logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" data-logo-input {% if erreurs.get('logo') %}aria-invalid="true"{% endif %}>

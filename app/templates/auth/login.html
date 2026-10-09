@@ -6,25 +6,41 @@
   <title>Connexion · {{ app_name }}</title>
   <link rel="icon" href="{{ url_for('static', filename='img/logo-icon.svg') }}" type="image/svg+xml">
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=3">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=4">
 </head>
+{% set depart = (entites|selectattr("id", "equalto", choisie)|first) if choisie else (entites[0] if entites|length == 1 else none) %}
 <body>
-<div class="auth">
+<div class="auth" data-auth style="--accent: {{ depart.couleur if depart else '#213E70' }}">
   <section class="auth__brand">
-    <img src="{{ url_for('static', filename='img/logo-white.svg') }}" alt="{{ company_name }}" width="115" height="44">
-    <div>
-      <h2>Le suivi de la performance de nos équipes, mois après mois.</h2>
-      <p>Évaluations mensuelles par les N+1, synthèses trimestrielles et annuelles, en toute confidentialité.</p>
+    <div class="auth__group">
+      <img src="{{ url_for('static', filename='img/logo-white.svg') }}" alt="{{ company_name }}" width="104" height="40">
+      <span>{{ app_name }}</span>
     </div>
-    <small style="color:rgba(255,255,255,.55)">© {{ annee_courante }} {{ company_name }} — Usage interne</small>
-    <img class="stripes" src="{{ url_for('static', filename='img/logo-icon-white.svg') }}" alt="">
+
+    <div class="auth__choix">
+      <h2>{{ "Votre entreprise" if entites|length == 1 else "Choisissez votre entreprise" }}</h2>
+      <p>L'évaluation mensuelle des équipes, pour chaque société du groupe.</p>
+      <div class="tuiles" role="radiogroup" aria-label="Entreprise">
+        {% for e in entites %}
+        {% set l = logo_entite(e) %}
+        <button type="button" class="tuile" role="radio" aria-checked="{{ 'true' if depart and depart.id == e.id else 'false' }}"
+                data-entite="{{ e.id }}" data-couleur="{{ e.couleur }}" data-nom="{{ e.nom }}" style="--c: {{ e.couleur }}">
+          <span class="tuile__logo">{% if l %}<img src="{{ l }}" alt="" loading="lazy">{% else %}<span class="tuile__sigle">{{ e.code }}</span>{% endif %}</span>
+          <span class="tuile__nom">{{ e.nom }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <small class="auth__pied">© {{ annee_courante }} {{ company_name }}. Usage interne.</small>
   </section>
+
   <section class="auth__panel">
     <form class="auth__form" method="post" data-validate data-loading>
-      <img class="auth__mobile-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="{{ company_name }}">
-      <h1>Connexion</h1>
-      <p>Accédez à votre espace {{ app_name }}.</p>
+      <h1 data-titre-connexion>{{ "Connexion à " ~ depart.nom if depart else "Connexion" }}</h1>
+      <p>Utilisez l'adresse e-mail de votre fiche salarié.</p>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="entite" value="{{ depart.id if depart else '' }}" data-entite-choisie>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for cat, msg in messages %}<div class="alert alert--{{ cat }}" style="margin-bottom:16px"><span>{{ msg }}</span></div>{% endfor %}
       {% endwith %}
@@ -39,12 +55,12 @@
           <input class="input" id="mdp" name="mot_de_passe" type="password" autocomplete="current-password" required>
         </div>
         <label class="checkbox"><input type="checkbox" name="se_souvenir" value="1"> Rester connecté sur cet appareil</label>
-        <button class="btn btn--primary" type="submit">Se connecter</button>
-        <p class="small muted center">Mot de passe oublié ? Contactez le service RH, qui le réinitialisera.</p>
+        <button class="btn btn--primary auth__bouton" type="submit">Se connecter</button>
+        <p class="small muted center">Mot de passe oublié ? Le service RH le réinitialise pour vous.</p>
       </div>
     </form>
   </section>
 </div>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=3" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=4" defer></script>
 </body>
 </html>
