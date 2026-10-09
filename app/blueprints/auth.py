@@ -2,7 +2,7 @@
 from datetime import timedelta
 from urllib.parse import urlparse
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import session, Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import select
 
@@ -49,6 +49,7 @@ def login():
             u.bloque_jusqua = None
             u.derniere_connexion = maintenant
             login_user(u, remember=bool(request.form.get("se_souvenir")))
+            session.pop("entite_id", None)  # l'onglet par défaut est recalculé (entité de rattachement)
             journaliser("connexion", u.email)
             db.session.commit()
             suivant = request.args.get("next")

@@ -1,15 +1,15 @@
 """Comptes d'accès liés automatiquement aux fiches salariés.
 
-Règles (appliquées par synchroniser_comptes, appelée après chaque modification
-du personnel, des affectations, des responsables ou après un import) :
+Règles — appliquées UNIQUEMENT aux salariés concernés par une action de la RH
+(enregistrement d'une fiche, désignation d'un N+1, import). Rien ne s'exécute au
+démarrage ni sur les données existantes sans action de la RH.
 
 1. L'identifiant de connexion d'un salarié est l'e-mail de sa fiche.
-2. Un compte existant non lié dont l'e-mail correspond à une fiche est lié
-   automatiquement à cette fiche (ex. le compte RH initial et la fiche du DRH).
-3. Tout salarié actif qui a des N-1 à noter (N+1 d'une affectation, responsable
-   d'un département ou d'un projet) et qui a un e-mail reçoit un compte
-   « Collaborateur ». Son mot de passe est généré par la RH en un clic
-   (Comptes & accès → « Générer les accès »), puis changé à la 1re connexion.
+2. Un compte existant non lié dont l'e-mail correspond à la fiche enregistrée est
+   lié à cette fiche (ex. le compte RH initial et la fiche du DRH).
+3. Un salarié désigné N+1 par la RH, qui a un e-mail, reçoit un compte
+   « Collaborateur » marqué « accès à remettre ». Son mot de passe est généré par
+   la RH (Comptes & accès → « Générer les accès »), puis changé à la 1re connexion.
 """
 from __future__ import annotations
 
@@ -19,8 +19,7 @@ import string
 from sqlalchemy import func, select
 
 from ..extensions import db
-from ..models import (Affectation, Departement, Employe, Projet, Role,
-                      Utilisateur, utcnow)
+from ..models import Affectation, Employe, Role, Utilisateur, utcnow
 
 
 def mot_de_passe_temporaire() -> str:
@@ -31,15 +30,10 @@ def mot_de_passe_temporaire() -> str:
             return mdp
 
 
-def ids_responsables() -> set[int]:
-    """Salariés qui ont au moins une personne à noter."""
-    ids = set(db.session.scalars(select(Affectation.evaluateur_id).where(
+def ids_evaluateurs() -> set[int]:
+    """Salariés désignés N+1 sur au moins une affectation active."""
+    return set(db.session.scalars(select(Affectation.evaluateur_id).where(
         Affectation.actif.is_(True), Affectation.evaluateur_id.isnot(None))))
-    ids |= set(db.session.scalars(select(Departement.responsable_id).where(
-        Departement.actif.is_(True), Departement.responsable_id.isnot(None))))
-    ids |= set(db.session.scalars(select(Projet.responsable_id).where(
-        Projet.actif.is_(True), Projet.responsable_id.isnot(None))))
-    return ids
 
 
 def lier_ou_creer(e: Employe, creer: bool) -> Utilisateur | None:
@@ -58,25 +52,32 @@ def lier_ou_creer(e: Employe, creer: bool) -> Utilisateur | None:
     if not creer or not e.actif:
         return None
     u = Utilisateur(email=email, role=Role.COLLABORATEUR, employe_id=e.id, doit_changer_mdp=True,
-                    actif=True, echecs_connexion=0)
+                    actif=True, echecs_connexion=0, acces_en_attente=True)
     # Mot de passe aléatoire inutilisable tant que la RH n'a pas généré les accès
     u.set_password(secrets.token_urlsafe(32))
     db.session.add(u)
     return u
 
 
-def synchroniser_comptes() -> dict:
-    """Met en cohérence comptes et fiches. Renvoie {'lies': n, 'crees': n}."""
+def synchroniser_comptes(employe_ids=None) -> dict:
+    """Lie / crée les comptes des salariés indiqués (tous si None : bouton « Resynchroniser »).
+
+    Renvoie {'lies': n, 'crees': n}.
+    """
     stats = {"lies": 0, "crees": 0}
-    responsables = ids_responsables()
-    sans_compte = db.session.scalars(
-        select(Employe).where(Employe.email.isnot(None), Employe.email != "",
+    q = select(Employe).where(Employe.email.isnot(None), Employe.email != "",
                               ~Employe.id.in_(select(Utilisateur.employe_id)
-                                              .where(Utilisateur.employe_id.isnot(None))))).all()
-    for e in sans_compte:
+                                              .where(Utilisateur.employe_id.isnot(None))))
+    if employe_ids is not None:
+        ids = {i for i in employe_ids if i}
+        if not ids:
+            return stats
+        q = q.where(Employe.id.in_(ids))
+    evaluateurs = ids_evaluateurs()
+    for e in db.session.scalars(q).all():
         avant_existe = db.session.scalar(
             select(Utilisateur.id).where(func.lower(Utilisateur.email) == e.email.strip().lower()))
-        u = lier_ou_creer(e, creer=e.id in responsables)
+        u = lier_ou_creer(e, creer=e.id in evaluateurs)
         if u:
             stats["lies" if avant_existe else "crees"] += 1
     db.session.flush()
@@ -107,5 +108,6 @@ def generer_acces(comptes: list[Utilisateur]) -> list[tuple[Utilisateur, str]]:
         u.doit_changer_mdp = True
         u.echecs_connexion, u.bloque_jusqua = 0, None
         u.acces_remis_le = utcnow()
+        u.acces_en_attente = False
         resultat.append((u, mdp))
     return resultat

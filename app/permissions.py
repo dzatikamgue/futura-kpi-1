@@ -6,10 +6,14 @@ Règle métier :
     * les évaluations des départements / projets dont il est responsable,
     * les évaluations des affectations dont il est le N+1 (évaluateur),
     * ses propres évaluations, uniquement une fois soumises.
-- Un collaborateur note :
-    * les affectations dont il est le N+1,
-    * les affectations d'un département / projet dont il est responsable,
-  jamais lui-même.
+- Seul le N+1 désigné par la RH sur l'affectation note, même si le salarié est sur
+  le projet (ou dans le département) d'une autre personne. Le responsable d'un
+  projet / département consulte les notes de son périmètre mais ne note pas,
+  sauf s'il est lui-même désigné N+1. Personne ne se note soi-même.
+
+Multi-entités : chaque liste est limitée à l'entité de l'onglet actif, et le rôle
+(RH / Direction / Collaborateur) est évalué entité par entité. Pour un objet précis
+(fiche, évaluation), le contrôle se fait avec le rôle dans l'entité de cet objet.
 
 Toutes les listes passent par ces fonctions : aucune route ne filtre « à la main ».
 """
@@ -24,6 +28,8 @@ from sqlalchemy import and_, false, or_, select
 from .extensions import db
 from .models import (Affectation, Departement, Employe, Evaluation, Projet,
                      StatutEvaluation)
+from .services.entites import (ROLE_RH, cond_entite, entite_courante,
+                               id_effectif, roles_par_entite)
 
 
 def rh_requis(view):
@@ -45,11 +51,15 @@ def direction_ou_rh_requis(view):
 
 
 class Perimetre:
-    """Périmètre calculé une fois par requête pour un utilisateur."""
+    """Périmètre calculé une fois par requête pour un utilisateur et l'entité active."""
 
     def __init__(self, user):
         self.user = user
-        self.voit_tout = user.voit_tout
+        self.roles = roles_par_entite(user)
+        self.entite = entite_courante(user)
+        self.entite_id = self.entite.id
+        self.role = self.roles.get(self.entite_id)
+        self.voit_tout = self.role in (ROLE_RH, "direction")
         self.employe_id = user.employe_id
         if self.employe_id:
             self.dept_ids = set(db.session.scalars(
@@ -59,9 +69,34 @@ class Perimetre:
         else:
             self.dept_ids, self.projet_ids = set(), set()
 
+    # -- Entité ----------------------------------------------------------------
+    def employes_de_l_entite(self):
+        return select(Employe.id).where(cond_entite(Employe.entite_id, self.entite_id))
+
+    def voit_tout_dans(self, entite_id) -> bool:
+        return self.roles.get(id_effectif(entite_id)) in (ROLE_RH, "direction")
+
     # -- Affectations que l'utilisateur peut NOTER -------------------------
     def filtre_affectations_a_noter(self):
-        """Expression SQL sur Affectation : ce que l'utilisateur doit / peut noter."""
+        """Expression SQL sur Affectation : uniquement celles dont l'utilisateur est le N+1 désigné."""
+        if not self.employe_id:
+            return false()
+        return and_(Affectation.actif.is_(True),
+                    Affectation.employe_id != self.employe_id,
+                    Affectation.evaluateur_id == self.employe_id,
+                    Affectation.employe_id.in_(self.employes_de_l_entite()))
+
+    def peut_noter(self, affectation: Affectation) -> bool:
+        return bool(self.employe_id and affectation.actif
+                    and affectation.employe_id != self.employe_id
+                    and affectation.evaluateur_id == self.employe_id)
+
+    # -- Affectations visibles (suivi, campagne) ---------------------------
+    def filtre_affectations_visibles(self):
+        """Ce que l'utilisateur voit : ses N-1 désignés + son périmètre de responsable (lecture seule)."""
+        dans_entite = Affectation.employe_id.in_(self.employes_de_l_entite())
+        if self.voit_tout:
+            return dans_entite
         if not self.employe_id:
             return false()
         conds = [Affectation.evaluateur_id == self.employe_id]
@@ -69,30 +104,24 @@ class Perimetre:
             conds.append(Affectation.departement_id.in_(self.dept_ids))
         if self.projet_ids:
             conds.append(Affectation.projet_id.in_(self.projet_ids))
-        return and_(Affectation.actif.is_(True),
-                    Affectation.employe_id != self.employe_id,
+        return and_(dans_entite, Affectation.actif.is_(True), Affectation.employe_id != self.employe_id,
                     or_(*conds))
 
-    def peut_noter(self, affectation: Affectation) -> bool:
-        if not self.employe_id or not affectation.actif:
-            return False
-        if affectation.employe_id == self.employe_id:
+    def voit_affectation(self, affectation: Affectation) -> bool:
+        if self.voit_tout_dans(affectation.employe.entite_id):
+            return True
+        if not self.employe_id or affectation.employe_id == self.employe_id:
             return False
         return (affectation.evaluateur_id == self.employe_id
-                or (affectation.departement_id in self.dept_ids)
-                or (affectation.projet_id in self.projet_ids))
-
-    # -- Affectations visibles (suivi, campagne) ---------------------------
-    def filtre_affectations_visibles(self):
-        if self.voit_tout:
-            return Affectation.id.isnot(None)
-        return self.filtre_affectations_a_noter()
+                or affectation.departement_id in self.dept_ids
+                or affectation.projet_id in self.projet_ids)
 
     # -- Évaluations visibles ----------------------------------------------
     def filtre_evaluations(self):
         """Expression SQL sur Evaluation (jointure Affectation non requise)."""
+        dans_entite = Evaluation.employe_id.in_(self.employes_de_l_entite())
         if self.voit_tout:
-            return Evaluation.id.isnot(None)
+            return dans_entite
         if not self.employe_id:
             return false()
         conds = [
@@ -106,10 +135,10 @@ class Perimetre:
             conds.append(Evaluation.departement_id.in_(self.dept_ids))
         if self.projet_ids:
             conds.append(Evaluation.projet_id.in_(self.projet_ids))
-        return or_(*conds)
+        return and_(dans_entite, or_(*conds))
 
     def peut_voir_evaluation(self, ev: Evaluation) -> bool:
-        if self.voit_tout:
+        if self.voit_tout_dans(ev.employe.entite_id):
             return True
         if not self.employe_id:
             return False
@@ -122,22 +151,24 @@ class Perimetre:
 
     # -- Salariés visibles ---------------------------------------------------
     def filtre_employes(self):
+        dans_entite = cond_entite(Employe.entite_id, self.entite_id)
         if self.voit_tout:
-            return Employe.id.isnot(None)
-        ids_affectations = select(Affectation.employe_id).where(self.filtre_affectations_a_noter())
+            return dans_entite
+        ids_affectations = select(Affectation.employe_id).where(self.filtre_affectations_visibles())
         conds = [Employe.id.in_(ids_affectations)]
         if self.employe_id:
             conds.append(Employe.id == self.employe_id)
-        return or_(*conds)
+        return and_(dans_entite, or_(*conds))
 
     def peut_voir_employe(self, employe: Employe) -> bool:
-        if self.voit_tout or employe.id == self.employe_id:
+        if employe.id == self.employe_id or self.voit_tout_dans(employe.entite_id):
             return True
-        return any(self.peut_noter(a) for a in employe.affectations)
+        return any(self.voit_affectation(a) for a in employe.affectations)
 
     # -- Listes de filtres proposées dans l'interface ------------------------
     def departements_visibles(self):
-        q = select(Departement).where(Departement.actif.is_(True)).order_by(Departement.nom)
+        q = (select(Departement).where(Departement.actif.is_(True), cond_entite(Departement.entite_id, self.entite_id))
+             .order_by(Departement.nom))
         if not self.voit_tout:
             ids = set(self.dept_ids) | set(db.session.scalars(
                 select(Affectation.departement_id).where(
@@ -147,7 +178,8 @@ class Perimetre:
         return db.session.scalars(q).all()
 
     def projets_visibles(self):
-        q = select(Projet).where(Projet.actif.is_(True)).order_by(Projet.nom)
+        q = (select(Projet).where(Projet.actif.is_(True), cond_entite(Projet.entite_id, self.entite_id))
+             .order_by(Projet.nom))
         if not self.voit_tout:
             ids = set(self.projet_ids) | set(db.session.scalars(
                 select(Affectation.projet_id).where(
@@ -157,13 +189,23 @@ class Perimetre:
         return db.session.scalars(q).all()
 
     @property
+    def est_responsable(self) -> bool:
+        """Responsable d'un département / projet de l'entité active."""
+        if not (self.dept_ids or self.projet_ids):
+            return False
+        d = db.session.scalar(select(Departement.id).where(
+            Departement.id.in_(self.dept_ids or {-1}), cond_entite(Departement.entite_id, self.entite_id)).limit(1))
+        p = db.session.scalar(select(Projet.id).where(
+            Projet.id.in_(self.projet_ids or {-1}), cond_entite(Projet.entite_id, self.entite_id)).limit(1))
+        return bool(d or p)
+
+    @property
     def est_evaluateur(self) -> bool:
+        """N+1 désigné d'au moins une affectation active dans l'entité active."""
         if not self.employe_id:
             return False
-        if self.dept_ids or self.projet_ids:
-            return True
         return db.session.scalar(
-            select(Affectation.id).where(Affectation.evaluateur_id == self.employe_id).limit(1)) is not None
+            select(Affectation.id).where(self.filtre_affectations_a_noter()).limit(1)) is not None
 
 
 def perimetre() -> Perimetre:

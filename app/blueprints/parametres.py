@@ -6,21 +6,35 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from ..extensions import db
-from ..models import (Affectation, Critere, Departement, Employe,
+from ..models import (Affectation, Critere, Departement, Employe, Entite,
                       EvaluationNote, Poste, Projet, Role, Utilisateur)
-from ..permissions import rh_requis
+from ..permissions import perimetre, rh_requis
+from ..services.entites import cond_entite, id_effectif, roles_par_entite
 from ..services import reglages
 from ..services.audit import journaliser
-from ..services.comptes import (generer_acces, ids_responsables, lier_ou_creer,
+from ..services.organisation import cle_texte, postes_actifs
+from ..services.comptes import (generer_acces, ids_evaluateurs, lier_ou_creer,
                                 mot_de_passe_temporaire, synchroniser_comptes)
-from ..services.organisation import completer_n1_par_responsable
 from ..utils import lire_date
 
 bp = Blueprint("parametres", __name__, url_prefix="/parametres")
 
 
+def _eid():
+    return perimetre().entite_id
+
+
+def _dans_entite(obj):
+    """404 si l'objet n'appartient pas à l'entité de l'onglet actif."""
+    if obj is not None and id_effectif(obj.entite_id) != _eid():
+        abort(404)
+    return obj
+
+
 def _employes_actifs():
-    return db.session.scalars(select(Employe).where(Employe.actif.is_(True)).order_by(Employe.nom, Employe.prenom)).all()
+    """Responsables possibles : personnel de l'entité active."""
+    return db.session.scalars(select(Employe).where(Employe.actif.is_(True), cond_entite(Employe.entite_id, _eid()))
+                              .order_by(Employe.nom, Employe.prenom)).all()
 
 
 # --- Départements & projets -------------------------------------------------
@@ -30,7 +44,7 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
     if request.method == "POST":
         action = request.form.get("action", "enregistrer")
         obj_id = request.form.get("id", type=int)
-        obj = db.session.get(model, obj_id) if obj_id else None
+        obj = _dans_entite(db.session.get(model, obj_id) if obj_id else None)
         if action == "basculer" and obj:
             obj.actif = not obj.actif
             journaliser(f"{model.__tablename__}_statut", obj.nom, "actif" if obj.actif else "inactif")
@@ -42,12 +56,14 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
         code = donnees["code"].upper()
         if not code:
             erreurs["code"] = "Le code est obligatoire."
-        elif db.session.scalar(select(model.id).where(model.code == code, model.id != (obj.id if obj else -1))):
+        elif db.session.scalar(select(model.id).where(model.code == code, model.id != (obj.id if obj else -1),
+                                                      cond_entite(model.entite_id, _eid()))):
             erreurs["code"] = "Ce code existe déjà."
         if not donnees["nom"]:
             erreurs["nom"] = "Le nom est obligatoire."
         elif model is Departement and db.session.scalar(
-                select(model.id).where(func.lower(model.nom) == donnees["nom"].lower(), model.id != (obj.id if obj else -1))):
+                select(model.id).where(func.lower(model.nom) == donnees["nom"].lower(), model.id != (obj.id if obj else -1),
+                                       cond_entite(model.entite_id, _eid()))):
             erreurs["nom"] = "Ce département existe déjà."
         dd = df = None
         if avec_projet:
@@ -63,7 +79,7 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                 erreurs["date_fin"] = "La date de fin doit suivre la date de début."
         if not erreurs:
             nouveau = obj is None
-            obj = obj or model()
+            obj = obj or model(entite_id=_eid())
             obj.code, obj.nom = code, donnees["nom"]
             obj.responsable_id = int(donnees["responsable_id"]) if donnees["responsable_id"] else None
             if avec_projet:
@@ -71,19 +87,13 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                 obj.date_debut, obj.date_fin = dd, df
             if nouveau:
                 db.session.add(obj)
-            db.session.flush()
-            completes = completer_n1_par_responsable(obj)
             journaliser(f"{model.__tablename__}_{'cree' if nouveau else 'modifie'}", obj.nom, code)
-            synchroniser_comptes()
             db.session.commit()
-            msg = f"« {obj.nom} » enregistré."
-            if completes:
-                msg += f" {completes} salarié(s) sans N+1 seront notés par {obj.responsable.nom_complet}."
-            flash(msg, "succes")
+            flash(f"« {obj.nom} » enregistré.", "succes")
             return redirect(request.path)
         edition = obj
     elif request.args.get("modifier", type=int):
-        edition = db.session.get(model, request.args.get("modifier", type=int)) or abort(404)
+        edition = _dans_entite(db.session.get(model, request.args.get("modifier", type=int)) or abort(404))
         donnees = {"code": edition.code, "nom": edition.nom,
                    "responsable_id": str(edition.responsable_id or ""),
                    "localisation": getattr(edition, "localisation", "") or "",
@@ -94,6 +104,7 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
     effectifs = dict(db.session.execute(
         select(col, func.count(Affectation.id)).where(Affectation.actif.is_(True), col.isnot(None)).group_by(col)).all())
     elements = db.session.scalars(select(model).options(joinedload(model.responsable))
+                                  .where(cond_entite(model.entite_id, _eid()))
                                   .order_by(model.actif.desc(), model.nom)).all()
     return render_template(modele_tpl, elements=elements, effectifs=effectifs, edition=edition,
                            donnees=donnees, erreurs=erreurs, employes=_employes_actifs(),
@@ -122,7 +133,7 @@ def criteres():
     erreurs, donnees, edition = {}, {}, None
     if request.method == "POST":
         action = request.form.get("action", "enregistrer")
-        c = db.session.get(Critere, request.form.get("id", type=int) or 0)
+        c = _dans_entite(db.session.get(Critere, request.form.get("id", type=int) or 0))
         if action == "basculer" and c:
             c.actif = not c.actif
             journaliser("critere_statut", c.libelle, "actif" if c.actif else "inactif")
@@ -134,7 +145,8 @@ def criteres():
         if not donnees["libelle"]:
             erreurs["libelle"] = "Le libellé est obligatoire."
         elif db.session.scalar(select(Critere.id).where(func.lower(Critere.libelle) == donnees["libelle"].lower(),
-                                                        Critere.id != (c.id if c else -1))):
+                                                        Critere.id != (c.id if c else -1),
+                                                        cond_entite(Critere.entite_id, _eid()))):
             erreurs["libelle"] = "Ce critère existe déjà."
         try:
             poids = int(donnees["poids"] or 1)
@@ -150,7 +162,7 @@ def criteres():
             ordre = 0
         if not erreurs:
             nouveau = c is None
-            c = c or Critere()
+            c = c or Critere(entite_id=_eid())
             c.libelle, c.description, c.poids, c.ordre = donnees["libelle"], donnees["description"] or None, poids, ordre
             if nouveau:
                 db.session.add(c)
@@ -160,10 +172,11 @@ def criteres():
             return redirect(request.path)
         edition = c
     elif request.args.get("modifier", type=int):
-        edition = db.session.get(Critere, request.args.get("modifier", type=int)) or abort(404)
+        edition = _dans_entite(db.session.get(Critere, request.args.get("modifier", type=int)) or abort(404))
         donnees = {"libelle": edition.libelle, "description": edition.description or "",
                    "poids": str(edition.poids), "ordre": str(edition.ordre)}
-    elements = db.session.scalars(select(Critere).order_by(Critere.actif.desc(), Critere.ordre, Critere.id)).all()
+    elements = db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, _eid()))
+                                  .order_by(Critere.actif.desc(), Critere.ordre, Critere.id)).all()
     utilises = set(db.session.scalars(select(EvaluationNote.critere_id).distinct()))
     total_poids = sum(c.poids for c in elements if c.actif)
     return render_template("parametres/criteres.html", elements=elements, edition=edition, donnees=donnees,
@@ -175,47 +188,74 @@ def criteres():
 @login_required
 @rh_requis
 def postes():
+    """Liste des postes proposés. Une ligne n'est écrite en base que lorsque la RH agit dessus."""
     erreurs, donnees, edition = {}, {}, None
+
+    eid = _eid()
+
+    def ligne(libelle):
+        return db.session.scalar(select(Poste).where(func.lower(Poste.libelle) == libelle.lower(),
+                                                     cond_entite(Poste.entite_id, eid)))
+
     if request.method == "POST":
         action = request.form.get("action", "enregistrer")
-        p = db.session.get(Poste, request.form.get("id", type=int) or 0)
-        if action == "basculer" and p:
-            p.actif = not p.actif
-            journaliser("poste_statut", p.libelle, "actif" if p.actif else "archivé")
-            db.session.commit()
-            flash(f"Poste « {p.libelle} » {'réactivé' if p.actif else 'archivé (retiré des listes)'}.", "succes")
+        if action == "basculer":
+            lib = (request.form.get("libelle") or "").strip()
+            p = ligne(lib)
+            if p:
+                p.actif = not p.actif
+            elif lib:
+                p = Poste(libelle=lib, actif=False, entite_id=eid)
+                db.session.add(p)
+            if p:
+                journaliser("poste_statut", p.libelle, "actif" if p.actif else "archivé")
+                db.session.commit()
+                flash(f"Poste « {p.libelle} » {'réactivé' if p.actif else 'archivé (retiré des listes)'}.", "succes")
             return redirect(request.path)
+        ancien = (request.form.get("ancien") or "").strip()
         libelle = " ".join((request.form.get("libelle") or "").split())[:120]
-        donnees = {"libelle": libelle}
+        donnees = {"libelle": libelle, "ancien": ancien}
         if not libelle:
             erreurs["libelle"] = "Le libellé est obligatoire."
-        elif db.session.scalar(select(Poste.id).where(func.lower(Poste.libelle) == libelle.lower(),
-                                                      Poste.id != (p.id if p else -1))):
+        elif libelle.lower() != ancien.lower() and (
+                ligne(libelle) or cle_texte(libelle) in {cle_texte(x) for x in postes_actifs(eid)}):
             erreurs["libelle"] = "Ce poste existe déjà."
         if not erreurs:
-            if p:
-                ancien = p.libelle
-                # Renommage répercuté sur les fiches
-                for e in db.session.scalars(select(Employe).where(Employe.poste == ancien)):
+            if ancien:
+                p = ligne(ancien)
+                if p:
+                    p.libelle = libelle
+                else:  # poste de la liste par défaut : on le masque et on crée le nouveau libellé
+                    db.session.add(Poste(libelle=ancien, actif=False, entite_id=eid))
+                    db.session.add(Poste(libelle=libelle, entite_id=eid))
+                n = 0
+                # Renommage demandé par la RH : répercuté sur les fiches qui portent ce poste
+                for e in db.session.scalars(select(Employe).where(Employe.poste == ancien,
+                                                                  cond_entite(Employe.entite_id, eid))):
                     e.poste = libelle
-                p.libelle = libelle
-                journaliser("poste_modifie", libelle, f"ancien : {ancien}")
+                    n += 1
+                journaliser("poste_renomme", libelle, f"ancien : {ancien}, {n} fiche(s)")
             else:
-                db.session.add(Poste(libelle=libelle))
+                db.session.add(Poste(libelle=libelle, entite_id=eid))
                 journaliser("poste_cree", libelle)
             db.session.commit()
             flash(f"Poste « {libelle} » enregistré.", "succes")
             return redirect(request.path)
-        edition = p
-    elif request.args.get("modifier", type=int):
-        edition = db.session.get(Poste, request.args.get("modifier", type=int)) or abort(404)
-        donnees = {"libelle": edition.libelle}
-    elements = db.session.scalars(select(Poste).order_by(Poste.actif.desc(), Poste.libelle)).all()
+        edition = ancien or None
+    elif request.args.get("modifier"):
+        edition = request.args.get("modifier")
+        donnees = {"libelle": edition, "ancien": edition}
     effectifs = dict(db.session.execute(select(Employe.poste, func.count(Employe.id))
-                                        .where(Employe.actif.is_(True), Employe.poste.isnot(None))
+                                        .where(Employe.actif.is_(True), Employe.poste.isnot(None),
+                                               cond_entite(Employe.entite_id, eid))
                                         .group_by(Employe.poste)).all())
-    return render_template("parametres/postes.html", elements=elements, effectifs=effectifs,
-                           edition=edition, donnees=donnees, erreurs=erreurs)
+    actifs = postes_actifs(eid)
+    archives = db.session.scalars(select(Poste.libelle).where(Poste.actif.is_(False), cond_entite(Poste.entite_id, eid))
+                                  .order_by(Poste.libelle)).all()
+    elements = [{"libelle": x, "actif": True, "effectif": effectifs.get(x, 0)} for x in actifs] + \
+               [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0)} for x in archives]
+    return render_template("parametres/postes.html", elements=elements, edition=edition,
+                           donnees=donnees, erreurs=erreurs)
 
 
 # --- Clé API Claude -----------------------------------------------------------
@@ -268,8 +308,8 @@ def utilisateurs():
             # Le compte prend l'e-mail de la fiche : rien d'autre à saisir que le rôle
             donnees = {k: (request.form.get(k) or "").strip() for k in ("role", "employe_id")}
             e = db.session.get(Employe, int(donnees["employe_id"])) if donnees["employe_id"].isdigit() else None
-            if donnees["role"] not in Role.TOUS:
-                erreurs["role"] = "Rôle invalide."
+            if donnees["role"] not in Role.TOUS or (donnees["role"] == Role.RH and not current_user.est_superadmin):
+                erreurs["role"] = "Rôle invalide (seul un superadmin peut nommer un compte RH)."
             if not e:
                 erreurs["employe_id"] = "Choisissez un salarié."
             elif e.compte:
@@ -293,10 +333,9 @@ def utilisateurs():
                         return redirect(request.path)
                     donnees = {}
         elif action == "generer_attente":
-            synchroniser_comptes()
             attente = [u for u in db.session.scalars(select(Utilisateur).where(
-                Utilisateur.actif.is_(True), Utilisateur.acces_remis_le.is_(None),
-                Utilisateur.derniere_connexion.is_(None), Utilisateur.id != current_user.id))]
+                Utilisateur.actif.is_(True), Utilisateur.acces_en_attente.is_(True),
+                Utilisateur.id != current_user.id))]
             identifiants = generer_acces(attente)
             journaliser("acces_generes", f"{len(identifiants)} comptes")
             db.session.commit()
@@ -319,7 +358,9 @@ def utilisateurs():
                 flash(f"Compte {u.email} {'activé' if u.actif else 'désactivé'}.", "succes")
             elif action == "role":
                 role = request.form.get("role")
-                if role in Role.TOUS:
+                if (Role.RH in (role, u.role)) and not current_user.est_superadmin:
+                    flash("Seul un superadmin peut attribuer ou retirer le rôle RH.", "erreur")
+                elif role in Role.TOUS:
                     u.role = role
                     journaliser("compte_role", u.email, Role.LIBELLES[role])
                     flash(f"Rôle de {u.email} : {Role.LIBELLES[role]}.", "succes")
@@ -332,16 +373,22 @@ def utilisateurs():
 
     comptes = db.session.scalars(select(Utilisateur).options(joinedload(Utilisateur.employe))
                                  .order_by(Utilisateur.actif.desc(), Utilisateur.role, Utilisateur.email)).all()
-    responsables = ids_responsables()
+    responsables = ids_evaluateurs()
     resp_sans_email = db.session.scalars(
         select(Employe).where(Employe.id.in_(responsables), Employe.actif.is_(True),
                               (Employe.email.is_(None)) | (Employe.email == ""))
         .order_by(Employe.nom)).all()
     sans_compte = db.session.scalars(
         select(Employe).where(Employe.actif.is_(True), Employe.email.isnot(None), Employe.email != "",
+                              cond_entite(Employe.entite_id, _eid()),
                               ~Employe.id.in_(select(Utilisateur.employe_id).where(Utilisateur.employe_id.isnot(None))))
         .order_by(Employe.nom)).all()
     nb_attente = sum(1 for u in comptes if u.en_attente_acces and u.id != current_user.id)
+    # Entités visibles par chaque compte (rôle par entité)
+    noms = {e.id: e for e in db.session.scalars(select(Entite))}
+    entites_compte = {u.id: [(noms[i], r) for i, r in sorted(roles_par_entite(u).items(), key=lambda x: noms[x[0]].nom)]
+                      for u in comptes if not u.est_rh}
     return render_template("parametres/utilisateurs.html", comptes=comptes, sans_compte=sans_compte,
                            roles=Role.LIBELLES, erreurs=erreurs, donnees=donnees, identifiants=identifiants,
-                           resp_sans_email=resp_sans_email, nb_attente=nb_attente, responsables=responsables)
+                           resp_sans_email=resp_sans_email, nb_attente=nb_attente, responsables=responsables,
+                           entites_compte=entites_compte, nb_entites=len(noms))

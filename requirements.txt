@@ -11,5 +11,6 @@ openpyxl==3.1.5
 reportlab==5.0.1
 anthropic==1.12.1
 cryptography==50.0.1
+Pillow==12.3.0
 python-dotenv==1.2.3
 tzdata>=2025.2

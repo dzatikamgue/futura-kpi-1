@@ -33,10 +33,10 @@ def create_app(config_class=Config):
     def load_user(user_id):
         return db.session.get(models.Utilisateur, int(user_id))
 
-    from .blueprints import (auth, evaluations, import_personnel, journal,
+    from .blueprints import (auth, entites, evaluations, import_personnel, journal,
                              parametres, personnel, suivi, tableau_bord)
     for bp in (auth.bp, tableau_bord.bp, evaluations.bp, personnel.bp, suivi.bp,
-               import_personnel.bp, parametres.bp, journal.bp):
+               import_personnel.bp, parametres.bp, journal.bp, entites.bp):
         app.register_blueprint(bp)
 
     from .filters import register_filters

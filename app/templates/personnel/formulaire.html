@@ -26,7 +26,7 @@
              aide="Sert d'identifiant de connexion : un responsable qui a un e-mail reçoit automatiquement son compte.", attrs='maxlength="160" autocomplete="off"') }}
     {{ champ("telephone", "Téléphone", donnees.get('telephone'), erreurs, "tel", attrs='maxlength="40" placeholder="+237 6XX XX XX XX"') }}
     {{ champ("matricule", "Matricule", donnees.get('matricule'), erreurs, requis=employe is not none,
-             aide=("Identifiant unique." if employe else "Laissez vide pour une numérotation automatique (FUT-0001…)."), attrs='maxlength="30" autocomplete="off"') }}
+             aide=("Identifiant unique." if employe else "Laissez vide pour une numérotation automatique (" ~ (entite.code if entite else 'FUT') ~ "-0001…)."), attrs='maxlength="30" autocomplete="off"') }}
     {{ champ("date_embauche", "Date d'embauche", donnees.get('date_embauche'), erreurs, "date") }}
   </div>
 
@@ -50,15 +50,15 @@
     {% if not employe %}
     {% call select_champ("departement_id", "Département") %}
       <option value="">— Aucun —</option>
-      {% for d in departements %}<option value="{{ d.id }}" {% if donnees.get('departement_id') == d.id|string %}selected{% endif %}>{{ d.nom }}{{ " · resp. " ~ d.responsable.nom_complet if d.responsable }}</option>{% endfor %}
+      {% for d in departements %}<option value="{{ d.id }}" {% if donnees.get('departement_id') == d.id|string %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
     {% endcall %}
     {% call select_champ("projet_id", "Projet") %}
       <option value="">— Aucun —</option>
-      {% for p in projets %}<option value="{{ p.id }}" {% if donnees.get('projet_id') == p.id|string %}selected{% endif %}>{{ p.nom }}{{ " · resp. " ~ p.responsable.nom_complet if p.responsable }}</option>{% endfor %}
+      {% for p in projets %}<option value="{{ p.id }}" {% if donnees.get('projet_id') == p.id|string %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
     {% endcall %}
-    {% call select_champ("evaluateur_id", "N+1 (qui le note)", "Laissez vide : le responsable du département ou du projet sera retenu.") %}
-      <option value="">— Responsable de l'entité —</option>
-      {% for x in evaluateurs %}<option value="{{ x.id }}" {% if donnees.get('evaluateur_id') == x.id|string %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}
+    {% call select_champ("evaluateur_id", "N+1 (qui le note)", "Seule cette personne pourra noter le salarié, même s'il est sur le projet d'un autre responsable.") %}
+      <option value="">— À désigner plus tard —</option>
+      {% for ent, membres in groupes_evaluateurs %}<optgroup label="{{ ent.nom }}">{% for x in membres %}<option value="{{ x.id }}" {% if donnees.get('evaluateur_id') == x.id|string %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}</optgroup>{% endfor %}
     {% endcall %}
     {% endif %}
   </div>

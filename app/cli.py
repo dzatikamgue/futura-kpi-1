@@ -9,8 +9,8 @@ import click
 from sqlalchemy import select
 
 from .extensions import db
-from .models import (Affectation, Critere, Departement, Employe, Evaluation,
-                     EvaluationNote, Poste, Projet, Role, StatutEvaluation,
+from .models import (Affectation, Critere, Departement, Employe, Entite, Evaluation,
+                     EvaluationNote, Projet, Role, StatutEvaluation,
                      Utilisateur)
 from .services.notation import calculer_note_globale
 
@@ -26,52 +26,19 @@ CRITERES_DEFAUT = [
 ]
 
 
-POSTES_DEFAUT = [
-    "Directeur général", "Directeur technique", "Directeur administratif et financier",
-    "Responsable ressources humaines", "Comptable", "Assistant(e) administratif(ve)",
-    "Chef de projet", "Conducteur de travaux", "Chef de chantier", "Ingénieur structure",
-    "Ingénieur génie civil", "Ingénieur électricité", "Technicien", "Topographe", "Métreur",
-    "Dessinateur projeteur", "Responsable HSE", "Responsable achats", "Magasinier",
-    "Chauffeur", "Chef d'équipe", "Ouvrier qualifié", "Manœuvre",
-]
-
-
-def creer_postes_defaut():
-    """Ajoute une seule fois la liste de postes par défaut (sans doublon avec l'existant)."""
-    from .models import Parametre
-    from .services.organisation import cle_texte
-    if db.session.get(Parametre, "postes_initialises"):
-        return 0
-    existants = {cle_texte(p.libelle) for p in db.session.scalars(select(Poste))}
-    for (p,) in db.session.execute(select(Employe.poste).where(Employe.poste.isnot(None)).distinct()):
-        if cle_texte(p) not in existants:
-            db.session.add(Poste(libelle=p))
-            existants.add(cle_texte(p))
-    n = 0
-    for lib in POSTES_DEFAUT:
-        if cle_texte(lib) not in existants:
-            db.session.add(Poste(libelle=lib))
-            existants.add(cle_texte(lib))
-            n += 1
-    db.session.add(Parametre(cle="postes_initialises", valeur="1"))
-    return n
-
-
-def creer_criteres_defaut():
-    if db.session.scalar(select(Critere.id).limit(1)):
+def creer_criteres_defaut(entite_id=None):
+    """Grille par défaut d'une entité (None = entité principale), seulement si elle n'en a aucune."""
+    q = select(Critere.id)
+    if entite_id is None:
+        q = q.where(Critere.entite_id.is_(None) | Critere.entite_id.in_(
+            select(Entite.id).where(Entite.principale.is_(True))))
+    else:
+        q = q.where(Critere.entite_id == entite_id)
+    if db.session.scalar(q.limit(1)):
         return 0
     for i, (lib, desc, poids) in enumerate(CRITERES_DEFAUT, 1):
-        db.session.add(Critere(libelle=lib, description=desc, poids=poids, ordre=i))
+        db.session.add(Critere(libelle=lib, description=desc, poids=poids, ordre=i, entite_id=entite_id))
     return len(CRITERES_DEFAUT)
-
-
-def _synchroniser():
-    """Lie les comptes aux fiches par e-mail et crée ceux des responsables, puis valide."""
-    from .services.comptes import synchroniser_comptes
-    stats = synchroniser_comptes()
-    db.session.commit()
-    if stats["lies"] or stats["crees"]:
-        click.echo(f"Comptes : {stats['lies']} lié(s) à une fiche, {stats['crees']} créé(s) pour des responsables.")
 
 
 def register_cli(app):
@@ -83,16 +50,13 @@ def register_cli(app):
         n = creer_criteres_defaut()
         if n:
             click.echo(f"{n} critères KPI par défaut créés.")
-        n = creer_postes_defaut()
-        if n:
-            click.echo(f"{n} postes ajoutés au référentiel.")
         if not email:
-            _synchroniser()
+            db.session.commit()
             click.echo("ADMIN_EMAIL non défini : aucun compte créé.")
             return
         if db.session.scalar(select(Utilisateur).where(Utilisateur.email == email)):
-            _synchroniser()
-            click.echo(f"Le compte {email} existe déjà.")
+            db.session.commit()
+            click.echo(f"Le compte {email} existe déjà (inchangé).")
             return
         if len(mdp) < 10:
             mdp = secrets.token_urlsafe(10)
@@ -100,7 +64,7 @@ def register_cli(app):
         u = Utilisateur(email=email, role=Role.RH, doit_changer_mdp=True, acces_remis_le=date.today())
         u.set_password(mdp)
         db.session.add(u)
-        _synchroniser()
+        db.session.commit()
         click.echo(f"Compte RH créé : {email} (changement de mot de passe exigé à la 1re connexion).")
 
     @app.cli.command("demo")
@@ -179,8 +143,6 @@ def register_cli(app):
         for e in (dt, daf, cp1, cp2, ouvriers[0]):
             compte(e, Role.COLLABORATEUR)
 
-        db.session.flush()
-        creer_postes_defaut()
         criteres = db.session.scalars(select(Critere).order_by(Critere.ordre)).all()
         today = date.today()
         random.seed(42)

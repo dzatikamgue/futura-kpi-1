@@ -56,7 +56,8 @@ def index():
         return fn(f"Suivi des performances {annee}", entetes, lignes, f"suivi_{vue}_{annee}",
                   colonnes_num=num, total=total, sous_titre=sous_titre)
 
-    annees = sorted(set(db.session.scalars(select(Evaluation.annee).distinct())) | {date.today().year}, reverse=True)
+    annees = sorted(set(db.session.scalars(select(Evaluation.annee).where(per.filtre_evaluations()).distinct()))
+                    | {date.today().year}, reverse=True)
     return render_template("suivi.html", data=data, annee=annee, vue=vue, vues=VUES, annees=annees,
                            departements=per.departements_visibles(), projets=per.projets_visibles(),
                            sous_titre=sous_titre)

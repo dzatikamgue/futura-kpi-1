@@ -42,6 +42,43 @@ class Role:
     TOUS = (RH, DIRECTION, COLLABORATEUR)
 
 
+class Entite(Horodatage, db.Model):
+    """Entreprise / filiale du groupe. Les données existantes (entite_id NULL)
+    appartiennent à l'entité principale."""
+    __tablename__ = "entites"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(12), unique=True, nullable=False)
+    nom = db.Column(db.String(120), nullable=False)
+    couleur = db.Column(db.String(7), nullable=False, default="#213E70")  # couleur d'accent (charte)
+    logo = db.Column(db.LargeBinary)          # PNG / JPEG / WEBP, stocké en base (disque Railway éphémère)
+    logo_mime = db.Column(db.String(40))
+    principale = db.Column(db.Boolean, nullable=False, default=False)
+    actif = db.Column(db.Boolean, nullable=False, default=True)
+
+    def __str__(self):
+        return self.nom
+
+
+class RoleEntite:
+    DIRECTION = "direction"
+    COLLABORATEUR = "collaborateur"
+    LIBELLES = {DIRECTION: "Direction", COLLABORATEUR: "Collaborateur"}
+
+
+class AccesEntite(db.Model):
+    """Accès d'un compte à une entité, avec un rôle propre à cette entité."""
+    __tablename__ = "acces_entites"
+
+    utilisateur_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id", ondelete="CASCADE"), primary_key=True)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="CASCADE"), primary_key=True)
+    role = db.Column(db.String(20), nullable=False, default=RoleEntite.COLLABORATEUR)
+
+    entite = db.relationship("Entite")
+
+    __table_args__ = (CheckConstraint("role IN ('direction','collaborateur')", name="ck_acces_role"),)
+
+
 class Utilisateur(UserMixin, Horodatage, db.Model):
     __tablename__ = "utilisateurs"
 
@@ -55,10 +92,14 @@ class Utilisateur(UserMixin, Horodatage, db.Model):
     derniere_connexion = db.Column(db.DateTime)
     echecs_connexion = db.Column(db.Integer, nullable=False, default=0)
     bloque_jusqua = db.Column(db.DateTime)
-    # Date à laquelle la RH a généré le mot de passe à transmettre (None = accès pas encore remis)
+    # Date à laquelle la RH a généré le dernier mot de passe temporaire
     acces_remis_le = db.Column(db.DateTime)
+    # True = compte créé automatiquement, mot de passe pas encore remis.
+    # NULL pour les comptes antérieurs : ils ne sont jamais considérés « en attente ».
+    acces_en_attente = db.Column(db.Boolean)
 
     employe = db.relationship("Employe", back_populates="compte", foreign_keys=[employe_id])
+    acces = db.relationship("AccesEntite", cascade="all, delete-orphan", lazy="selectin")
 
     __table_args__ = (CheckConstraint(f"role IN ('{Role.RH}','{Role.DIRECTION}','{Role.COLLABORATEUR}')",
                                       name="ck_utilisateur_role"),)
@@ -74,12 +115,19 @@ class Utilisateur(UserMixin, Horodatage, db.Model):
         return self.actif
 
     @property
+    def est_superadmin(self) -> bool:
+        """Défini par variable d'environnement (SUPERADMIN_EMAILS, ADMIN_EMAIL) : aucune donnée à modifier."""
+        from flask import current_app
+        return self.email.lower() in current_app.config.get("SUPERADMINS", set())
+
+    @property
     def est_rh(self) -> bool:
-        return self.role == Role.RH
+        """RH du groupe (ou superadmin) : voit et administre toutes les entités."""
+        return self.role == Role.RH or self.est_superadmin
 
     @property
     def voit_tout(self) -> bool:
-        return self.role in (Role.RH, Role.DIRECTION)
+        return self.est_rh
 
     @property
     def nom_affiche(self) -> str:
@@ -87,12 +135,14 @@ class Utilisateur(UserMixin, Horodatage, db.Model):
 
     @property
     def role_libelle(self) -> str:
+        if self.est_superadmin:
+            return "Superadmin"
         return Role.LIBELLES.get(self.role, self.role)
 
     @property
     def en_attente_acces(self) -> bool:
         """Compte créé automatiquement dont le mot de passe n'a pas encore été remis."""
-        return self.actif and self.acces_remis_le is None and self.derniere_connexion is None
+        return bool(self.actif and self.acces_en_attente)
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +152,16 @@ class Departement(Horodatage, db.Model):
     __tablename__ = "departements"
 
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), unique=True, nullable=False)
-    nom = db.Column(db.String(120), unique=True, nullable=False)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="RESTRICT"), index=True)
+    code = db.Column(db.String(20), nullable=False)
+    nom = db.Column(db.String(120), nullable=False)
     responsable_id = db.Column(db.Integer, db.ForeignKey("employes.id", ondelete="SET NULL"))
     actif = db.Column(db.Boolean, nullable=False, default=True)
 
     responsable = db.relationship("Employe", foreign_keys=[responsable_id])
+
+    __table_args__ = (UniqueConstraint("entite_id", "code", name="uq_departements_entite_code"),
+                      UniqueConstraint("entite_id", "nom", name="uq_departements_entite_nom"))
 
     def __str__(self):
         return self.nom
@@ -117,7 +171,8 @@ class Projet(Horodatage, db.Model):
     __tablename__ = "projets"
 
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), unique=True, nullable=False)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="RESTRICT"), index=True)
+    code = db.Column(db.String(20), nullable=False)
     nom = db.Column(db.String(160), nullable=False)
     localisation = db.Column(db.String(160))
     responsable_id = db.Column(db.Integer, db.ForeignKey("employes.id", ondelete="SET NULL"))
@@ -126,6 +181,8 @@ class Projet(Horodatage, db.Model):
     actif = db.Column(db.Boolean, nullable=False, default=True)
 
     responsable = db.relationship("Employe", foreign_keys=[responsable_id])
+
+    __table_args__ = (UniqueConstraint("entite_id", "code", name="uq_projets_entite_code"),)
 
     def __str__(self):
         return self.nom
@@ -136,8 +193,11 @@ class Poste(Horodatage, db.Model):
     __tablename__ = "postes"
 
     id = db.Column(db.Integer, primary_key=True)
-    libelle = db.Column(db.String(120), unique=True, nullable=False)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="CASCADE"), index=True)
+    libelle = db.Column(db.String(120), nullable=False)
     actif = db.Column(db.Boolean, nullable=False, default=True)
+
+    __table_args__ = (UniqueConstraint("entite_id", "libelle", name="uq_postes_entite_libelle"),)
 
     def __str__(self):
         return self.libelle
@@ -147,7 +207,8 @@ class Employe(Horodatage, db.Model):
     __tablename__ = "employes"
 
     id = db.Column(db.Integer, primary_key=True)
-    matricule = db.Column(db.String(30), unique=True, nullable=False, index=True)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="RESTRICT"), index=True)
+    matricule = db.Column(db.String(30), nullable=False, index=True)
     nom = db.Column(db.String(80), nullable=False, index=True)
     prenom = db.Column(db.String(80), nullable=False, default="")
     poste = db.Column(db.String(120))
@@ -163,6 +224,9 @@ class Employe(Horodatage, db.Model):
                                    cascade="all, delete-orphan")
     compte = db.relationship("Utilisateur", back_populates="employe", uselist=False,
                              foreign_keys="Utilisateur.employe_id")
+    entite = db.relationship("Entite")
+
+    __table_args__ = (UniqueConstraint("entite_id", "matricule", name="uq_employes_entite_matricule"),)
 
     @property
     def nom_complet(self) -> str:
@@ -224,13 +288,15 @@ class Critere(Horodatage, db.Model):
     __tablename__ = "criteres"
 
     id = db.Column(db.Integer, primary_key=True)
-    libelle = db.Column(db.String(120), nullable=False, unique=True)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="RESTRICT"), index=True)
+    libelle = db.Column(db.String(120), nullable=False)
     description = db.Column(db.String(400))
     poids = db.Column(db.Integer, nullable=False, default=1)
     ordre = db.Column(db.Integer, nullable=False, default=0)
     actif = db.Column(db.Boolean, nullable=False, default=True)
 
-    __table_args__ = (CheckConstraint("poids BETWEEN 1 AND 5", name="ck_critere_poids"),)
+    __table_args__ = (CheckConstraint("poids BETWEEN 1 AND 5", name="ck_critere_poids"),
+                      UniqueConstraint("entite_id", "libelle", name="uq_criteres_entite_libelle"))
 
 
 class StatutEvaluation:
@@ -323,6 +389,7 @@ class ImportBrouillon(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     utilisateur_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id", ondelete="CASCADE"), nullable=False)
+    entite_id = db.Column(db.Integer, db.ForeignKey("entites.id", ondelete="CASCADE"))
     source_nom = db.Column(db.String(200))
     donnees = db.Column(db.JSON, nullable=False)
     remarques = db.Column(db.Text)

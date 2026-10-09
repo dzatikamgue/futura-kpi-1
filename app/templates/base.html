@@ -9,7 +9,11 @@
   <link rel="alternate icon" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="preload" href="{{ url_for('static', filename='fonts/inter-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=2">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=3">
+  {% if charte %}<style>
+    :root { --brand: {{ charte.brand }}; --brand-hover: {{ charte.brand_hover }}; --brand-soft: {{ charte.brand_soft }}; --brand-ring: {{ charte.brand_ring }}; }
+    :root[data-theme="dark"] { --brand: {{ charte.dark_brand }}; --brand-hover: {{ charte.dark_brand_hover }}; --brand-soft: {{ charte.dark_brand_soft }}; --brand-ring: {{ charte.dark_brand_ring }}; }
+  </style>{% endif %}
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -17,18 +21,20 @@
 {% set nav = nav|default("") %}
 <div class="app">
   <aside class="sidebar" aria-label="Navigation principale">
-    <a class="sidebar__logo" href="{{ url_for('tableau_bord.index') }}" aria-label="Accueil {{ company_name }}">
-      <img class="logo-light" src="{{ url_for('static', filename='img/logo.svg') }}" alt="{{ company_name }}" width="96" height="38">
-      <img class="logo-dark" src="{{ url_for('static', filename='img/logo-white.svg') }}" alt="" width="96" height="38">
+    <a class="sidebar__logo" href="{{ url_for('tableau_bord.index') }}" aria-label="Accueil {{ entite.nom if entite else company_name }}">
+      {% set l1 = logo_entite(entite) %}{% set l2 = logo_entite(entite, True) %}
+      {% if l1 and entite and entite.logo %}<img class="logo-entite" src="{{ l1 }}" alt="{{ entite.nom }}">
+      {% elif l1 %}<img class="logo-light" src="{{ l1 }}" alt="{{ company_name }}" width="96" height="38"><img class="logo-dark" src="{{ l2 }}" alt="" width="96" height="38">
+      {% else %}<span class="logo-texte">{{ entite.nom }}</span>{% endif %}
     </a>
     <div class="sidebar__product">Performance &amp; KPI</div>
     <nav class="nav">
       <a href="{{ url_for('tableau_bord.index') }}" {% if nav == 'tableau' %}aria-current="page"{% endif %}>{{ icon('dashboard') }} Tableau de bord</a>
-      {% if per.est_evaluateur or per.voit_tout %}
+      {% if per.est_evaluateur or per.est_responsable or per.voit_tout %}
       <a href="{{ url_for('evaluations.campagne') }}" {% if nav == 'evaluations' %}aria-current="page"{% endif %}>{{ icon('star') }} Évaluations du mois</a>
       {% endif %}
       <a href="{{ url_for('suivi.index') }}" {% if nav == 'suivi' %}aria-current="page"{% endif %}>{{ icon('chart') }} Suivi trimestriel &amp; annuel</a>
-      <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur else "Ma fiche" }}</a>
+      <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur or per.est_responsable else "Ma fiche" }}</a>
       {% if current_user.est_rh %}
       <div class="nav__section">Administration RH</div>
       <a href="{{ url_for('import_personnel.index') }}" {% if nav == 'import' %}aria-current="page"{% endif %}>{{ icon('upload') }} Importer le personnel</a>
@@ -37,6 +43,7 @@
       <a href="{{ url_for('parametres.postes') }}" {% if nav == 'postes' %}aria-current="page"{% endif %}>{{ icon('list') }} Postes</a>
       <a href="{{ url_for('parametres.criteres') }}" {% if nav == 'criteres' %}aria-current="page"{% endif %}>{{ icon('star') }} Grille KPI</a>
       <a href="{{ url_for('parametres.utilisateurs') }}" {% if nav == 'utilisateurs' %}aria-current="page"{% endif %}>{{ icon('key') }} Comptes &amp; accès</a>
+      <a href="{{ url_for('entites.gestion') }}" {% if nav == 'entites' %}aria-current="page"{% endif %}>{{ icon('building') }} Entités</a>
       <a href="{{ url_for('parametres.claude') }}" {% if nav == 'claude' %}aria-current="page"{% endif %}>{{ icon('sparkles') }} Clé API Claude</a>
       <a href="{{ url_for('journal.index') }}" {% if nav == 'journal' %}aria-current="page"{% endif %}>{{ icon('log') }} Journal des actions</a>
       {% endif %}
@@ -64,13 +71,18 @@
     <header class="topbar">
       <button class="btn btn--ghost btn--icon menu-toggle" type="button" data-nav-toggle aria-expanded="false" aria-label="Ouvrir le menu">{{ icon('menu') }}</button>
       <nav class="breadcrumb" aria-label="Fil d'Ariane">
-        <a href="{{ url_for('tableau_bord.index') }}">Accueil</a>
+        <a href="{{ url_for('tableau_bord.index') }}">{{ entite.nom if entite and onglets_entites|length > 1 else "Accueil" }}</a>
         {% block breadcrumb %}{% endblock %}
       </nav>
       <div class="topbar__actions">
         <button class="btn btn--ghost btn--icon" type="button" data-theme-toggle aria-label="Basculer mode clair / sombre" title="Mode clair / sombre">{{ icon('moon') }}</button>
       </div>
     </header>
+      {% if onglets_entites|length > 1 %}
+      <nav class="entite-tabs" aria-label="Changer d'entité">
+        {% for o in onglets_entites %}<a href="{{ url_for('entites.basculer', entite_id=o.id) }}" {% if entite and o.id == entite.id %}aria-current="true"{% endif %} style="--pastille: {{ o.couleur }}"><span class="pastille" aria-hidden="true"></span>{{ o.nom }}</a>{% endfor %}
+      </nav>
+      {% endif %}
 
     <main class="content" id="contenu" tabindex="-1">
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -89,6 +101,6 @@
 <div class="offline-banner" role="alert">Connexion perdue — vos saisies sont conservées sur cet appareil.</div>
 <div class="loading-overlay" aria-hidden="true"><div class="box"><div class="spinner"></div><strong>Traitement en cours…</strong><p class="muted small" style="margin-top:4px">{% block loading_text %}Merci de patienter.{% endblock %}</p></div></div>
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=2" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=3" defer></script>
 </body>
 </html>

@@ -45,6 +45,11 @@ class Config:
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 
+    # Superadmins : e-mails séparés par des virgules (+ ADMIN_EMAIL). Aucun stockage en base.
+    SUPERADMINS = {e.strip().lower() for e in
+                   (os.environ.get("SUPERADMIN_EMAILS", "") + "," + os.environ.get("ADMIN_EMAIL", "")).split(",")
+                   if e.strip()}
+
     # Identité de l'entreprise
     COMPANY_NAME = os.environ.get("COMPANY_NAME", "FUTURA")
     APP_NAME = "Futura Performance"
@@ -57,6 +62,7 @@ class Config:
 
 class TestConfig(Config):
     TESTING = True
+    SUPERADMINS = {"super@x.cm"}
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     SQLALCHEMY_ENGINE_OPTIONS = {}
     WTF_CSRF_ENABLED = False

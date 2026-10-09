@@ -16,12 +16,12 @@
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
           <td><strong>{{ x.libelle }}</strong></td>
-          <td class="num">{{ effectifs.get(x.libelle, 0) }}</td>
+          <td class="num">{{ x.effectif }}</td>
           <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="actions">
-            <a class="btn btn--ghost btn--sm" href="?modifier={{ x.id }}#formulaire">Renommer</a>
+            {% if x.actif %}<a class="btn btn--ghost btn--sm" href="?modifier={{ x.libelle|urlencode }}#formulaire">Renommer</a>{% endif %}
             <form method="post" style="display:inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ x.id }}"><input type="hidden" name="action" value="basculer">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ x.libelle }}"><input type="hidden" name="action" value="basculer">
               <button class="btn btn--ghost btn--sm" type="submit">{{ "Archiver" if x.actif else "Réactiver" }}</button>
             </form>
           </td>
@@ -35,13 +35,13 @@
   </section>
 
   <section class="card" id="formulaire">
-    <div class="card__head"><h2>{{ "Renommer « " ~ edition.libelle ~ " »" if edition and edition.id else "Nouveau poste" }}</h2>
-      {% if edition and edition.id %}<a class="btn btn--ghost btn--sm" href="{{ request.path }}">Annuler</a>{% endif %}</div>
+    <div class="card__head"><h2>{{ "Renommer « " ~ edition ~ " »" if edition else "Nouveau poste" }}</h2>
+      {% if edition %}<a class="btn btn--ghost btn--sm" href="{{ request.path }}">Annuler</a>{% endif %}</div>
     <form class="card__body stack" method="post" data-validate data-loading>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {% if edition and edition.id %}<input type="hidden" name="id" value="{{ edition.id }}">{% endif %}
+      {% if edition %}<input type="hidden" name="ancien" value="{{ edition }}">{% endif %}
       {{ champ("libelle", "Libellé", donnees.get('libelle'), erreurs, requis=True,
-               aide=("Le nouveau libellé sera appliqué aux fiches qui portent ce poste." if edition and edition.id else "Ex. Conducteur de travaux"), attrs='maxlength="120" autofocus') }}
+               aide=("Le nouveau libellé sera appliqué aux fiches qui portent ce poste." if edition else "Ex. Conducteur de travaux"), attrs='maxlength="120" autofocus') }}
       <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>
     </form>
   </section>

@@ -6,7 +6,7 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">{{ titre }}</span>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ titre }}</h1>
-  <p>Le responsable d'un {{ singulier }} voit et peut noter toutes les personnes qui y sont affectées.</p></div></div>
+  <p>Le responsable d'un {{ singulier }} consulte les notes de ses équipes. La note est donnée par le N+1 désigné sur chaque fiche.</p></div></div>
 
 <div class="grid grid-main">
   <section class="card">
@@ -51,7 +51,7 @@
           <option value="">— Aucun —</option>
           {% for e in employes %}<option value="{{ e.id }}" {% if donnees.get('responsable_id') == e.id|string %}selected{% endif %}>{{ e.nom_complet }}{{ " — " ~ e.poste if e.poste }}</option>{% endfor %}
         </select>
-        <span class="hint">{{ "Chef de projet" if avec_projet else "Chef de département" }} : il voit les notes de ce {{ singulier }}, note par défaut les personnes affectées sans N+1, et reçoit automatiquement son compte (e-mail de sa fiche).</span></div>
+        <span class="hint">{{ "Chef de projet" if avec_projet else "Chef de département" }} : il consulte les notes de ce {{ singulier }}. Il ne note que les personnes dont la RH l'a désigné N+1.</span></div>
       {% if avec_projet %}
       {{ champ("localisation", "Localisation", donnees.get('localisation'), erreurs, attrs='maxlength="160" placeholder="Ex. Douala, Bonapriso"') }}
       <div class="grid grid-2" style="gap:12px">

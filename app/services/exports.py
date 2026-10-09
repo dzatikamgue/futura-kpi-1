@@ -32,12 +32,12 @@ def export_excel(titre: str, entetes: list[str], lignes: list[list], nom: str,
     ws = wb.active
     ws.title = titre[:31]
     ws["A1"] = f"{current_app.config['COMPANY_NAME']} — {titre}"
-    ws["A1"].font = Font(bold=True, size=14, color=BLEU)
+    ws["A1"].font = Font(bold=True, size=14, color=_couleur()[1:])
     ws["A2"] = sous_titre or f"Exporté le {datetime.now():%d/%m/%Y à %H:%M}"
     ws["A2"].font = Font(size=10, color=GRIS)
 
     entete_row = 4
-    fill = PatternFill("solid", fgColor=BLEU)
+    fill = PatternFill("solid", fgColor=_couleur()[1:])
     fin = Side(style="thin", color="D9DCE3")
     for c, h in enumerate(entetes, 1):
         cell = ws.cell(row=entete_row, column=c, value=h)
@@ -81,6 +81,22 @@ def _fmt(v, num):
     return str(v)
 
 
+def _entite():
+    try:
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            from ..permissions import perimetre
+            return perimetre().entite
+    except Exception:
+        pass
+    return None
+
+
+def _couleur() -> str:
+    ent = _entite()
+    return ent.couleur if ent is not None and ent.couleur else "#" + BLEU
+
+
 def export_pdf(titre: str, entetes: list[str], lignes: list[list], nom: str,
                colonnes_num: set[int] | None = None, total: list | None = None,
                sous_titre: str = "", paysage: bool = True):
@@ -91,15 +107,29 @@ def export_pdf(titre: str, entetes: list[str], lignes: list[list], nom: str,
                             topMargin=12 * mm, bottomMargin=14 * mm, title=titre,
                             author=current_app.config["COMPANY_NAME"])
     st_titre = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=15,
-                              textColor=colors.HexColor("#" + BLEU), spaceAfter=2)
+                              textColor=colors.HexColor(_couleur()), spaceAfter=2)
     st_sous = ParagraphStyle("s", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#" + GRIS))
     st_cell = ParagraphStyle("c", fontName="Helvetica", fontSize=8, leading=10)
 
     elements = []
-    logo = os.path.join(current_app.static_folder, "img", "logo.png")
-    if os.path.exists(logo):
-        elements.append(Image(logo, width=42 * mm, height=16 * mm, hAlign="LEFT"))
+    ent = _entite()
+    if ent is not None and ent.logo:
+        # Logo de l'entité, proportions conservées dans un cadre de 42 × 16 mm
+        from reportlab.lib.utils import ImageReader
+        lecteur = ImageReader(io.BytesIO(ent.logo))
+        lw, lh = lecteur.getSize()
+        ratio = min(42 * mm / lw, 16 * mm / lh)
+        elements.append(Image(io.BytesIO(ent.logo), width=lw * ratio, height=lh * ratio, hAlign="LEFT"))
         elements.append(Spacer(1, 4 * mm))
+    elif ent is None or ent.principale:
+        logo = os.path.join(current_app.static_folder, "img", "logo.png")
+        if os.path.exists(logo):
+            elements.append(Image(logo, width=42 * mm, height=16 * mm, hAlign="LEFT"))
+            elements.append(Spacer(1, 4 * mm))
+    else:
+        elements.append(Paragraph(ent.nom, ParagraphStyle("e", fontName="Helvetica-Bold", fontSize=13,
+                                                          textColor=colors.HexColor(ent.couleur))))
+        elements.append(Spacer(1, 3 * mm))
     elements.append(Paragraph(titre, st_titre))
     elements.append(Paragraph(sous_titre or f"Édité le {datetime.now():%d/%m/%Y à %H:%M}", st_sous))
     elements.append(Spacer(1, 5 * mm))
@@ -120,7 +150,7 @@ def export_pdf(titre: str, entetes: list[str], lignes: list[list], nom: str,
 
     t = Table(data, colWidths=widths, repeatRows=1)
     style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#" + BLEU)),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_couleur())),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),

@@ -6,10 +6,10 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Comptes &amp; accès</h1>
-    <p>L'identifiant de chaque personne est l'e-mail de sa fiche. Tout salarié qui a des N-1 à noter reçoit automatiquement son compte.</p></div>
+    <p>L'identifiant de chaque personne est l'e-mail de sa fiche. Tout salarié désigné N+1 par la RH reçoit automatiquement son compte.</p></div>
   <form class="page-head__actions" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="synchroniser">
-    <button class="btn btn--ghost" type="submit" title="Relie les comptes aux fiches par e-mail et crée ceux des responsables">{{ icon('users') }} Resynchroniser</button>
+    <button class="btn btn--ghost" type="submit" title="Relie les comptes aux fiches par e-mail et crée ceux des N+1 désignés">{{ icon('users') }} Resynchroniser</button>
   </form>
 </div>
 
@@ -27,14 +27,14 @@
 
 {% if nb_attente %}
 <div class="alert alert--warn" style="margin-bottom:16px;align-items:center">{{ icon('key') }}
-  <span style="flex:1"><strong>{{ nb_attente }} responsable(s)</strong> ont un compte mais n'ont pas encore reçu leur mot de passe.</span>
+  <span style="flex:1"><strong>{{ nb_attente }} N+1</strong> ont un compte mais n'ont pas encore reçu leur mot de passe.</span>
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="generer_attente">
     <button class="btn btn--primary btn--sm" type="submit">Générer les accès</button></form>
 </div>
 {% endif %}
 {% if resp_sans_email %}
 <div class="alert alert--info" style="margin-bottom:16px">{{ icon('info') }}
-  <span>Ces responsables n'ont pas d'e-mail, donc pas de compte :
+  <span>Ces N+1 n'ont pas d'e-mail, donc pas de compte :
     {% for e in resp_sans_email %}<a href="{{ url_for('personnel.modifier', employe_id=e.id) }}">{{ e.nom_complet }}</a>{{ ", " if not loop.last }}{% endfor %}.
     Ajoutez leur e-mail sur la fiche.</span>
 </div>
@@ -44,22 +44,25 @@
   <section class="card">
     {% if comptes %}
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>Personne</th><th>Rôle</th><th class="hide-mobile">Dernière connexion</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th>Personne</th><th>Rôle</th><th>Entités</th><th class="hide-mobile">Dernière connexion</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
       {% for u in comptes %}
       <tr {% if not u.actif %}style="opacity:.6"{% endif %}>
         <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ u.employe.initiales if u.employe else u.email[:2]|upper }}</div>
           <div><strong>{% if u.employe %}<a href="{{ url_for('personnel.fiche', employe_id=u.employe.id) }}">{{ u.nom_affiche }}</a>{% else %}{{ u.email }}{% endif %}</strong>
-            <span>{% if u.employe %}{{ u.email }}{% if u.employe_id in responsables %} · a des N-1{% endif %}{% else %}<span style="color:var(--warn)">Non lié à une fiche : ne peut noter personne</span>{% endif %}</span></div></div></td>
+            <span>{% if u.employe %}{{ u.email }}{% if u.employe_id in responsables %} · N+1 désigné{% endif %}{% else %}<span style="color:var(--warn)">Non lié à une fiche : ne peut noter personne</span>{% endif %}</span></div></div></td>
         <td>
-          {% if u.id != current_user.id %}
+          {% if u.id != current_user.id and not u.est_superadmin and (current_user.est_superadmin or u.role != 'rh') %}
           <form method="post" class="row"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="role">
             <label class="sr-only" for="role-{{ u.id }}">Rôle</label>
             <select class="select select--sm" id="role-{{ u.id }}" name="role" data-autosubmit style="width:auto">
-              {% for k, l in roles.items() %}<option value="{{ k }}" {% if u.role == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+              {% for k, l in roles.items() %}{% if k != 'rh' or current_user.est_superadmin %}<option value="{{ k }}" {% if u.role == k %}selected{% endif %}>{{ "RH du groupe" if k == 'rh' else l }}</option>{% endif %}{% endfor %}
             </select></form>
-          {% else %}{{ u.role_libelle }} <span class="muted small">(vous)</span>{% endif %}
+          {% else %}{{ "RH du groupe" if u.role == 'rh' and not u.est_superadmin else u.role_libelle }}{% if u.id == current_user.id %} <span class="muted small">(vous)</span>{% endif %}{% endif %}
         </td>
+        <td>{% if u.est_rh %}<span class="small muted">Toutes ({{ nb_entites }})</span>
+          {% else %}<div class="row" style="gap:4px;flex-wrap:wrap">{% for e, r in entites_compte.get(u.id, []) %}<span class="badge badge--plain" title="{{ 'Direction' if r == 'direction' else 'Collaborateur' }}"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:{{ e.couleur }}"></span> {{ e.code }}{{ " · Dir." if r == 'direction' }}</span>{% endfor %}
+            <a class="btn btn--ghost btn--sm" href="{{ url_for('entites.acces', utilisateur_id=u.id) }}">Gérer</a></div>{% endif %}</td>
         <td class="hide-mobile">{{ u.derniere_connexion|date_fr(True) }}</td>
         <td>{% if not u.actif %}<span class="badge badge--plain">Désactivé</span>{% elif u.en_attente_acces %}<span class="badge badge--warn">Accès à remettre</span>{% elif u.doit_changer_mdp %}<span class="badge badge--info">1re connexion</span>{% else %}<span class="badge badge--ok">Actif</span>{% endif %}</td>
         <td class="actions">
@@ -93,16 +96,17 @@
           {% if erreurs.get('employe_id') %}<span class="error">{{ erreurs.employe_id }}</span>{% endif %}</div>
         <div class="field"><label for="f-role">Rôle<span class="req">*</span></label>
           <select class="select" id="f-role" name="role" required>
-            {% for k, l in roles.items() %}<option value="{{ k }}" {% if donnees.get('role', 'collaborateur') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
-          </select></div>
+            {% for k, l in roles.items() %}{% if k != 'rh' or current_user.est_superadmin %}<option value="{{ k }}" {% if donnees.get('role', 'collaborateur') == k %}selected{% endif %}>{{ "RH du groupe" if k == 'rh' else l }}</option>{% endif %}{% endfor %}
+          </select>
+          <span class="hint">Rôle dans l'entité du salarié ({{ entite.nom }}). Les autres entités se règlent ensuite avec « Gérer ».</span></div>
         <div class="form-actions" style="padding-top:4px"><button class="btn btn--primary" type="submit">Créer et afficher le mot de passe</button></div>
       </form>
     </section>
     <section class="card">
       <div class="card__body small ink-2 stack">
-        <p><strong class="ink">Ressources humaines</strong> : voit tout, administre.</p>
-        <p><strong class="ink">Direction</strong> : voit toutes les notes, note ses N-1.</p>
-        <p><strong class="ink">Collaborateur</strong> : note ses N-1, ne voit que son périmètre.</p>
+        <p><strong class="ink">Superadmin</strong> (variable SUPERADMIN_EMAILS / ADMIN_EMAIL) : tout, y compris nommer la RH.</p>
+        <p><strong class="ink">RH du groupe</strong> : voit et administre toutes les entités, crée des entités.</p>
+        <p><strong class="ink">Direction / Collaborateur</strong> : rôle par entité, réglé avec « Gérer » dans la colonne Entités.</p>
       </div>
     </section>
   </div>

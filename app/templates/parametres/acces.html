@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "utilisateurs" %}
+{% block title %}Accès de {{ u.nom_affiche }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('parametres.utilisateurs') }}">Comptes &amp; accès</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ u.nom_affiche }}</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Accès de {{ u.nom_affiche }}</h1>
+  <p>Identifiant <span class="code">{{ u.email }}</span>. Choisissez les entités visibles par ce compte et son rôle dans chacune.</p></div></div>
+<form class="card" method="post" style="max-width:860px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Entité</th><th>Rôle dans l'entité</th><th>Accès actuel</th></tr></thead>
+    <tbody>
+    {% for e in entites %}
+    {% set eff = roles_effectifs.get(e.id) %}
+    <tr>
+      <td><div class="cell-main"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ e.couleur }}"></span>
+        <div><strong>{{ e.nom }}</strong>{% if rattachement == e.id %}<span>Entité de rattachement (fiche salarié)</span>{% endif %}</div></div></td>
+      <td>
+        <label class="sr-only" for="r-{{ e.id }}">Rôle dans {{ e.nom }}</label>
+        <select class="select select--sm" id="r-{{ e.id }}" name="role_{{ e.id }}" style="width:auto">
+          <option value="">{{ "— Par défaut —" if rattachement == e.id else "— Aucun accès —" }}</option>
+          {% for k, l in roles.items() %}<option value="{{ k }}" {% if explicites.get(e.id) == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+      </td>
+      <td>{% if eff == "direction" %}<span class="badge badge--info">Direction</span>{% elif eff == "collaborateur" %}<span class="badge badge--ok">Collaborateur</span>{% else %}<span class="muted small">Aucun</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="card__body small ink-2 stack" style="gap:6px">
+    <p><strong class="ink">Direction</strong> : voit toutes les notes de l'entité et note ses N-1 désignés.</p>
+    <p><strong class="ink">Collaborateur</strong> : note ses N-1 désignés, consulte les projets / départements qu'il dirige.</p>
+    <p class="muted">Un N+1 désigné dans une autre entité y obtient automatiquement un accès limité aux personnes qu'il note.</p>
+  </div>
+  <div class="card__foot form-actions">
+    <a class="btn btn--ghost" href="{{ url_for('parametres.utilisateurs') }}">Annuler</a>
+    <button class="btn btn--primary" type="submit">Enregistrer les accès</button>
+  </div>
+</form>
+{% endblock %}

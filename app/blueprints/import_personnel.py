@@ -11,12 +11,15 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import func, select
 
 from ..extensions import db
-from ..models import Affectation, Departement, Employe, ImportBrouillon, Projet
+from ..models import (Affectation, Departement, Employe, Entite, ImportBrouillon,
+                      Projet)
+from ..permissions import perimetre
 from ..permissions import rh_requis
 from ..services.audit import journaliser
 from ..services.comptes import synchroniser_comptes
 from ..services.organisation import (affecter, cle_texte, matricule_auto,
                                      poste_canonique, postes_actifs)
+from ..services.entites import cond_entite, id_effectif
 from ..services.reglages import cle_api
 from ..services.import_ia import (CHAMPS, ENTETES_MODELE, ErreurImport,
                                   extraire_personnel, lire_tableur_modele)
@@ -111,7 +114,8 @@ def analyser():
 
     # On ne garde qu'un brouillon par utilisateur
     db.session.execute(db.delete(ImportBrouillon).where(ImportBrouillon.utilisateur_id == current_user.id))
-    b = ImportBrouillon(utilisateur_id=current_user.id, source_nom=nom or "Texte collé",
+    b = ImportBrouillon(utilisateur_id=current_user.id, entite_id=perimetre().entite_id,
+                        source_nom=nom or "Texte collé",
                         donnees={"personnes": personnes, "methode": methode}, remarques=remarques)
     db.session.add(b)
     journaliser("import_analyse", b.source_nom, f"{len(personnes)} lignes ({methode})")
@@ -126,13 +130,15 @@ def _brouillon(brouillon_id):
     return b
 
 
-def _annoter(personnes):
+def _annoter(personnes, eid):
     """Prépare les listes déroulantes de chaque ligne et signale ce qui va se passer."""
     matricules = {m for m in (p.get("matricule") for p in personnes) if m}
     existants = {e.matricule for e in db.session.scalars(
-        select(Employe).where(Employe.matricule.in_(matricules or {"-"})))}
-    tous = db.session.scalars(select(Employe).where(Employe.actif.is_(True))
-                              .order_by(Employe.nom, Employe.prenom)).all()
+        select(Employe).where(Employe.matricule.in_(matricules or {"-"}), cond_entite(Employe.entite_id, eid)))}
+    # N+1 possibles : personnel de l'entité d'abord, puis du reste du groupe (N+1 croisé autorisé)
+    tous = sorted(db.session.scalars(select(Employe).where(Employe.actif.is_(True))
+                                     .order_by(Employe.nom, Employe.prenom)).all(),
+                  key=lambda x: id_effectif(x.entite_id) != eid)
     emp_par_cle = {}
     for e in tous:
         for k in (e.matricule.lower(), _cle(f"{e.nom} {e.prenom}"), _cle(f"{e.prenom} {e.nom}")):
@@ -147,12 +153,13 @@ def _annoter(personnes):
 
     def index_ctx(model):
         idx = {}
-        for x in db.session.scalars(select(model).where(model.actif.is_(True)).order_by(model.nom)):
+        for x in db.session.scalars(select(model).where(model.actif.is_(True), cond_entite(model.entite_id, eid))
+                                    .order_by(model.nom)):
             idx[_cle(x.nom)] = x.nom
             idx.setdefault(_cle(x.code), x.nom)
         return idx
     deps, projs = index_ctx(Departement), index_ctx(Projet)
-    postes = {_cle(x.libelle): x.libelle for x in postes_actifs()}
+    postes = {_cle(x): x for x in postes_actifs(eid)}
 
     for p in personnes:
         p["_existe"] = bool(p.get("matricule") and p["matricule"] in existants)
@@ -165,7 +172,7 @@ def _annoter(personnes):
         if not brut:
             p["_n1_val"], p["_n1_ok"] = "", True
         elif k in emp_par_cle:
-            p["_n1_val"], p["_n1_ok"] = emp_par_cle[k].matricule, True
+            p["_n1_val"], p["_n1_ok"] = f"id:{emp_par_cle[k].id}", True
         elif _cle(brut) in import_par_cle or brut.lower() in import_par_cle:
             p["_n1_val"], p["_n1_ok"] = import_par_cle.get(_cle(brut)) or import_par_cle[brut.lower()], True
         else:
@@ -175,6 +182,7 @@ def _annoter(personnes):
         "departements": sorted(set(deps.values()), key=str.lower),
         "projets": sorted(set(projs.values()), key=str.lower),
         "employes": tous,
+        "eid": eid,
         "importes": sorted(set(import_par_cle.values()), key=str.lower),
     }
     return personnes, listes
@@ -185,24 +193,24 @@ def _annoter(personnes):
 @rh_requis
 def verifier(brouillon_id):
     b = _brouillon(brouillon_id)
-    personnes, listes = _annoter([dict(p) for p in b.donnees.get("personnes", [])])
+    personnes, listes = _annoter([dict(p) for p in b.donnees.get("personnes", [])], id_effectif(b.entite_id))
     return render_template("import/verifier.html", b=b, personnes=personnes, champs=CHAMPS,
                            methode=b.donnees.get("methode", "claude"), **listes)
 
 
-def _trouver_ou_creer(model, libelle, creer, cache):
+def _trouver_ou_creer(model, libelle, creer, cache, eid):
     k = _cle(libelle)
     if not k:
         return None
     if k in cache:
         return cache[k]
-    obj = db.session.scalar(select(model).where(or_ci(model, libelle)))
+    obj = db.session.scalar(select(model).where(or_ci(model, libelle), cond_entite(model.entite_id, eid)))
     if not obj and creer:
         base = "".join(c for c in unicodedata.normalize("NFKD", libelle.upper()) if c.isalnum())[:8] or "CTX"
         code, i = base, 2
-        while db.session.scalar(select(model.id).where(model.code == code)):
+        while db.session.scalar(select(model.id).where(model.code == code, cond_entite(model.entite_id, eid))):
             code, i = f"{base[:6]}{i}", i + 1
-        obj = model(code=code, nom=libelle.strip())
+        obj = model(code=code, nom=libelle.strip(), entite_id=eid)
         db.session.add(obj)
         db.session.flush()
         journaliser(f"{model.__tablename__[:-1]}_cree", obj.nom, "via import")
@@ -221,6 +229,8 @@ def or_ci(model, libelle):
 @rh_requis
 def valider(brouillon_id):
     b = _brouillon(brouillon_id)
+    eid = id_effectif(b.entite_id)
+    entite = db.session.get(Entite, eid)
     n = request.form.get("nb_lignes", type=int) or 0
     creer_ctx = request.form.get("creer_contextes") == "1"
     maj = request.form.get("mettre_a_jour") == "1"
@@ -243,18 +253,20 @@ def valider(brouillon_id):
     try:
         # Passe 1 : salariés
         for p in lignes:
-            e = db.session.scalar(select(Employe).where(Employe.matricule == p["matricule"])) if p["matricule"] else None
+            e = db.session.scalar(select(Employe).where(Employe.matricule == p["matricule"],
+                                                        cond_entite(Employe.entite_id, eid))) if p["matricule"] else None
             if e and not maj:
                 stats["ignores"] += 1
             elif e:
                 e.nom, e.prenom = p["nom"].upper(), p["prenom"]
-                e.poste = poste_canonique(p["poste"], creer_ctx) or e.poste
+                e.poste = poste_canonique(p["poste"], creer_ctx, eid) or e.poste
                 e.email = (p["email"].lower() or e.email)
                 e.telephone = p["telephone"] or e.telephone
                 stats["maj"] += 1
             else:
-                e = Employe(matricule=p["matricule"] or matricule_auto(utilises), nom=p["nom"].upper(),
-                            prenom=p["prenom"], poste=poste_canonique(p["poste"], creer_ctx),
+                e = Employe(entite_id=eid, matricule=p["matricule"] or matricule_auto(entite, utilises),
+                            nom=p["nom"].upper(),
+                            prenom=p["prenom"], poste=poste_canonique(p["poste"], creer_ctx, eid),
                             email=p["email"].lower() or None, telephone=p["telephone"] or None)
                 db.session.add(e)
                 stats["crees"] += 1
@@ -263,13 +275,17 @@ def valider(brouillon_id):
         db.session.flush()
 
         # Passe 2 : affectations et N+1 (le N+1 peut être dans le même fichier)
-        tous = db.session.scalars(select(Employe)).all()
-        index = {e.matricule.lower(): e for e in tous}
-        index.update({_cle(f"{e.nom} {e.prenom}"): e for e in tous})
-        index.update({_cle(f"{e.prenom} {e.nom}"): e for e in tous})
+        concernes = set()
+        # Index N+1 : le personnel de l'entité est prioritaire sur le reste du groupe
+        tous = sorted(db.session.scalars(select(Employe)).all(), key=lambda x: id_effectif(x.entite_id) == eid)
+        index = {}
+        for x in tous:
+            index.update({x.matricule.lower(): x, _cle(f"{x.nom} {x.prenom}"): x, _cle(f"{x.prenom} {x.nom}"): x})
         for e, p in employes_lignes:
             n1 = None
-            if p["n_plus_1"]:
+            if p["n_plus_1"].startswith("id:") and p["n_plus_1"][3:].isdigit():
+                n1 = db.session.get(Employe, int(p["n_plus_1"][3:]))
+            elif p["n_plus_1"]:
                 n1 = index.get(p["n_plus_1"].lower()) or index.get(_cle(p["n_plus_1"]))
             if p["n_plus_1"] and not n1:
                 stats["n1_non_trouves"] += 1
@@ -279,7 +295,7 @@ def valider(brouillon_id):
                                                  (Projet, "projet_id", p["projet"], cache_proj)):
                 if not libelle:
                     continue
-                ctx = _trouver_ou_creer(model, libelle, creer_ctx, cache)
+                ctx = _trouver_ou_creer(model, libelle, creer_ctx, cache, eid)
                 if not ctx:
                     continue
                 deja = db.session.scalar(select(Affectation.id).where(
@@ -288,7 +304,8 @@ def valider(brouillon_id):
                          evaluateur_id=n1.id if n1 else None)
                 if not deja:
                     stats["affectations"] += 1
-        comptes = synchroniser_comptes()
+            concernes.update({e.id, n1.id if n1 else None})
+        comptes = synchroniser_comptes(concernes)
         journaliser("import_valide", b.source_nom,
                     ", ".join(f"{k}={v}" for k, v in stats.items()))
         db.session.delete(b)

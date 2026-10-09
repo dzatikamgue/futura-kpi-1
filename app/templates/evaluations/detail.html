@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon, note, badge_niveau, badge_statut with context %}
-{% set nav = "evaluations" if per.est_evaluateur or per.voit_tout else "personnel" %}
+{% set nav = "evaluations" if per.est_evaluateur or per.est_responsable or per.voit_tout else "personnel" %}
 {% block title %}Évaluation {{ ev.employe.nom_complet }} — {{ periode }}{% endblock %}
 {% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.fiche', employe_id=ev.employe_id) }}">{{ ev.employe.nom_complet }}</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ periode }}</span>{% endblock %}
 {% block content %}

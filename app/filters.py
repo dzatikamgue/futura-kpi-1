@@ -64,13 +64,30 @@ def register_filters(app):
         args.update({k: v for k, v in kw.items()})
         return url_for(request.endpoint, **(request.view_args or {}), **args)
 
+    def logo_entite(e, blanc=False):
+        """URL du logo d'une entité : logo importé, sinon logo FUTURA pour l'entité principale."""
+        if e is not None and e.logo:
+            return url_for("entites.logo", entite_id=e.id, v=int(e.updated_at.timestamp()))
+        if e is None or e.principale:
+            return url_for("static", filename="img/logo-white.svg" if blanc else "img/logo.svg")
+        return None
+
     @app.context_processor
     def globals_gabarits():
-        per = None
+        per = entite = None
+        onglets, charte = [], None
         if current_user.is_authenticated:
             from .permissions import perimetre
+            from .services.entites import entites_accessibles, palette
             per = perimetre()
+            entite = per.entite
+            onglets = entites_accessibles(current_user)
+            charte = palette(entite.couleur if entite else None)
         return {
+            "entite": entite,
+            "onglets_entites": onglets,
+            "charte": charte,
+            "logo_entite": logo_entite,
             "app_name": app.config["APP_NAME"],
             "company_name": app.config["COMPANY_NAME"],
             "per": per,

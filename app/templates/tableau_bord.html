@@ -22,7 +22,7 @@
   </form>
 </div>
 
-{% if per.voit_tout or per.est_evaluateur %}
+{% if per.voit_tout or per.est_evaluateur or per.est_responsable %}
 <div class="grid grid-4" style="margin-bottom:16px">
   <div class="card kpi">
     <div class="kpi__label">Taux de complétion</div>
@@ -109,10 +109,10 @@
 
   {% if contextes %}
   <section class="card">
-    <div class="card__head"><div><h2>Moyennes par entité</h2><p>{{ periode }}</p></div></div>
+    <div class="card__head"><div><h2>Moyennes par département et projet</h2><p>{{ periode }}</p></div></div>
     {% if contextes.departements or contextes.projets %}
     <div class="table-wrap"><table class="table table--compact">
-      <thead><tr><th>Entité</th><th class="num">Évaluations</th><th class="num">Moyenne</th><th>Niveau</th></tr></thead>
+      <thead><tr><th>Département / projet</th><th class="num">Évaluations</th><th class="num">Moyenne</th><th>Niveau</th></tr></thead>
       <tbody>
         {% for d in contextes.departements %}<tr><td><span class="muted small">Dépt.</span> {{ d.nom }}</td><td class="num">{{ d.nb }}</td><td class="num">{{ d.moyenne|note }}</td><td>{{ badge_niveau(d.moyenne) }}</td></tr>{% endfor %}
         {% for p in contextes.projets %}<tr><td><span class="muted small">Projet</span> {{ p.nom }}</td><td class="num">{{ p.nb }}</td><td class="num">{{ p.moyenne|note }}</td><td>{{ badge_niveau(p.moyenne) }}</td></tr>{% endfor %}
@@ -136,7 +136,7 @@
       {% endfor %}
     </ul>
   </section>
-  {% elif not per.voit_tout and not per.est_evaluateur %}
+  {% elif not per.voit_tout and not per.est_evaluateur and not per.est_responsable %}
   <section class="card">{{ vide("Aucune évaluation pour le moment", "Vos évaluations mensuelles apparaîtront ici dès que votre N+1 les aura soumises.", "star") }}</section>
   {% endif %}
 </div>

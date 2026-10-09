@@ -79,6 +79,40 @@
     sel.addEventListener("change", maj);
     maj();
   });
+  // Création d'entité : aperçu du logo et couleur de charte déduite du logo
+  $$("form[data-charte]").forEach(function (form) {
+    var fichier = $("[data-logo-input]", form), couleur = $("[data-couleur-input]", form),
+        auto = $("[data-couleur-auto]", form), img = $("[data-apercu-logo]", form), bouton = $("[data-apercu-bouton]", form);
+    function peindre() { if (bouton) bouton.style.background = couleur.value; }
+    function dominante(image) {
+      var c = document.createElement("canvas"), n = 64; c.width = n; c.height = n;
+      var ctx = c.getContext("2d"); ctx.drawImage(image, 0, 0, n, n);
+      var d = ctx.getImageData(0, 0, n, n).data, comptes = {}, best = null, max = 0;
+      for (var i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        var r = d[i], g = d[i + 1], b = d[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        var l = (mx + mn) / 510, s = mx === mn ? 0 : (mx - mn) / (255 - Math.abs(mx + mn - 255));
+        if (s < .25 || l > .85 || l < .12) continue;
+        var k = (r >> 4) + "," + (g >> 4) + "," + (b >> 4);
+        comptes[k] = (comptes[k] || 0) + 1;
+        if (comptes[k] > max) { max = comptes[k]; best = [r, g, b]; }
+      }
+      if (!best) return null;
+      // Assombrit si besoin pour garder un bon contraste avec le texte blanc
+      var lum = (0.299 * best[0] + 0.587 * best[1] + 0.114 * best[2]) / 255, f = lum > .55 ? .55 / lum : 1;
+      return "#" + best.map(function (v) { return ("0" + Math.round(v * f).toString(16)).slice(-2); }).join("").toUpperCase();
+    }
+    if (fichier) fichier.addEventListener("change", function () {
+      var f = fichier.files && fichier.files[0];
+      if (!f) return;
+      var url = URL.createObjectURL(f);
+      img.onload = function () {
+        if (auto && auto.checked) { var c = dominante(img); if (c) { couleur.value = c; peindre(); } }
+      };
+      img.src = url; img.hidden = false;
+    });
+    if (couleur) couleur.addEventListener("input", function () { if (auto) auto.checked = false; peindre(); });
+  });
   $$("[data-autosubmit]").forEach(function (el) {
     el.addEventListener("change", function () { el.form && el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit(); });
   });

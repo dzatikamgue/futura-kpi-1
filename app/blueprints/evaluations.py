@@ -12,6 +12,7 @@ from ..models import (Affectation, Critere, Employe, Evaluation,
                       EvaluationNote, StatutEvaluation, utcnow)
 from ..permissions import perimetre, rh_requis
 from ..services.audit import journaliser
+from ..services.entites import cond_entite, id_effectif
 from ..services.exports import export_excel
 from ..services.notation import (NOTE_MAX, NOTE_MIN, SEUIL_JUSTIFICATION,
                                  calculer_note_globale, libelle_periode,
@@ -105,8 +106,11 @@ def campagne():
         departements=per.departements_visibles(), projets=per.projets_visibles())
 
 
-def _criteres_pour(ev):
-    actifs = db.session.scalars(select(Critere).where(Critere.actif.is_(True)).order_by(Critere.ordre, Critere.id)).all()
+def _criteres_pour(ev, aff):
+    """Grille de l'entité du salarié noté (chaque entité a sa propre grille)."""
+    eid = id_effectif(aff.employe.entite_id)
+    actifs = db.session.scalars(select(Critere).where(Critere.actif.is_(True), cond_entite(Critere.entite_id, eid))
+                                .order_by(Critere.ordre, Critere.id)).all()
     if ev and ev.est_soumise:
         return [n.critere for n in ev.notes]
     ids = {c.id for c in actifs}
@@ -130,7 +134,7 @@ def noter(affectation_id):
         return redirect(url_for("evaluations.detail", evaluation_id=ev.id))
     modifiable = periode_ouverte(annee, mois) or (ev is not None and ev.rouverte)
 
-    criteres = _criteres_pour(ev)
+    criteres = _criteres_pour(ev, aff)
     notes_existantes = {n.critere_id: n for n in (ev.notes if ev else [])}
     erreurs, valeurs = {}, {}
 

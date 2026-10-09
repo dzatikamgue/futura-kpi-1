@@ -29,7 +29,7 @@
     <div class="toolbar">
       <label class="checkbox"><input type="checkbox" checked data-check-all=".chk-ligne"> Tout sélectionner</label>
       <span class="spacer"></span>
-      <span class="small muted">Matricule vide = généré automatiquement (FUT-0001…)</span>
+      <span class="small muted">Matricule vide = généré automatiquement ({{ entite.code if entite else "FUT" }}-0001…)</span>
     </div>
     <div class="table-wrap"><table class="table table--compact">
       <thead><tr>
@@ -51,10 +51,10 @@
         {{ liste(i, "departement", p, departements, 170, "Département") }}
         {{ liste(i, "projet", p, projets, 170, "Projet") }}
         <td><select class="select select--sm" name="r{{ i }}_n_plus_1" style="min-width:190px" aria-label="N+1 ligne {{ i + 1 }}">
-          <option value="">— Responsable de l'entité —</option>
+          <option value="">— À désigner —</option>
           {% if not p._n1_ok %}<option value="{{ p._n1_val }}" selected>⚠ {{ p._n1_val }} (introuvable)</option>{% endif %}
           {% if importes %}<optgroup label="Dans ce fichier">{% for n in importes %}<option value="{{ n }}" {% if p._n1_ok and p._n1_val == n %}selected{% endif %}>{{ n }}</option>{% endfor %}</optgroup>{% endif %}
-          {% if employes %}<optgroup label="Personnel existant">{% for x in employes %}<option value="{{ x.matricule }}" {% if p._n1_ok and p._n1_val == x.matricule %}selected{% endif %}>{{ x.nom_complet }} · {{ x.matricule }}</option>{% endfor %}</optgroup>{% endif %}
+          {% if employes %}<optgroup label="Personnel du groupe">{% for x in employes %}<option value="id:{{ x.id }}" {% if p._n1_ok and p._n1_val == "id:" ~ x.id %}selected{% endif %}>{{ x.nom_complet }} · {{ x.matricule }}{% if x.entite and x.entite.id != eid %} ({{ x.entite.nom }}){% endif %}</option>{% endfor %}</optgroup>{% endif %}
         </select></td>
         <td style="min-width:200px">
           {% if p._existe %}<span class="badge badge--info">Matricule existant</span>{% else %}<span class="badge badge--ok">Nouveau</span>{% endif %}

@@ -28,8 +28,8 @@ def app():
     # comme le ferait un vrai serveur.
     def _isoler_requete():
         from flask import g
-        g.pop("_login_user", None)
-        g.pop("_perimetre", None)
+        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale"):
+            g.pop(k, None)
     # Doit passer avant les autres before_request de l'application
     app.before_request_funcs.setdefault(None, []).insert(0, _isoler_requete)
 
@@ -321,8 +321,12 @@ def test_creation_salarie_avec_rattachement_et_poste(app):
     e = db.session.scalar(select(Employe).where(Employe.nom == "ONDOA"))
     assert e.matricule.startswith("FUT-") and e.poste == "Grutier"
     assert db.session.scalar(select(Poste).where(Poste.libelle == "Grutier"))
-    # Sans N+1 choisi : le responsable du département note
-    assert e.affectations[0].evaluateur_id == tech.responsable_id
+    # Sans N+1 choisi par la RH : personne n'est désigné (aucune déduction automatique)
+    assert e.affectations[0].evaluateur_id is None
+    r = c.post("/personnel/nouveau", data={"nom": "Mvogo", "departement_id": str(tech.id),
+                                          "evaluateur_id": str(db.session.scalar(select(Employe.id).where(Employe.nom == "FOTSO")))})
+    mvogo = db.session.scalar(select(Employe).where(Employe.nom == "MVOGO"))
+    assert mvogo.affectations[0].evaluateur.nom == "FOTSO"
     # E-mail en double refusé (c'est l'identifiant de connexion)
     r = c.post("/personnel/nouveau", data={"nom": "Doublon", "email": email_de("FOTSO")})
     assert r.status_code == 200 and "déjà utilisé" in r.get_data(as_text=True)
@@ -446,3 +450,203 @@ def test_repli_tool_choice_refuse(app, monkeypatch):
     r = c.post("/import/analyser", data={"texte": "TEST Un"}, content_type="multipart/form-data")
     assert r.status_code == 302 and "/verifier" in r.location
     assert appels == ["tool", "auto"]
+
+
+# ---------------------------------------------------------------- seul le N+1 désigné note
+def test_seul_le_n1_designe_note(app):
+    from app.models import Projet
+    bali = db.session.scalar(select(Projet).where(Projet.code == "BALI"))
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))   # chef du projet BALI
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))  # hors du projet
+    owona = db.session.scalar(select(Employe).where(Employe.nom == "OWONA"))
+    aff = next(a for a in owona.affectations if a.projet_id == bali.id)
+    aff.evaluateur_id = tchoua.id   # la RH désigne quelqu'un d'un autre périmètre
+    db.session.commit()
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+
+    # Le chef de projet voit la ligne mais ne peut pas noter
+    c = app.test_client()
+    login(c, fotso.email)
+    page = c.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
+    assert "OWONA" in page
+    assert f"/evaluations/noter/{aff.id}" not in page
+    assert c.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}").status_code == 403
+
+    # Le N+1 désigné note, même s'il n'est pas sur le projet
+    u = Utilisateur(email="herve.tchoua.n1@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False)
+    if not tchoua.compte:
+        u.employe_id = tchoua.id
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, tchoua.compte.email)
+    assert c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}").status_code == 200
+
+
+def test_aucune_donnee_modifiee_sans_action_rh(app):
+    """init-admin (lancé à chaque démarrage) ne lie ni ne crée aucun compte, ne touche à aucune fiche."""
+    from app.models import Poste
+    u = Utilisateur(email="rh.initial@x.cm", role=Role.RH, doit_changer_mdp=False)
+    u.set_password(MDP)
+    db.session.add(u)
+    e = Employe(matricule="X-1", nom="ZOA", prenom="", email="rh.initial@x.cm", poste="ingenieur")
+    db.session.add(e)
+    db.session.commit()
+    avant = [(x.id, x.email, x.employe_id, x.role, x.password_hash) for x in db.session.scalars(select(Utilisateur))]
+    nb_postes = db.session.scalar(select(db.func.count(Poste.id)))
+    import os
+    os.environ["ADMIN_EMAIL"] = "rh.initial@x.cm"
+    try:
+        res = app.test_cli_runner().invoke(args=["init-admin"])
+    finally:
+        os.environ.pop("ADMIN_EMAIL")
+    assert "inchangé" in res.output
+    db.session.expire_all()
+    apres = [(x.id, x.email, x.employe_id, x.role, x.password_hash) for x in db.session.scalars(select(Utilisateur))]
+    assert avant == apres
+    assert db.session.get(Employe, e.id).poste == "ingenieur"
+    assert db.session.scalar(select(db.func.count(Poste.id))) == nb_postes
+    # Les comptes antérieurs ne sont jamais « en attente » : « Générer les accès » ne les touche pas
+    assert not any(x.en_attente_acces for x in db.session.scalars(select(Utilisateur)))
+
+
+# ---------------------------------------------------------------- multi-entités
+def _png(couleur=(200, 30, 40)):
+    from PIL import Image
+    buf = io.BytesIO()
+    img = Image.new("RGBA", (120, 60), (255, 255, 255, 0))
+    for x in range(20, 100):
+        for y in range(10, 50):
+            img.putpixel((x, y), couleur + (255,))
+    img.save(buf, "PNG")
+    buf.seek(0)
+    return buf
+
+
+def _creer_entite(c, nom="BuildSmart BTP", code="BSB"):
+    r = c.post("/parametres/entites", data={"nom": nom, "code": code, "couleur": "#213E70", "couleur_auto": "1",
+                                            "logo": (_png(), "logo.png")}, content_type="multipart/form-data")
+    assert r.status_code == 302, r.get_data(as_text=True)[-2000:]
+    from app.models import Entite
+    return db.session.scalar(select(Entite).where(Entite.code == code))
+
+
+def test_creation_entite_avec_logo_et_grille(app):
+    from app.models import Critere
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    assert ent.logo and ent.logo_mime == "image/png"
+    assert ent.couleur != "#213E70"  # couleur déduite du logo (rouge)
+    assert int(ent.couleur[1:3], 16) > int(ent.couleur[5:7], 16)
+    assert db.session.scalar(select(db.func.count(Critere.id)).where(Critere.entite_id == ent.id)) == 8
+    # On bascule dans l'espace de la nouvelle entité ; les onglets apparaissent
+    page = c.get("/").get_data(as_text=True)
+    assert "entite-tabs" in page and "BuildSmart BTP" in page and f"/entite/{ent.id}/logo" in page
+    assert c.get(f"/entite/{ent.id}/logo").status_code == 200
+    # SVG refusé (risque XSS)
+    r = c.post("/parametres/entites", data={"nom": "X", "code": "X", "logo": (io.BytesIO(b"<svg/>"), "l.svg")},
+               content_type="multipart/form-data")
+    assert "PNG, JPG ou WEBP" in r.get_data(as_text=True)
+
+
+def test_seuls_rh_et_superadmin_creent_des_entites(app):
+    c = app.test_client()
+    login(c, email_de("NGUEMA"))  # Direction
+    assert c.get("/parametres/entites").status_code == 403
+    u = Utilisateur(email="super@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False)  # superadmin via config
+    u.set_password(MDP)
+    db.session.add(u)
+    db.session.commit()
+    c2 = app.test_client()
+    login(c2, "super@x.cm")
+    assert c2.get("/parametres/entites").status_code == 200
+    # La RH ne peut pas nommer un autre compte RH ; le superadmin oui
+    fotso = db.session.scalar(select(Utilisateur).where(Utilisateur.email == email_de("FOTSO")))
+    c3 = app.test_client()
+    login(c3, email_de("MBALLA"))
+    c3.post("/parametres/utilisateurs", data={"action": "role", "id": fotso.id, "role": "rh"})
+    db.session.refresh(fotso)
+    assert fotso.role == Role.COLLABORATEUR
+    c2.post("/parametres/utilisateurs", data={"action": "role", "id": fotso.id, "role": "rh"})
+    db.session.refresh(fotso)
+    assert fotso.role == Role.RH
+
+
+def test_cloisonnement_et_role_par_entite(app):
+    from app.models import AccesEntite, Departement
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    # Organisation et personnel de la nouvelle entité (l'onglet actif est BSB)
+    c.post("/parametres/departements", data={"code": "DAF", "nom": "Administration & Finances"})  # même code qu'à FUTURA
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
+    assert dep is not None
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    c.post("/personnel/nouveau", data={"nom": "ONANA", "matricule": "FUT-001", "departement_id": str(dep.id),
+                                      "evaluateur_id": str(tchoua.id)})  # matricule déjà pris à FUTURA : autorisé ici
+    onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))
+    assert onana.entite_id == ent.id and onana.matricule == "FUT-001"
+    # La liste du personnel de l'onglet BSB ne montre que BSB
+    page = c.get("/personnel/").get_data(as_text=True)
+    assert "ONANA" in page and "ESSOMBA" not in page
+    # La Direction de FUTURA ne voit pas BSB
+    c2 = app.test_client()
+    login(c2, email_de("NGUEMA"))
+    assert "ONANA" not in c2.get("/personnel/").get_data(as_text=True)
+    assert c2.get(f"/personnel/{onana.id}").status_code == 403
+    assert c2.get(f"/entite/{ent.id}").status_code == 403
+
+    # Rôle par entité : FOTSO, collaborateur à FUTURA, devient Direction à BSB
+    fotso_u = db.session.scalar(select(Utilisateur).where(Utilisateur.email == email_de("FOTSO")))
+    c.post(f"/parametres/utilisateurs/{fotso_u.id}/acces", data={f"role_{ent.id}": "direction"})
+    assert db.session.get(AccesEntite, (fotso_u.id, ent.id)).role == "direction"
+    c3 = app.test_client()
+    login(c3, fotso_u.email)
+    assert "ESSOMBA" in c3.get("/personnel/").get_data(as_text=True)  # FUTURA : son périmètre (chantier BALI)
+    assert "NDJOCK" not in c3.get("/personnel/").get_data(as_text=True)  # FUTURA : pas tout le personnel
+    c3.get(f"/entite/{ent.id}")
+    page = c3.get("/personnel/").get_data(as_text=True)
+    assert "ONANA" in page and "ESSOMBA" not in page  # BSB : Direction, voit tout BSB
+
+
+def test_n1_dans_une_autre_entite(app):
+    from app.models import Critere, Departement
+    from app.services.notation import periode_courante
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers"})
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    c.post("/personnel/nouveau", data={"nom": "ONANA", "departement_id": str(dep.id), "evaluateur_id": str(tchoua.id)})
+    c.post("/personnel/nouveau", data={"nom": "BEKONO", "departement_id": str(dep.id)})
+    onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))
+    aff = onana.affectations[0]
+    # Compte de TCHOUA (N+1 désigné, de FUTURA)
+    if not tchoua.compte:
+        u = Utilisateur(email="tchoua.n1@x.cm", role=Role.COLLABORATEUR, employe_id=tchoua.id, doit_changer_mdp=False)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, tchoua.compte.email)
+    page = c2.get("/").get_data(as_text=True)
+    assert "BuildSmart BTP" in page  # onglet obtenu automatiquement
+    c2.get(f"/entite/{ent.id}")
+    an, mo = periode_courante()
+    camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
+    assert "ONANA" in camp and "BEKONO" not in camp  # ne voit que la personne qu'il note
+    r = c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}")
+    assert r.status_code == 200
+    # La grille utilisée est celle de BSB
+    crit_bsb = db.session.scalars(select(Critere).where(Critere.entite_id == ent.id)).all()
+    form = {"action": "soumettre", "commentaire": "Bon début"}
+    for cr in crit_bsb:
+        form[f"note_{cr.id}"] = "75"
+    r = c2.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
+    assert r.status_code == 302
+    ev = db.session.scalar(select(Evaluation).where(Evaluation.affectation_id == aff.id))
+    assert ev.est_soumise and ev.note_globale == 75 and {n.critere_id for n in ev.notes} == {x.id for x in crit_bsb}
