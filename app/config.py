@@ -5,8 +5,17 @@ from datetime import timedelta
 BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
 
+SUR_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+
+
 def _database_url() -> str:
     url = os.environ.get("DATABASE_URL", "").strip()
+    if not url and SUR_RAILWAY:
+        # Sans base PostgreSQL, les données seraient écrites dans le conteneur et EFFACÉES
+        # à chaque déploiement : on refuse de démarrer plutôt que de perdre des données.
+        raise RuntimeError(
+            "DATABASE_URL absente sur Railway. Ajoutez une base PostgreSQL au projet (+ New → Database → "
+            "PostgreSQL) puis, dans le service web → Variables, DATABASE_URL = ${{Postgres.DATABASE_URL}}.")
     if not url:
         # Développement local : SQLite dans le dossier instance/
         os.makedirs(os.path.join(BASE_DIR, "instance"), exist_ok=True)
@@ -20,7 +29,8 @@ def _database_url() -> str:
 
 
 class Config:
-    ENV_NAME = os.environ.get("APP_ENV", "development")
+    # Sur Railway, la production est le mode par défaut (cookies sécurisés, SECRET_KEY obligatoire)
+    ENV_NAME = os.environ.get("APP_ENV", "production" if SUR_RAILWAY else "development")
     IS_PRODUCTION = ENV_NAME == "production"
 
     SECRET_KEY = os.environ.get("SECRET_KEY") or ("dev-only-change-me" if not IS_PRODUCTION else None)

@@ -16,7 +16,8 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
 
     if not app.config.get("SECRET_KEY"):
-        raise RuntimeError("SECRET_KEY doit être défini en production (variable d'environnement).")
+        raise RuntimeError("SECRET_KEY doit être défini en production : ajoutez la variable SECRET_KEY "
+                           "(longue chaîne aléatoire) dans le service web → Variables sur Railway.")
 
     # Railway place l'application derrière un proxy HTTPS
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
