@@ -28,8 +28,9 @@ from sqlalchemy import and_, false, or_, select
 from .extensions import db
 from .models import (Affectation, Departement, Employe, Evaluation, Projet,
                      StatutEvaluation)
-from .services.entites import (ROLE_RH, cond_entite, entite_courante,
-                               id_effectif, roles_par_entite)
+from .services.entites import (ROLE_RH, cond_affectation_entite, cond_entite,
+                               cond_evaluation_entite, entite_affectation, entite_courante,
+                               id_effectif, ids_employes_affectes, roles_par_entite)
 
 
 def rh_requis(view):
@@ -66,6 +67,9 @@ class Perimetre:
                 select(Departement.id).where(Departement.responsable_id == self.employe_id)))
             self.projet_ids = set(db.session.scalars(
                 select(Projet.id).where(Projet.responsable_id == self.employe_id)))
+            # Le chef de département consulte aussi les projets rattachés à son département
+            from .services.projets import carte
+            self.projet_ids |= {p for p, d in carte().items() if d in self.dept_ids}
         else:
             self.dept_ids, self.projet_ids = set(), set()
 
@@ -81,20 +85,28 @@ class Perimetre:
         """Expression SQL sur Affectation : uniquement celles dont l'utilisateur est le N+1 désigné."""
         if not self.employe_id:
             return false()
+        from .services.projets import cond_affectation_notee
         return and_(Affectation.actif.is_(True),
                     Affectation.employe_id != self.employe_id,
                     Affectation.evaluateur_id == self.employe_id,
-                    Affectation.employe_id.in_(self.employes_de_l_entite()))
+                    cond_affectation_entite(self.entite_id),
+                    cond_affectation_notee())
 
     def peut_noter(self, affectation: Affectation) -> bool:
+        from .services.projets import affectation_notee
         return bool(self.employe_id and affectation.actif
                     and affectation.employe_id != self.employe_id
-                    and affectation.evaluateur_id == self.employe_id)
+                    and affectation.evaluateur_id == self.employe_id
+                    and affectation_notee(affectation))
 
     # -- Affectations visibles (suivi, campagne) ---------------------------
     def filtre_affectations_visibles(self):
-        """Ce que l'utilisateur voit : ses N-1 désignés + son périmètre de responsable (lecture seule)."""
-        dans_entite = Affectation.employe_id.in_(self.employes_de_l_entite())
+        """Ce que l'utilisateur voit : ses N-1 désignés + son périmètre de responsable (lecture seule).
+
+        Une seule ligne par salarié noté : le projet s'il en a un, sinon le département.
+        """
+        from .services.projets import cond_affectation_notee
+        dans_entite = and_(cond_affectation_entite(self.entite_id), cond_affectation_notee())
         if self.voit_tout:
             return dans_entite
         if not self.employe_id:
@@ -108,7 +120,7 @@ class Perimetre:
                     or_(*conds))
 
     def voit_affectation(self, affectation: Affectation) -> bool:
-        if self.voit_tout_dans(affectation.employe.entite_id):
+        if self.voit_tout_dans(entite_affectation(affectation)):
             return True
         if not self.employe_id or affectation.employe_id == self.employe_id:
             return False
@@ -119,7 +131,7 @@ class Perimetre:
     # -- Évaluations visibles ----------------------------------------------
     def filtre_evaluations(self):
         """Expression SQL sur Evaluation (jointure Affectation non requise)."""
-        dans_entite = Evaluation.employe_id.in_(self.employes_de_l_entite())
+        dans_entite = cond_evaluation_entite(self.entite_id)
         if self.voit_tout:
             return dans_entite
         if not self.employe_id:
@@ -156,12 +168,16 @@ class Perimetre:
             # Direction et RH du groupe apparaissent dans le personnel de toutes les entités
             from .services.transverses import ids_personnel_groupe
             groupe = ids_personnel_groupe()
-            return or_(dans_entite, Employe.id.in_(groupe)) if groupe else dans_entite
+            # + salariés d'une autre entité qui travaillent aussi pour celle-ci
+            conds = [dans_entite, Employe.id.in_(ids_employes_affectes(self.entite_id))]
+            if groupe:
+                conds.append(Employe.id.in_(groupe))
+            return or_(*conds)
         ids_affectations = select(Affectation.employe_id).where(self.filtre_affectations_visibles())
         conds = [Employe.id.in_(ids_affectations)]
         if self.employe_id:
-            conds.append(Employe.id == self.employe_id)
-        return and_(dans_entite, or_(*conds))
+            conds.append(and_(dans_entite, Employe.id == self.employe_id))
+        return or_(*conds)
 
     def peut_voir_employe(self, employe: Employe) -> bool:
         if employe.id == self.employe_id or self.voit_tout_dans(employe.entite_id):

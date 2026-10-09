@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (30 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (42 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -114,6 +114,21 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 
 - Création **et** modification d'une fiche : Poste, Département, Projet et N+1 se choisissent dans des listes. Changer le département ou le projet clôture l'ancienne affectation (historique conservé).
 - Sur la fiche, « Ajouter » propose deux listes séparées (Département, Projet) et le N+1.
+
+## Projets rattachés à un département — une seule note par salarié
+- Chaque projet est rattaché à un département (Administration → Projets, champ « Département de rattachement »). Un département peut exister sans projet.
+- Un salarié affecté à un projet est noté **une seule fois par mois, dans son projet** ; son affectation département reste visible sur sa fiche (« Non notée ») mais ne crée plus de seconde ligne dans la campagne. Sans projet, il est noté dans son département.
+- Le chef de département consulte les notes des projets de son département ; les moyennes du département les incluent.
+- Le lien est enregistré dans la table de réglages existante (clé `projets_departements`) : aucune table ni colonne ajoutée. Les notes déjà saisies sont conservées.
+
+## Changement de projet
+- Sur la fiche, bouton « Changer de projet » sur l'affectation projet : choisir le nouveau projet et **le nouveau N+1 (obligatoire)**. L'ancienne affectation est clôturée, ses notes restent dans l'historique.
+- En groupe (fin de chantier) : cochez les salariés dans Personnel → « Changer de projet… ». Leur projet actuel dans l'entité du nouveau projet est clôturé ; leurs projets dans d'autres entités continuent.
+
+## Salarié travaillant pour plusieurs entités
+- Sa fiche reste dans son entité d'origine. Sur la fiche, « Ajouter » propose les départements et projets de **toutes les entités** : affectez-le dans l'autre entité avec son N+1.
+- Il apparaît alors dans le personnel de cette entité (badge « Multi-entités ») et dans sa campagne, noté avec la grille de cette entité. Il est noté une fois par entité (projet en priorité, sinon département).
+- Aucune donnée modifiée : l'entité d'une affectation est déduite de son département / projet.
 
 ## Sélection et suppression du personnel
 

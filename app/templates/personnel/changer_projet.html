@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "personnel" %}
+{% block title %}Changer de projet{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.liste') }}">Personnel</a><span class="sep crumb-mid">/</span><span aria-current="page">Changer de projet</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Changer de projet : {{ employes|length }} salarié{{ "s" if employes|length > 1 }}</h1>
+  <p>Leur projet actuel dans l'entité du nouveau projet est clôturé, ses notes restent dans l'historique. Le N+1 est redéfini pour le nouveau projet.</p>
+</div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card__head"><h2>Salariés concernés</h2></div>
+    {% if employes %}
+    <div class="table-wrap" style="max-height:460px;overflow:auto"><table class="table table--compact">
+      <thead><tr><th>Salarié</th><th>Poste</th><th>Projet(s) actuel(s)</th></tr></thead>
+      <tbody>{% for e in employes %}<tr>
+        <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div><div><strong>{{ e.nom_complet }}</strong><span>{{ e.matricule }}</span></div></div></td>
+        <td>{{ e.poste or "—" }}</td>
+        <td class="small">{{ (e.affectations_actives|selectattr("projet_id")|map(attribute="contexte_libelle")|join(", ")) or "Aucun" }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="card__body"><p class="muted">Aucun salarié sélectionné.</p></div>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card__head"><h2>Nouveau rattachement</h2></div>
+    <form method="post" action="{{ url_for('personnel.changer_projet_groupe') }}" class="card__body stack" data-validate data-loading>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for e in employes %}<input type="hidden" name="ids" value="{{ e.id }}">{% endfor %}
+      <div class="field"><label for="f-projet">Nouveau projet <span style="color:var(--danger)">*</span></label>
+        <select class="select" id="f-projet" name="projet_id" required>
+          {% with choisi=donnees.get('projet_id'), exclure=None %}{% include "personnel/_options_projets.html" %}{% endwith %}
+        </select></div>
+      <div class="field"><label for="f-n1">N+1 sur le nouveau projet <span style="color:var(--danger)">*</span></label>
+        <select class="select" id="f-n1" name="evaluateur_id" required>
+          {% with choisi=donnees.get('evaluateur_id'), exclure=None %}{% include "personnel/_options_n1.html" %}{% endwith %}
+        </select>
+        <span class="hint">Seule cette personne notera ces salariés sur le nouveau projet.</span></div>
+      <div class="form-actions">
+        <a class="btn btn--ghost" href="{{ url_for('personnel.liste') }}">Annuler</a>
+        <button class="btn btn--primary" type="submit" {% if not employes %}disabled{% endif %}>Valider le changement</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

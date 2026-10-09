@@ -58,10 +58,9 @@ def roles_par_entite(user) -> dict[int, str]:
     if emp is not None:
         roles.setdefault(id_effectif(emp.entite_id), user.role if user.role != Role.RH else RoleEntite.DIRECTION)
         # N+1 désigné dans une autre entité : accès « collaborateur » limité à ses N-1
-        for (eid,) in db.session.execute(
-                select(Employe.entite_id).join(Affectation, Affectation.employe_id == Employe.id)
-                .where(Affectation.evaluateur_id == emp.id, Affectation.actif.is_(True)).distinct()):
-            roles.setdefault(id_effectif(eid), RoleEntite.COLLABORATEUR)
+        for a in db.session.scalars(select(Affectation).where(
+                Affectation.evaluateur_id == emp.id, Affectation.actif.is_(True))):
+            roles.setdefault(entite_affectation(a), RoleEntite.COLLABORATEUR)
         # Responsable d'un département / projet : consultation de son périmètre
         for model in (Departement, Projet):
             for (eid,) in db.session.execute(select(model.entite_id).where(model.responsable_id == emp.id).distinct()):
@@ -183,3 +182,39 @@ def couleur_dominante(contenu: bytes) -> str | None:
     h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in rgb])
     l = min(l, .42)
     return _rgb_hex([c * 255 for c in colorsys.hls_to_rgb(h, l, s)])
+
+
+# --- Entité d'une affectation / d'une évaluation ---------------------------------
+# Un salarié a une entité d'origine (sa fiche) mais peut travailler en même temps pour
+# d'autres entités : il suffit de l'affecter à un département ou un projet de l'entité
+# concernée. L'entité d'une affectation est donc celle de son département / projet.
+def ids_contextes(entite_id: int):
+    """(sous-requête des départements, sous-requête des projets) de l'entité."""
+    return (select(Departement.id).where(cond_entite(Departement.entite_id, entite_id)),
+            select(Projet.id).where(cond_entite(Projet.entite_id, entite_id)))
+
+
+def cond_affectation_entite(entite_id: int):
+    deps, projs = ids_contextes(entite_id)
+    return or_(Affectation.departement_id.in_(deps), Affectation.projet_id.in_(projs))
+
+
+def cond_evaluation_entite(entite_id: int):
+    from sqlalchemy import and_
+
+    from ..models import Evaluation
+    deps, projs = ids_contextes(entite_id)
+    # Évaluation dont le contexte a disparu : rattachée à l'entité du salarié
+    orpheline = and_(Evaluation.departement_id.is_(None), Evaluation.projet_id.is_(None),
+                     Evaluation.employe_id.in_(select(Employe.id).where(cond_entite(Employe.entite_id, entite_id))))
+    return or_(Evaluation.departement_id.in_(deps), Evaluation.projet_id.in_(projs), orpheline)
+
+
+def entite_affectation(a: Affectation) -> int:
+    ctx = a.departement or a.projet
+    return id_effectif(ctx.entite_id if ctx is not None else a.employe.entite_id)
+
+
+def ids_employes_affectes(entite_id: int):
+    """Sous-requête : salariés ayant une affectation active dans l'entité (multi-entités)."""
+    return select(Affectation.employe_id).where(Affectation.actif.is_(True), cond_affectation_entite(entite_id))

@@ -105,9 +105,12 @@
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Contexte</th><th>N+1 (évaluateur)</th><th>Statut</th>{% if current_user.est_rh %}<th class="actions"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>
+      {% set projet_actif = affectations|selectattr("actif")|selectattr("projet_id")|first %}
       {% for a in affectations %}
       <tr>
-        <td><strong>{{ a.contexte_libelle }}</strong></td>
+        {% set non_notee = a.actif and not a.projet_id and projet_actif %}
+        {% set ctx_ent = (a.departement or a.projet).entite if (a.departement or a.projet) else none %}
+        <td><strong>{{ a.contexte_libelle }}</strong>{% if ctx_ent and (ctx_ent.id != e.entite_id) and not (ctx_ent.principale and e.entite_id is none) %} <span class="badge badge--groupe">{{ ctx_ent.nom }}</span>{% endif %}{% if non_notee %}<br><span class="small muted">Non notée : le salarié est noté dans son projet ({{ projet_actif.contexte_libelle }}).</span>{% endif %}</td>
         <td>{% if current_user.est_rh and a.actif %}
           <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" class="row">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="evaluateur">
@@ -120,7 +123,23 @@
           {% else %}{{ a.evaluateur.nom_complet if a.evaluateur else "—" }}{% endif %}</td>
         <td>{% if a.actif %}<span class="badge badge--ok">Active</span>{% else %}<span class="badge badge--plain">Clôturée</span>{% endif %}</td>
         {% if current_user.est_rh %}<td class="actions">{% if a.actif %}
-          <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" data-confirm="Clôturer cette affectation ? L'historique des notes est conservé.">
+          {% if a.projet_id %}<details class="mutation">
+            <summary class="btn btn--secondary btn--sm">Changer de projet</summary>
+            <form method="post" action="{{ url_for('personnel.changer_projet_individuel', affectation_id=a.id) }}" class="mutation__form stack">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="small" for="mut-p-{{ a.id }}">Nouveau projet</label>
+              <select class="select select--sm" id="mut-p-{{ a.id }}" name="projet_id" required>
+                {% with choisi=None, exclure=a.projet_id %}{% include "personnel/_options_projets.html" %}{% endwith %}
+              </select>
+              <label class="small" for="mut-n-{{ a.id }}">N+1 sur ce projet</label>
+              <select class="select select--sm" id="mut-n-{{ a.id }}" name="evaluateur_id" required>
+                {% with choisi=None, exclure=e.id %}{% include "personnel/_options_n1.html" %}{% endwith %}
+              </select>
+              <p class="small muted">« {{ a.contexte_libelle }} » sera clôturé ; ses notes restent dans l'historique.</p>
+              <button class="btn btn--primary btn--sm" type="submit">Valider</button>
+            </form>
+          </details>{% endif %}
+          <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" style="display:inline" data-confirm="Clôturer cette affectation ? L'historique des notes est conservé.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retirer">
             <button class="btn btn--ghost btn--sm" type="submit">Clôturer</button></form>{% endif %}</td>{% endif %}
       </tr>
@@ -137,12 +156,12 @@
     <label class="sr-only" for="aff-dep">Département</label>
     <select class="select select--sm" id="aff-dep" name="departement_id" style="width:auto;min-width:190px">
       <option value="">Département…</option>
-      {% for d in departements %}<option value="{{ d.id }}">{{ d.nom }}</option>{% endfor %}
+      {% for ent, deps, projs in contextes if deps %}<optgroup label="{{ ent.nom }}">{% for d in deps %}<option value="{{ d.id }}">{{ d.nom }}</option>{% endfor %}</optgroup>{% endfor %}
     </select>
     <label class="sr-only" for="aff-proj">Projet</label>
     <select class="select select--sm" id="aff-proj" name="projet_id" style="width:auto;min-width:190px">
       <option value="">Projet…</option>
-      {% for p in projets %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}
+      {% for ent, deps, projs in contextes if projs %}<optgroup label="{{ ent.nom }}">{% for p in projs %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}</optgroup>{% endfor %}
     </select>
     <label class="sr-only" for="aff-n1">N+1</label>
     <select class="select select--sm" id="aff-n1" name="evaluateur_id" style="width:auto;min-width:220px">
@@ -150,6 +169,7 @@
       {% for ent, membres in groupes_evaluateurs %}<optgroup label="{{ ent.nom }}">{% for x in membres %}<option value="{{ x.id }}">{{ x.nom_complet }}</option>{% endfor %}</optgroup>{% endfor %}
     </select>
     <button class="btn btn--primary btn--sm" type="submit">{{ icon('plus') }} Ajouter</button>
+    <span class="hint" style="flex-basis:100%">Un département ou projet d'une autre entité peut être choisi : le salarié travaille alors pour plusieurs entités et y est noté par le N+1 désigné.</span>
   </form>
   {% endif %}
 </section>

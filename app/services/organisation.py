@@ -117,3 +117,44 @@ def affecter(e: Employe, departement: Departement | None = None, projet: Projet 
         db.session.add(a)
     db.session.flush()
     return a
+
+
+def contextes_groupe():
+    """[(entité, départements actifs, projets actifs)] pour toutes les entités actives."""
+    entites = db.session.scalars(select(Entite).where(Entite.actif.is_(True))
+                                 .order_by(Entite.principale.desc(), Entite.nom)).all()
+    from .entites import cond_entite
+    res = []
+    for ent in entites:
+        deps = db.session.scalars(select(Departement).where(
+            Departement.actif.is_(True), cond_entite(Departement.entite_id, ent.id)).order_by(Departement.nom)).all()
+        projs = db.session.scalars(select(Projet).where(
+            Projet.actif.is_(True), cond_entite(Projet.entite_id, ent.id)).order_by(Projet.nom)).all()
+        if deps or projs:
+            res.append((ent, deps, projs))
+    return res
+
+
+def changer_projet(e: Employe, nouveau: Projet, evaluateur_id: int,
+                   ancienne: Affectation | None = None) -> tuple[Affectation, list[str]]:
+    """Mutation vers un autre projet, avec le N+1 redéfini par la RH.
+
+    L'ancienne affectation est clôturée (jamais supprimée : ses notes restent dans
+    l'historique). Sans affectation précisée, on clôture les projets actifs du salarié
+    dans la même entité que le nouveau projet (ses projets dans d'autres entités continuent).
+    """
+    from .entites import entite_affectation, id_effectif
+    if ancienne is not None:
+        a_fermer = [ancienne]
+    else:
+        eid = id_effectif(nouveau.entite_id)
+        a_fermer = [a for a in e.affectations if a.actif and a.projet_id and a.projet_id != nouveau.id
+                    and entite_affectation(a) == eid]
+    fermees = []
+    for a in a_fermer:
+        if a.projet_id != nouveau.id:
+            a.actif = False
+            fermees.append(a.contexte_libelle)
+    nouvelle = affecter(e, projet=nouveau, evaluateur_id=evaluateur_id)
+    nouvelle.evaluateur_id = evaluateur_id   # toujours redéfini, même si l'affectation est réactivée
+    return nouvelle, fermees

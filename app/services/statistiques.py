@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from ..extensions import db
 from ..models import (Affectation, Departement, Employe, Evaluation, Projet,
@@ -23,7 +23,11 @@ def _base_evals(per, annee, departement_id=None, projet_id=None):
                 Evaluation.statut == StatutEvaluation.SOUMISE,
                 per.filtre_evaluations()))
     if departement_id:
-        q = q.where(Evaluation.departement_id == departement_id)
+        # Le département inclut les notes des projets qui lui sont rattachés
+        from .projets import projets_du_departement
+        pids = projets_du_departement(int(departement_id))
+        cond = Evaluation.departement_id == departement_id
+        q = q.where(or_(cond, Evaluation.projet_id.in_(pids)) if pids else cond)
     if projet_id:
         q = q.where(Evaluation.projet_id == projet_id)
     return q.group_by(Evaluation.employe_id, Evaluation.mois)
@@ -142,5 +146,26 @@ def moyennes_par_contexte(per, annee, mois):
             .group_by(model.id, model.nom)
             .order_by(func.avg(Evaluation.note_globale).desc())).all()
         return [{"id": r[0], "nom": r[1], "moyenne": round(float(r[2]), 2), "nb": r[3]} for r in rows]
-    return {"departements": _agg(Evaluation.departement_id, Departement),
+    return {"departements": _par_departement(per, annee, mois),
             "projets": _agg(Evaluation.projet_id, Projet)}
+
+
+def _par_departement(per, annee, mois):
+    """Moyenne par département, notes des projets rattachés comprises."""
+    from .projets import carte
+    c = carte()
+    rows = db.session.execute(
+        select(Evaluation.departement_id, Evaluation.projet_id, Evaluation.note_globale)
+        .where(Evaluation.annee == annee, Evaluation.mois == mois,
+               Evaluation.statut == StatutEvaluation.SOUMISE, per.filtre_evaluations())).all()
+    notes = defaultdict(list)
+    for dep, proj, note in rows:
+        d = dep or c.get(proj)
+        if d and note is not None:
+            notes[d].append(float(note))
+    if not notes:
+        return []
+    noms = dict(db.session.execute(select(Departement.id, Departement.nom).where(Departement.id.in_(notes))).all())
+    res = [{"id": d, "nom": noms[d], "moyenne": round(sum(v) / len(v), 2), "nb": len(v)}
+           for d, v in notes.items() if d in noms]
+    return sorted(res, key=lambda r: r["moyenne"], reverse=True)

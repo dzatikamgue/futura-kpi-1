@@ -28,7 +28,7 @@ def app():
     # comme le ferait un vrai serveur.
     def _isoler_requete():
         from flask import g
-        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale"):
+        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe"):
             g.pop(k, None)
     # Doit passer avant les autres before_request de l'application
     app.before_request_funcs.setdefault(None, []).insert(0, _isoler_requete)
@@ -830,3 +830,155 @@ def test_filtre_par_poste(app):
     # Combinable avec la sélection « tous les résultats » et les exports
     r = c.get("/personnel/?poste=Topographe&export=xlsx")
     assert r.status_code == 200
+
+
+def test_projet_rattache_departement_et_note_unique(app):
+    """Un salarié dans un projet ET un département n'a qu'une ligne de notation (le projet)."""
+    from app.models import Departement, Parametre, Projet
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    bali = db.session.scalar(select(Projet).where(Projet.code == "BALI"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))  # chef du dépt TECH
+    tech.responsable_id = tchoua.id
+    db.session.commit()
+
+    c = app.test_client()
+    login(c, email_de("MBALLA"))   # RH
+    page = c.get("/parametres/projets").get_data(as_text=True)
+    assert 'name="departement_id"' in page and "À rattacher" in page
+    # Projet sans département refusé, puis rattaché à TECH
+    base = {"id": bali.id, "code": bali.code, "nom": bali.nom}
+    r = c.post("/parametres/projets", data=base)
+    assert r.status_code == 200 and "département de rattachement" in r.get_data(as_text=True)
+    r = c.post("/parametres/projets", data={**base, "departement_id": str(tech.id)})
+    assert r.status_code == 302
+    p = db.session.get(Parametre, "projets_departements")
+    assert p and str(bali.id) in p.valeur
+    assert bali.nom in c.get("/parametres/departements").get_data(as_text=True)
+
+    # Campagne vue par la RH : ESSOMBA une seule fois
+    campagne = c.get(f"/evaluations/?annee={an}&mois={mo}&par_page=200").get_data(as_text=True)
+    lignes_essomba = [a for a in essomba.affectations_actives]
+    assert any(a.projet_id for a in lignes_essomba) and any(a.departement_id for a in lignes_essomba)
+    assert campagne.count(f'href="/personnel/{essomba.id}" style="color:inherit"') == 1
+    assert "Projet Immeuble BALI R+11" in campagne
+
+    # Le N+1 de l'affectation département ne peut plus la noter (déjà notée via le projet)
+    aff_dep = next(a for a in lignes_essomba if a.departement_id)
+    from app.permissions import Perimetre
+    n1 = aff_dep.evaluateur
+    if n1 and n1.compte:
+        from flask import g
+        g.pop("_carte_projets", None)
+        assert not Perimetre(n1.compte).peut_noter(aff_dep)
+
+    # Le chef du département voit les salariés du projet rattaché
+    u = tchoua.compte
+    if not u:
+        u = Utilisateur(email="tchoua.dep@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=tchoua.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, u.email)
+    assert "ESSOMBA" in c2.get("/suivi/?vue=annuelle").get_data(as_text=True)
+    fiche = c.get(f"/personnel/{essomba.id}").get_data(as_text=True)
+    assert "Non notée" in fiche
+
+
+def test_salarie_sans_projet_note_dans_son_departement(app):
+    from app.models import Departement
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    ndjock = db.session.scalar(select(Employe).where(Employe.nom == "NDJOCK"))  # dépt DAF, sans projet
+    aff = next(a for a in ndjock.affectations_actives if a.departement_id)
+    assert not any(a.projet_id for a in ndjock.affectations_actives)
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    campagne = c.get(f"/evaluations/?annee={an}&mois={mo}&par_page=200").get_data(as_text=True)
+    assert "NDJOCK" in campagne
+
+
+def test_changement_de_projet_avec_nouveau_n1(app):
+    from app.models import Projet
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    owona = db.session.scalar(select(Employe).where(Employe.nom == "OWONA"))
+    chr_ = db.session.scalar(select(Projet).where(Projet.code == "CHR"))
+    njoya = db.session.scalar(select(Employe).where(Employe.nom == "NJOYA"))
+    ancienne = next(a for a in owona.affectations_actives if a.projet_id and a.projet_id != chr_.id)
+    nb_evals = db.session.scalar(select(db.func.count(Evaluation.id)).where(Evaluation.affectation_id == ancienne.id))
+    fiche = c.get(f"/personnel/{owona.id}").get_data(as_text=True)
+    assert "Changer de projet" in fiche
+    url = f"/personnel/affectations/{ancienne.id}/changer-projet"
+    # Le N+1 est obligatoire
+    c.post(url, data={"projet_id": str(chr_.id)})
+    db.session.refresh(ancienne)
+    assert ancienne.actif
+    r = c.post(url, data={"projet_id": str(chr_.id), "evaluateur_id": str(njoya.id)})
+    assert r.status_code == 302
+    db.session.refresh(owona)
+    db.session.refresh(ancienne)
+    assert not ancienne.actif
+    nouvelle = next(a for a in owona.affectations_actives if a.projet_id == chr_.id)
+    assert nouvelle.evaluateur_id == njoya.id
+    # Historique conservé
+    assert db.session.scalar(select(db.func.count(Evaluation.id)).where(Evaluation.affectation_id == ancienne.id)) == nb_evals
+
+
+def test_changement_de_projet_groupe(app):
+    from app.models import Projet
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    chr_ = db.session.scalar(select(Projet).where(Projet.code == "CHR"))
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))
+    gens = [db.session.scalar(select(Employe).where(Employe.nom == n)) for n in ("ESSOMBA", "OWONA")]
+    page = c.post("/personnel/selection", data={"action": "changer_projet", "ids": [str(e.id) for e in gens]})
+    assert page.status_code == 200 and "Nouveau rattachement" in page.get_data(as_text=True)
+    r = c.post("/personnel/changer-projet", data={"ids": [str(e.id) for e in gens], "projet_id": str(chr_.id),
+                                                  "evaluateur_id": str(fotso.id)})
+    assert r.status_code == 302
+    for e in gens:
+        db.session.refresh(e)
+        projets = [a for a in e.affectations_actives if a.projet_id]
+        assert [a.projet_id for a in projets] == [chr_.id]
+        assert projets[0].evaluateur_id == fotso.id
+
+
+def test_salarie_multi_entites(app):
+    """Un salarié de FUTURA travaille aussi pour une autre entité : noté dans chacune."""
+    from app.models import Departement, Projet
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    c.get(f"/entite/{ent.id}")
+    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers"})
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
+    c.post("/parametres/projets", data={"code": "PSTE", "nom": "Projet Société Test", "departement_id": str(dep.id)})
+    proj = db.session.scalar(select(Projet).where(Projet.entite_id == ent.id))
+    assert proj is not None
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))  # FUTURA, projet BALI
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    fiche = c.get(f"/personnel/{essomba.id}").get_data(as_text=True)
+    assert "Projet Société Test" in fiche   # contextes des autres entités proposés
+    r = c.post(f"/personnel/{essomba.id}/affectations", data={"projet_id": str(proj.id), "evaluateur_id": str(tchoua.id)})
+    assert r.status_code == 302
+    db.session.refresh(essomba)
+    assert any(a.projet_id == proj.id for a in essomba.affectations_actives)
+    assert any(a.projet_id and a.projet_id != proj.id for a in essomba.affectations_actives)  # BALI continue
+
+    # Dans l'entité Société Test : visible dans le personnel et la campagne, une seule ligne
+    liste = c.get("/personnel/").get_data(as_text=True)
+    assert "ESSOMBA" in liste and "Multi-entités" in liste
+    camp = c.get(f"/evaluations/?annee={an}&mois={mo}&par_page=200").get_data(as_text=True)
+    assert camp.count(f'href="/personnel/{essomba.id}" style="color:inherit"') == 1
+    assert "Projet Société Test" in camp and "BALI" not in camp
+    # Dans FUTURA : toujours noté sur BALI, sans la ligne de Société Test
+    principale = db.session.scalar(select(db.text("id FROM entites WHERE principale")))
+    c.get(f"/entite/{principale}")
+    camp = c.get(f"/evaluations/?annee={an}&mois={mo}&par_page=200").get_data(as_text=True)
+    assert "Projet Immeuble BALI R+11" in camp and "Projet Société Test" not in camp

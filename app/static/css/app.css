@@ -622,3 +622,12 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
   .breadcrumb .crumb-mid { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: .01ms !important; } }
+
+/* Changement de projet depuis la fiche */
+.mutation { display: inline-block; position: relative; text-align: left; }
+.mutation > summary { list-style: none; cursor: pointer; }
+.mutation > summary::-webkit-details-marker { display: none; }
+.mutation__form { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(340px, 86vw);
+  padding: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.14)); gap: var(--s2); }
+.mutation__form .select { width: 100%; }

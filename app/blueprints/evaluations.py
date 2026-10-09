@@ -107,8 +107,9 @@ def campagne():
 
 
 def _criteres_pour(ev, aff):
-    """Grille de l'entité du salarié noté (chaque entité a sa propre grille)."""
-    eid = id_effectif(aff.employe.entite_id)
+    """Grille de l'entité où le salarié travaille sur cette affectation (chaque entité a sa grille)."""
+    from ..services.entites import entite_affectation
+    eid = entite_affectation(aff)
     actifs = db.session.scalars(select(Critere).where(Critere.actif.is_(True), cond_entite(Critere.entite_id, eid))
                                 .order_by(Critere.ordre, Critere.id)).all()
     if ev and ev.est_soumise:

@@ -14,7 +14,7 @@ from ..permissions import perimetre, rh_requis
 from ..services.audit import journaliser
 from ..services.comptes import aligner_email, synchroniser_comptes
 from ..services.entites import cond_entite, id_effectif
-from ..services.organisation import (affecter, evaluateurs_groupe, matricule_auto,
+from ..services.organisation import (affecter, changer_projet, contextes_groupe, evaluateurs_groupe, matricule_auto,
                                      matricule_pris, poste_canonique, postes_actifs)
 from ..services.exports import export_excel, export_pdf
 from ..services.notation import MOIS_COURTS, moyenne, mois_du_trimestre, niveau
@@ -78,7 +78,8 @@ def liste():
     postes = sorted(set(db.session.scalars(
         select(Employe.poste).where(per.filtre_employes(), Employe.poste.isnot(None), Employe.poste != "")
         .distinct())), key=str.lower)
-    return render_template("personnel/liste.html", page=page, postes=postes,
+    from ..services.transverses import ids_personnel_groupe
+    return render_template("personnel/liste.html", page=page, postes=postes, ids_groupe=ids_personnel_groupe(),
                            departements=per.departements_visibles(), projets=per.projets_visibles())
 
 
@@ -317,8 +318,7 @@ def fiche(employe_id):
         serie=[mensuel.get(m) for m in range(1, 13)], mois_courts=MOIS_COURTS,
         trimestres=trimestres, annuel=annuel, niveau_annuel=niveau(annuel),
         affectations=affs_visibles,
-        departements=_contextes(id_effectif(e.entite_id))[0] if per.user.est_rh else [],
-        projets=_contextes(id_effectif(e.entite_id))[1] if per.user.est_rh else [],
+        contextes=contextes_groupe() if per.user.est_rh else [],
         groupes_evaluateurs=evaluateurs_groupe(e.id) if per.user.est_rh else [])
 
 
@@ -336,17 +336,14 @@ def ajouter_affectation(employe_id):
     for model, cle in ((Departement, "departement_id"), (Projet, "projet_id")):
         ctx_id = request.form.get(cle, type=int)
         if ctx_id:
+            # Un contexte d'une autre entité est permis : le salarié travaille alors pour plusieurs entités
             ctx = db.session.get(model, ctx_id) or abort(404)
-            if id_effectif(ctx.entite_id) != id_effectif(e.entite_id):
-                abort(400)
             choix.append((model, ctx))
     # Compatibilité : ancienne liste unique « departement:ID » / « projet:ID »
     type_ctx, _, brut_id = (request.form.get("contexte") or "").partition(":")
     if not choix and type_ctx in ("departement", "projet") and brut_id.isdigit():
         model = Departement if type_ctx == "departement" else Projet
         ctx = db.session.get(model, int(brut_id)) or abort(404)
-        if id_effectif(ctx.entite_id) != id_effectif(e.entite_id):
-            abort(400)
         choix.append((model, ctx))
     if not choix:
         flash("Choisissez un département et/ou un projet.", "erreur")
@@ -388,6 +385,78 @@ def maj_affectation(affectation_id):
             flash("N+1 mis à jour.", "succes")
     db.session.commit()
     return redirect(url_for("personnel.fiche", employe_id=a.employe_id))
+
+
+# --- Changement de projet (mutation) -----------------------------------------
+def _lire_mutation():
+    """Nouveau projet + N+1 (obligatoire : il est redéfini à chaque changement)."""
+    projet = db.session.get(Projet, request.form.get("projet_id", type=int) or -1)
+    evaluateur_id = request.form.get("evaluateur_id", type=int)
+    erreur = None
+    if projet is None or not projet.actif:
+        erreur = "Choisissez le nouveau projet."
+    elif not evaluateur_id or db.session.get(Employe, evaluateur_id) is None:
+        erreur = "Désignez le N+1 qui notera le salarié sur le nouveau projet."
+    return projet, evaluateur_id, erreur
+
+
+@bp.post("/affectations/<int:affectation_id>/changer-projet")
+@login_required
+@rh_requis
+def changer_projet_individuel(affectation_id):
+    a = db.session.get(Affectation, affectation_id) or abort(404)
+    retour = redirect(url_for("personnel.fiche", employe_id=a.employe_id))
+    if not (a.actif and a.projet_id):
+        abort(400)
+    projet, evaluateur_id, erreur = _lire_mutation()
+    if not erreur and projet.id == a.projet_id:
+        erreur = "Le salarié est déjà sur ce projet."
+    if not erreur and evaluateur_id == a.employe_id:
+        erreur = "Un salarié ne peut pas être son propre N+1."
+    if erreur:
+        flash(erreur, "erreur")
+        return retour
+    nouvelle, fermees = changer_projet(a.employe, projet, evaluateur_id, ancienne=a)
+    journaliser("changement_projet", a.employe.nom_complet, f"{', '.join(fermees)} → {nouvelle.contexte_libelle}")
+    synchroniser_comptes([evaluateur_id])
+    db.session.commit()
+    flash(f"{a.employe.nom_complet} passe sur « {projet.nom} » ; N+1 : {nouvelle.evaluateur.nom_complet}. "
+          "L'historique des notes de l'ancien projet est conservé.", "succes")
+    return retour
+
+
+@bp.post("/changer-projet")
+@login_required
+@rh_requis
+def changer_projet_groupe():
+    """Mutation groupée (ex. fin de chantier : toute l'équipe passe sur le projet suivant)."""
+    per = perimetre()
+    ids = [int(i) for i in request.form.getlist("ids") if str(i).isdigit()]
+    employes = db.session.scalars(select(Employe).where(Employe.id.in_(ids or [-1]), per.filtre_employes())).all()
+    projet, evaluateur_id, erreur = _lire_mutation()
+    if erreur or not employes:
+        flash(erreur or "Sélectionnez au moins un salarié.", "erreur")
+        return _page_changer_projet(employes, request.form)
+    n, exclus = 0, []
+    for e in employes:
+        if e.id == evaluateur_id:
+            exclus.append(f"{e.nom_complet} (ne peut pas être son propre N+1)")
+            continue
+        changer_projet(e, projet, evaluateur_id)
+        n += 1
+    journaliser("changement_projet_groupe", f"{n} salarié(s)", projet.nom)
+    synchroniser_comptes([evaluateur_id])
+    db.session.commit()
+    msg = f"{n} salarié(s) affecté(s) à « {projet.nom} »; leur ancien projet dans cette entité est clôturé, l'historique est conservé."
+    if exclus:
+        msg += " Non modifiés : " + ", ".join(exclus) + "."
+    flash(msg, "succes")
+    return redirect(url_for("personnel.liste"))
+
+
+def _page_changer_projet(employes, donnees=None):
+    return render_template("personnel/changer_projet.html", employes=employes, donnees=donnees or {},
+                           contextes=contextes_groupe(), groupes_evaluateurs=evaluateurs_groupe())
 
 
 # --- Sélection : actions groupées et suppression -------------------------------
@@ -446,6 +515,9 @@ def selection():
         return redirect(retour)
     if action == "supprimer":
         return _page_suppression(per, ids)
+    if action == "changer_projet":
+        return _page_changer_projet(db.session.scalars(
+            select(Employe).where(Employe.id.in_(ids)).order_by(Employe.nom, Employe.prenom)).all())
     if action in ("desactiver", "reactiver"):
         ids, exclus = _proteges(ids) if action == "desactiver" else (ids, [])
         actif = action == "reactiver"

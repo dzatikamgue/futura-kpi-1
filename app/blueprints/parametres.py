@@ -14,6 +14,7 @@ from ..services.entites import cond_entite, id_effectif, roles_par_entite
 from ..services import reglages
 from ..services.audit import journaliser
 from ..services.organisation import cle_texte, postes_actifs
+from ..services.projets import carte, definir, departement_du_projet
 from ..services.comptes import (generer_acces, ids_evaluateurs, lier_ou_creer,
                                 mot_de_passe_temporaire, synchroniser_comptes)
 from ..utils import lire_date
@@ -58,7 +59,7 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
             flash(f"« {obj.nom} » {'réactivé' if obj.actif else 'archivé'}.", "succes")
             return redirect(request.path)
         donnees = {k: (request.form.get(k) or "").strip() for k in
-                   ("code", "nom", "responsable_id", "localisation", "date_debut", "date_fin")}
+                   ("code", "nom", "responsable_id", "localisation", "date_debut", "date_fin", "departement_id")}
         code = donnees["code"].upper()
         if not code:
             erreurs["code"] = "Le code est obligatoire."
@@ -83,6 +84,12 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                 erreurs["date_fin"] = str(exc)
             if dd and df and df < dd:
                 erreurs["date_fin"] = "La date de fin doit suivre la date de début."
+            dep = donnees["departement_id"]
+            if dep and not (dep.isdigit() and _dans_entite_ou_none(Departement, int(dep))):
+                erreurs["departement_id"] = "Département inconnu dans cette entité."
+            elif not dep and db.session.scalar(select(Departement.id).where(
+                    cond_entite(Departement.entite_id, _eid()), Departement.actif.is_(True)).limit(1)):
+                erreurs["departement_id"] = "Choisissez le département de rattachement du projet."
         if not erreurs:
             nouveau = obj is None
             obj = obj or model(entite_id=_eid())
@@ -93,6 +100,9 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                 obj.date_debut, obj.date_fin = dd, df
             if nouveau:
                 db.session.add(obj)
+            if avec_projet:
+                db.session.flush()
+                definir(obj.id, int(donnees["departement_id"]) if donnees["departement_id"] else None, current_user.id)
             journaliser(f"{model.__tablename__}_{'cree' if nouveau else 'modifie'}", obj.nom, code)
             db.session.commit()
             flash(f"« {obj.nom} » enregistré.", "succes")
@@ -104,7 +114,8 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                    "responsable_id": str(edition.responsable_id or ""),
                    "localisation": getattr(edition, "localisation", "") or "",
                    "date_debut": edition.date_debut.isoformat() if getattr(edition, "date_debut", None) else "",
-                   "date_fin": edition.date_fin.isoformat() if getattr(edition, "date_fin", None) else ""}
+                   "date_fin": edition.date_fin.isoformat() if getattr(edition, "date_fin", None) else "",
+                   "departement_id": str(departement_du_projet(edition.id) or "") if avec_projet else ""}
 
     col = Affectation.departement_id if model is Departement else Affectation.projet_id
     effectifs = dict(db.session.execute(
@@ -112,9 +123,31 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
     elements = db.session.scalars(select(model).options(joinedload(model.responsable))
                                   .where(cond_entite(model.entite_id, _eid()))
                                   .order_by(model.actif.desc(), model.nom)).all()
+    departements = rattachements = projets_par_dep = None
+    if avec_projet:
+        departements = db.session.scalars(select(Departement).where(
+            cond_entite(Departement.entite_id, _eid()), Departement.actif.is_(True)).order_by(Departement.nom)).all()
+        noms = dict(db.session.execute(select(Departement.id, Departement.nom)
+                                       .where(cond_entite(Departement.entite_id, _eid()))).all())
+        rattachements = {p: noms.get(d) for p, d in carte().items()}
+    else:
+        noms_p = dict(db.session.execute(select(Projet.id, Projet.nom)
+                                         .where(cond_entite(Projet.entite_id, _eid()))).all())
+        projets_par_dep = {}
+        for p, d in carte().items():
+            if p in noms_p:
+                projets_par_dep.setdefault(d, []).append(noms_p[p])
     return render_template(modele_tpl, elements=elements, effectifs=effectifs, edition=edition,
                            donnees=donnees, erreurs=erreurs, employes=_employes_actifs(),
-                           titre=titre, avec_projet=avec_projet)
+                           titre=titre, avec_projet=avec_projet, departements=departements,
+                           rattachements=rattachements, projets_par_dep=projets_par_dep)
+
+
+def _dans_entite_ou_none(model, obj_id):
+    obj = db.session.get(model, obj_id)
+    if obj is None:
+        return None
+    return obj if db.session.scalar(select(model.id).where(model.id == obj_id, cond_entite(model.entite_id, _eid()))) else None
 
 
 @bp.route("/departements", methods=["GET", "POST"])

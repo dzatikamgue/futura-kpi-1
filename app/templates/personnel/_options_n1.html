@@ -1,0 +1,3 @@
+{# N+1 possibles (tout le groupe). Variables : groupes_evaluateurs, choisi, exclure #}
+<option value="">— Nouveau N+1 (obligatoire) —</option>
+{% for ent, membres in groupes_evaluateurs %}<optgroup label="{{ ent.nom }}">{% for x in membres if x.id != exclure %}<option value="{{ x.id }}" {% if choisi == x.id|string %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}</optgroup>{% endfor %}
