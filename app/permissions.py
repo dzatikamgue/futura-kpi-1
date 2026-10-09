@@ -153,7 +153,10 @@ class Perimetre:
     def filtre_employes(self):
         dans_entite = cond_entite(Employe.entite_id, self.entite_id)
         if self.voit_tout:
-            return dans_entite
+            # Direction et RH du groupe apparaissent dans le personnel de toutes les entités
+            from .services.transverses import ids_personnel_groupe
+            groupe = ids_personnel_groupe()
+            return or_(dans_entite, Employe.id.in_(groupe)) if groupe else dans_entite
         ids_affectations = select(Affectation.employe_id).where(self.filtre_affectations_visibles())
         conds = [Employe.id.in_(ids_affectations)]
         if self.employe_id:
@@ -162,6 +165,9 @@ class Perimetre:
 
     def peut_voir_employe(self, employe: Employe) -> bool:
         if employe.id == self.employe_id or self.voit_tout_dans(employe.entite_id):
+            return True
+        from .services.transverses import ids_personnel_groupe
+        if self.voit_tout and employe.id in ids_personnel_groupe():
             return True
         return any(self.voit_affectation(a) for a in employe.affectations)
 

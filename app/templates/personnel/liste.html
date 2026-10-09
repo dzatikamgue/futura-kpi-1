@@ -61,9 +61,10 @@
     <tbody>
     {% for e in page.items %}
       <tr>
-        {% if rh %}<td class="col-case"><input type="checkbox" class="case" name="ids" value="{{ e.id }}" form="form-selection" aria-label="Sélectionner {{ e.nom_complet }}" data-selection-ligne></td>{% endif %}
+        {% set ailleurs = (e.entite_id if e.entite_id is not none else id_principale) != entite.id %}
+        {% if rh %}<td class="col-case">{% if not ailleurs %}<input type="checkbox" class="case" name="ids" value="{{ e.id }}" form="form-selection" aria-label="Sélectionner {{ e.nom_complet }}" data-selection-ligne>{% endif %}</td>{% endif %}
         <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div>
-          <div><strong>{{ e.nom_complet }}</strong><span>{{ e.poste or "—" }}</span></div></div></td>
+          <div><strong>{{ e.nom_complet }}</strong><span>{{ e.poste or "—" }}{% if ailleurs %} <span class="badge badge--groupe" title="Direction / RH du groupe">Groupe, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% endif %}</span></div></div></td>
         <td class="hide-mobile num" style="text-align:left">{{ e.matricule }}</td>
         <td>{% for a in e.affectations_actives %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="badge badge--warn">Aucune</span>{% endfor %}
             {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</td>

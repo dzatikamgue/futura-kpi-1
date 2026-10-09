@@ -33,8 +33,13 @@ def _dans_entite(obj):
 
 
 def _employes_actifs():
-    """Responsables possibles : personnel de l'entité active."""
-    return db.session.scalars(select(Employe).where(Employe.actif.is_(True), cond_entite(Employe.entite_id, _eid()))
+    """Responsables possibles : personnel de l'entité active + direction / RH du groupe."""
+    from ..services.transverses import ids_personnel_groupe
+    cond = cond_entite(Employe.entite_id, _eid())
+    groupe = ids_personnel_groupe()
+    if groupe:
+        cond = cond | Employe.id.in_(groupe)
+    return db.session.scalars(select(Employe).where(Employe.actif.is_(True), cond)
                               .order_by(Employe.nom, Employe.prenom)).all()
 
 
@@ -200,6 +205,16 @@ def postes():
 
     if request.method == "POST":
         action = request.form.get("action", "enregistrer")
+        if action == "groupe":
+            from ..services.transverses import basculer_poste
+            lib = (request.form.get("libelle") or "").strip()
+            if lib:
+                etat = basculer_poste(lib, current_user.id)
+                journaliser("poste_groupe", lib, "visible dans tout le groupe" if etat else "entité seulement")
+                db.session.commit()
+                flash(f"« {lib} » : {'visible dans toutes les entités' if etat else 'visible dans son entité seulement'}.",
+                      "succes")
+            return redirect(request.path)
         if action == "basculer":
             lib = (request.form.get("libelle") or "").strip()
             p = ligne(lib)
@@ -253,8 +268,11 @@ def postes():
     actifs = postes_actifs(eid)
     archives = db.session.scalars(select(Poste.libelle).where(Poste.actif.is_(False), cond_entite(Poste.entite_id, eid))
                                   .order_by(Poste.libelle)).all()
-    elements = [{"libelle": x, "actif": True, "effectif": effectifs.get(x, 0)} for x in actifs] + \
-               [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0)} for x in archives]
+    from ..services.transverses import _reglage, poste_est_groupe
+    reglage = _reglage()
+    elements = [{"libelle": x, "actif": True, "effectif": effectifs.get(x, 0), "groupe": poste_est_groupe(x, reglage)}
+                for x in actifs] + \
+               [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0), "groupe": False} for x in archives]
     return render_template("parametres/postes.html", elements=elements, edition=edition,
                            donnees=donnees, erreurs=erreurs)
 

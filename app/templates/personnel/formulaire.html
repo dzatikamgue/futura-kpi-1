@@ -30,7 +30,7 @@
     {{ champ("date_embauche", "Date d'embauche", donnees.get('date_embauche'), erreurs, "date") }}
   </div>
 
-  <div class="card__head" style="border-top:1px solid var(--line)"><h2>Poste{% if not employe %} et rattachement{% endif %}</h2></div>
+  <div class="card__head" style="border-top:1px solid var(--line)"><h2>Poste et rattachement</h2></div>
   <div class="card__body form-grid">
     <div class="field">
       <label for="f-poste">Poste / fonction</label>
@@ -47,7 +47,6 @@
       <span class="hint">Il sera ajouté à la liste des postes.</span>
     </div>
 
-    {% if not employe %}
     {% call select_champ("departement_id", "Département") %}
       <option value="">— Aucun —</option>
       {% for d in departements %}<option value="{{ d.id }}" {% if donnees.get('departement_id') == d.id|string %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
@@ -60,9 +59,13 @@
       <option value="">— À désigner plus tard —</option>
       {% for ent, membres in groupes_evaluateurs %}<optgroup label="{{ ent.nom }}">{% for x in membres %}<option value="{{ x.id }}" {% if donnees.get('evaluateur_id') == x.id|string %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}</optgroup>{% endfor %}
     {% endcall %}
-    {% endif %}
   </div>
-  {% if not departements and not projets and not employe %}
+  {% if employe and autres_affectations %}
+  <div class="card__body" style="padding-top:0"><p class="small muted">Ce salarié a {{ autres_affectations }} autre(s) affectation(s) : gérez-les sur <a href="{{ url_for('personnel.fiche', employe_id=employe.id) }}">sa fiche</a>. Changer le département ou le projet ici clôture l'ancienne affectation (son historique de notes est conservé).</p></div>
+  {% elif employe %}
+  <div class="card__body" style="padding-top:0"><p class="small muted">Changer le département ou le projet clôture l'ancienne affectation ; son historique de notes est conservé.</p></div>
+  {% endif %}
+  {% if not departements and not projets %}
   <div class="card__body" style="padding-top:0"><div class="alert alert--info">{{ icon('info') }}<span>Aucun département ni projet : créez-les dans <a href="{{ url_for('parametres.departements') }}">Départements</a> et <a href="{{ url_for('parametres.projets') }}">Projets</a> pour pouvoir rattacher le personnel.</span></div></div>
   {% endif %}
   <div class="card__foot form-actions" style="padding-top:12px">

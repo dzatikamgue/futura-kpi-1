@@ -134,11 +134,15 @@
   <form class="card__foot row" method="post" action="{{ url_for('personnel.ajouter_affectation', employe_id=e.id) }}" style="gap:8px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <strong class="small" style="margin-right:4px">Ajouter :</strong>
-    <label class="sr-only" for="aff-ctx">Département ou projet</label>
-    <select class="select select--sm" id="aff-ctx" name="contexte" required style="width:auto;min-width:220px" data-aff-select>
-      <option value="">Département ou projet…</option>
-      <optgroup label="Départements">{% for d in departements %}<option value="departement:{{ d.id }}">{{ d.nom }}</option>{% endfor %}</optgroup>
-      <optgroup label="Projets">{% for p in projets %}<option value="projet:{{ p.id }}">{{ p.nom }}</option>{% endfor %}</optgroup>
+    <label class="sr-only" for="aff-dep">Département</label>
+    <select class="select select--sm" id="aff-dep" name="departement_id" style="width:auto;min-width:190px">
+      <option value="">Département…</option>
+      {% for d in departements %}<option value="{{ d.id }}">{{ d.nom }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="aff-proj">Projet</label>
+    <select class="select select--sm" id="aff-proj" name="projet_id" style="width:auto;min-width:190px">
+      <option value="">Projet…</option>
+      {% for p in projets %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}
     </select>
     <label class="sr-only" for="aff-n1">N+1</label>
     <select class="select select--sm" id="aff-n1" name="evaluateur_id" style="width:auto;min-width:220px">

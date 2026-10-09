@@ -79,6 +79,7 @@ def register_filters(app):
     @app.context_processor
     def globals_gabarits():
         per = entite = None
+        id_principale = nom_principale = None
         onglets, charte = [], None
         if current_user.is_authenticated:
             from .permissions import perimetre
@@ -87,8 +88,12 @@ def register_filters(app):
             entite = per.entite
             onglets = entites_accessibles(current_user)
             charte = palette(entite.couleur if entite else None)
+            from .services.entites import principale as _p
+            id_principale, nom_principale = _p().id, _p().nom
         return {
             "entite": entite,
+            "id_principale": id_principale,
+            "nom_principale": nom_principale,
             "onglets_entites": onglets,
             "charte": charte,
             "logo_entite": logo_entite,

@@ -5,18 +5,22 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Postes</span>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Postes</h1>
-  <p>La liste proposée dans les fiches salariés et à l'import. Un poste archivé disparaît des listes sans modifier les fiches existantes.</p></div></div>
+  <p>La liste proposée dans les fiches salariés et à l'import. Les postes « Groupe » (direction, RH) rendent leurs titulaires visibles dans le personnel de toutes les entités. Cliquez sur « Entité » ou « Tout le groupe » pour changer.</p></div></div>
 
 <div class="grid grid-main">
   <section class="card">
     {% if elements %}
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>Poste</th><th class="num">Effectif</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
           <td><strong>{{ x.libelle }}</strong></td>
           <td class="num">{{ x.effectif }}</td>
+          <td>{% if x.actif %}<form method="post" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ x.libelle }}"><input type="hidden" name="action" value="groupe">
+              <button class="badge {{ 'badge--info' if x.groupe else 'badge--plain' }} badge-bouton" type="submit" title="Cliquer pour changer">{{ "Tout le groupe" if x.groupe else "Entité" }}</button>
+            </form>{% endif %}</td>
           <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="actions">
             {% if x.actif %}<a class="btn btn--ghost btn--sm" href="?modifier={{ x.libelle|urlencode }}#formulaire">Renommer</a>{% endif %}

@@ -104,6 +104,17 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
   - *Direction* / *Collaborateur* : rôle par entité, réglé dans *Comptes & accès → Gérer*.
 - **N+1 croisé** : la RH peut désigner comme N+1 un salarié d'une autre entité ; il obtient automatiquement un onglet vers cette entité, limité aux personnes qu'il note.
 
+## Direction et RH visibles dans tout le groupe
+
+- Les titulaires d'un poste de direction ou RH (directeur, directrice, DG, DGA, PDG, gérant, DRH, responsable ressources humaines…) et les comptes « RH du groupe » apparaissent dans le *Personnel* de **toutes** les entités, avec la mention « Groupe, rattaché à … ». Ils sont aussi proposés comme responsables de départements / projets et comme N+1 partout.
+- *Postes* : cliquez sur « Entité » / « Tout le groupe » pour ajouter ou retirer un poste (ex. un « Directeur de chantier » qui ne concerne qu'une entité). Réglage mémorisé dans la table des réglages existante : aucune modification de structure.
+- Ces personnes restent rattachées à leur entité d'origine : depuis une autre entité, elles ne sont pas incluses dans les actions groupées.
+
+## Rattachement par listes déroulantes
+
+- Création **et** modification d'une fiche : Poste, Département, Projet et N+1 se choisissent dans des listes. Changer le département ou le projet clôture l'ancienne affectation (historique conservé).
+- Sur la fiche, « Ajouter » propose deux listes séparées (Département, Projet) et le N+1.
+
 ## Sélection et suppression du personnel
 
 - *Personnel* : cochez des salariés (ou la case d'en-tête pour toute la page, puis « Sélectionner les N résultats » pour tout le filtre). Une barre d'actions apparaît : **Réactiver**, **Désactiver**, **Supprimer…**.

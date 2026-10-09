@@ -206,16 +206,59 @@ def modifier(employe_id):
             e.email = donnees["email"].lower() or None
             e.telephone = donnees["telephone"] or None
             e.date_embauche = donnees["date_embauche_val"]
+            n1 = _maj_rattachement(e, eid, donnees)
             journaliser("employe_modifie", e.nom_complet, e.matricule)
-            _apres_enregistrement(e)
+            _apres_enregistrement(e, n1)
             db.session.commit()
             flash("Fiche mise à jour.", "succes")
             return redirect(url_for("personnel.fiche", employe_id=e.id))
     else:
         donnees = {k: getattr(e, k) or "" for k in CHAMPS}
         donnees["date_embauche"] = e.date_embauche.isoformat() if e.date_embauche else ""
+        dep_aff, proj_aff = _affectations_principales(e)
+        donnees["departement_id"] = str(dep_aff.departement_id) if dep_aff else ""
+        donnees["projet_id"] = str(proj_aff.projet_id) if proj_aff else ""
+        n1 = (dep_aff.evaluateur_id if dep_aff and dep_aff.evaluateur_id else
+              proj_aff.evaluateur_id if proj_aff else None)
+        donnees["evaluateur_id"] = str(n1 or "")
+    autres = len(e.affectations_actives) - sum(1 for a in _affectations_principales(e) if a)
     return render_template("personnel/formulaire.html", employe=e, donnees=donnees, erreurs=erreurs,
-                           **_choix_formulaire(e, eid))
+                           autres_affectations=autres, **_choix_formulaire(e, eid))
+
+
+def _affectations_principales(e: Employe):
+    """Première affectation active de type département et de type projet (gérées par le formulaire)."""
+    actives = sorted(e.affectations_actives, key=lambda a: a.id)
+    return (next((a for a in actives if a.departement_id), None),
+            next((a for a in actives if a.projet_id), None))
+
+
+def _maj_rattachement(e: Employe, eid: int, donnees: dict) -> int | None:
+    """Applique les listes Département / Projet / N+1 du formulaire de modification."""
+    n1 = int(donnees["evaluateur_id"]) if donnees.get("evaluateur_id", "").isdigit() else None
+    if n1 == e.id:
+        n1 = None
+    dep_aff, proj_aff = _affectations_principales(e)
+    for model, champ, actuelle, cle in ((Departement, "departement_id", dep_aff, "departement_id"),
+                                         (Projet, "projet_id", proj_aff, "projet_id")):
+        if cle not in request.form:  # champ absent du formulaire : on ne touche à rien
+            continue
+        brut = donnees.get(cle, "")
+        cible = db.session.get(model, int(brut)) if brut.isdigit() else None
+        if cible and id_effectif(cible.entite_id) != eid:
+            cible = None
+        actuel_id = getattr(actuelle, champ) if actuelle else None
+        if (cible.id if cible else None) != actuel_id:
+            if actuelle:
+                actuelle.actif = False  # clôturée : l'historique des notes est conservé
+                journaliser("affectation_retiree", e.nom_complet, actuelle.contexte_libelle)
+            if cible:
+                a = affecter(e, **{("departement" if model is Departement else "projet"): cible}, evaluateur_id=n1)
+                journaliser("affectation_ajoutee", e.nom_complet, a.contexte_libelle)
+        elif actuelle and n1 != actuelle.evaluateur_id and "evaluateur_id" in request.form:
+            actuelle.evaluateur_id = n1
+            journaliser("affectation_n1_modifie", e.nom_complet, actuelle.contexte_libelle)
+    return n1
 
 
 @bp.post("/<int:employe_id>/statut")
@@ -277,28 +320,42 @@ def fiche(employe_id):
 @login_required
 @rh_requis
 def ajouter_affectation(employe_id):
+    """Ajoute une ou deux affectations (département et/ou projet) choisies dans des listes."""
     e = db.session.get(Employe, employe_id) or abort(404)
-    type_ctx, _, brut_id = (request.form.get("contexte") or "").partition(":")
-    ctx_id = int(brut_id) if brut_id.isdigit() else None
     eval_id = request.form.get("evaluateur_id", type=int)
-    if type_ctx not in ("departement", "projet") or not ctx_id:
-        flash("Choisissez un département ou un projet.", "erreur")
-        return redirect(url_for("personnel.fiche", employe_id=e.id))
     if eval_id == e.id:
         flash("Un salarié ne peut pas être son propre N+1.", "erreur")
         return redirect(url_for("personnel.fiche", employe_id=e.id))
-    model = Departement if type_ctx == "departement" else Projet
-    ctx = db.session.get(model, ctx_id) or abort(404)
-    if id_effectif(ctx.entite_id) != id_effectif(e.entite_id):
-        abort(400)
-    a = affecter(e, departement=ctx if model is Departement else None,
-                 projet=ctx if model is Projet else None, evaluateur_id=eval_id)
+    choix = []
+    for model, cle in ((Departement, "departement_id"), (Projet, "projet_id")):
+        ctx_id = request.form.get(cle, type=int)
+        if ctx_id:
+            ctx = db.session.get(model, ctx_id) or abort(404)
+            if id_effectif(ctx.entite_id) != id_effectif(e.entite_id):
+                abort(400)
+            choix.append((model, ctx))
+    # Compatibilité : ancienne liste unique « departement:ID » / « projet:ID »
+    type_ctx, _, brut_id = (request.form.get("contexte") or "").partition(":")
+    if not choix and type_ctx in ("departement", "projet") and brut_id.isdigit():
+        model = Departement if type_ctx == "departement" else Projet
+        ctx = db.session.get(model, int(brut_id)) or abort(404)
+        if id_effectif(ctx.entite_id) != id_effectif(e.entite_id):
+            abort(400)
+        choix.append((model, ctx))
+    if not choix:
+        flash("Choisissez un département et/ou un projet.", "erreur")
+        return redirect(url_for("personnel.fiche", employe_id=e.id))
+    libelles = []
+    for model, ctx in choix:
+        a = affecter(e, departement=ctx if model is Departement else None,
+                     projet=ctx if model is Projet else None, evaluateur_id=eval_id)
+        journaliser("affectation_ajoutee", e.nom_complet, a.contexte_libelle)
+        libelles.append(a.contexte_libelle)
     synchroniser_comptes([eval_id])
-    journaliser("affectation_ajoutee", e.nom_complet, a.contexte_libelle)
     db.session.commit()
-    msg = f"Affectation « {a.contexte_libelle} » enregistrée."
-    if not a.evaluateur_id:
-        msg += " Aucun N+1 désigné : personne ne peut encore noter ce salarié."
+    msg = "Affectation(s) enregistrée(s) : " + ", ".join(libelles) + "."
+    if not eval_id:
+        msg += " Aucun N+1 désigné : personne ne peut encore noter ce salarié sur ce rattachement."
     flash(msg, "succes")
     return redirect(url_for("personnel.fiche", employe_id=e.id))
 
@@ -335,11 +392,14 @@ def _ids_selectionnes(per, source) -> list[int]:
 
         from werkzeug.datastructures import MultiDict
         filtres = MultiDict([(k, v) for k, vs in parse_qs(source.get("filtres", "")).items() for v in vs])
-        return [e.id for e in db.session.scalars(_requete_liste(per, filtres))]
+        # Le personnel « groupe » d'une autre entité est exclu des actions groupées
+        return [e.id for e in db.session.scalars(_requete_liste(per, filtres))
+                if id_effectif(e.entite_id) == per.entite_id]
     demandes = {int(i) for i in source.getlist("ids") if str(i).isdigit()}
     if not demandes:
         return []
-    return list(db.session.scalars(select(Employe.id).where(Employe.id.in_(demandes), per.filtre_employes())))
+    return list(db.session.scalars(select(Employe.id).where(
+        Employe.id.in_(demandes), per.filtre_employes(), cond_entite(Employe.entite_id, per.entite_id))))
 
 
 def _proteges(ids) -> tuple[list[int], list[str]]:

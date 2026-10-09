@@ -764,3 +764,57 @@ def test_suppression_en_masse_par_filtre_et_protections(app):
     db.session.expire_all()
     assert db.session.get(Employe, ndjock) is None and db.session.get(Employe, moukoko) is None
     assert db.session.get(Employe, mballa.id) is not None
+
+
+# ---------------------------------------------------------------- personnel groupe et listes de rattachement
+def test_direction_et_rh_visibles_dans_toutes_les_entites(app):
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)  # on bascule dans l'espace de la nouvelle entité
+    page = c.get("/personnel/").get_data(as_text=True)
+    # Directeur général, directeurs, responsable RH : visibles ; ouvriers : non
+    for nom in ("NGUEMA", "TCHOUA", "MBALLA"):
+        assert nom in page, nom
+    assert "ESSOMBA" not in page and "Groupe, rattaché à FUTURA" in page
+    # Non sélectionnables pour les actions groupées depuis une autre entité
+    nguema = db.session.scalar(select(Employe).where(Employe.nom == "NGUEMA"))
+    r = c.post("/personnel/selection", data={"action": "desactiver", "ids": [str(nguema.id)]})
+    assert db.session.get(Employe, nguema.id).actif
+    # Le poste peut être retiré de la liste « groupe » (écran Postes)
+    c.post("/parametres/postes", data={"action": "groupe", "libelle": "Directeur technique"})
+    assert "TCHOUA" not in c.get("/personnel/").get_data(as_text=True)
+    # … et un poste ordinaire peut y être ajouté
+    c.post("/parametres/postes", data={"action": "groupe", "libelle": "Topographe"})
+    assert "MANGA" in c.get("/personnel/").get_data(as_text=True)
+    # La Direction de la nouvelle entité peut ouvrir la fiche du DG du groupe
+    assert c.get(f"/personnel/{nguema.id}").status_code == 200
+
+
+def test_modifier_rattachement_par_listes(app):
+    from app.models import Departement, Projet
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    owona = db.session.scalar(select(Employe).where(Employe.nom == "OWONA"))
+    chr_ = db.session.scalar(select(Projet).where(Projet.code == "CHR"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    tchoua = db.session.scalar(select(Employe.id).where(Employe.nom == "TCHOUA"))
+    page = c.get(f"/personnel/{owona.id}/modifier").get_data(as_text=True)
+    assert 'name="departement_id"' in page and 'name="projet_id"' in page and 'name="evaluateur_id"' in page
+    ancien = next(a for a in owona.affectations_actives if a.projet_id)
+    r = c.post(f"/personnel/{owona.id}/modifier", data={
+        "matricule": owona.matricule, "nom": owona.nom, "prenom": owona.prenom, "poste": owona.poste,
+        "departement_id": str(tech.id), "projet_id": str(chr_.id), "evaluateur_id": str(tchoua)})
+    assert r.status_code == 302
+    db.session.refresh(owona)
+    actives = owona.affectations_actives
+    assert {(a.departement_id, a.projet_id) for a in actives} >= {(tech.id, None), (None, chr_.id)}
+    assert all(a.evaluateur_id == tchoua for a in actives)
+    if ancien.projet_id != chr_.id:
+        assert not ancien.actif  # ancienne affectation clôturée, historique conservé
+    # Fiche : listes séparées Département / Projet
+    fiche = c.get(f"/personnel/{owona.id}").get_data(as_text=True)
+    assert 'id="aff-dep"' in fiche and 'id="aff-proj"' in fiche
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    c.post(f"/personnel/{owona.id}/affectations", data={"departement_id": str(daf.id), "evaluateur_id": str(tchoua)})
+    db.session.refresh(owona)
+    assert any(a.departement_id == daf.id for a in owona.affectations_actives)
