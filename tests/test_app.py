@@ -72,7 +72,7 @@ def test_toutes_les_pages_repondent(app, nom):
     c = app.test_client()
     login(c, email_de(nom))
     for url in ["/", "/evaluations/", "/suivi/", "/suivi/?vue=mensuelle", "/suivi/?vue=annuelle",
-                "/personnel/", "/mot-de-passe"]:
+                "/personnel/"]:
         r = c.get(url)
         assert r.status_code == 200, (nom, url, r.status_code)
     est_rh = nom == "MBALLA"
@@ -80,6 +80,8 @@ def test_toutes_les_pages_repondent(app, nom):
                 "/parametres/criteres", "/parametres/utilisateurs", "/journal/", "/personnel/nouveau",
                 "/parametres/postes", "/parametres/claude"]:
         assert c.get(url).status_code == (200 if est_rh else 403), (nom, url)
+    # Les mots de passe sont attribués par le superadmin : personne d'autre ne change le sien
+    assert c.get("/mot-de-passe").status_code == 403
 
 
 def test_exports(app):
@@ -268,15 +270,35 @@ def test_blocage_apres_echecs(app):
     assert r.status_code == 200 and "bloqué" in r.get_data(as_text=True)
 
 
-def test_changement_mdp_force(app):
+def test_mots_de_passe_attribues_par_le_superadmin(app):
+    # Un utilisateur ordinaire n'est jamais forcé à changer, et ne peut pas changer son mot de passe
     u = Utilisateur(email="nouveau@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=True)
     u.set_password(MDP)
     db.session.add(u)
+    sa = Utilisateur(email="super@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=True)
+    sa.set_password(MDP)
+    db.session.add(sa)
     db.session.commit()
     c = app.test_client()
     login(c, "nouveau@x.cm")
-    r = c.get("/")
+    assert c.get("/").status_code == 200
+    assert c.get("/mot-de-passe").status_code == 403
+    # Le superadmin, lui, choisit son propre mot de passe
+    c2 = app.test_client()
+    login(c2, "super@x.cm")
+    r = c2.get("/")
     assert r.status_code == 302 and "/mot-de-passe" in r.location
+    # La RH ne peut pas attribuer de mot de passe ; le superadmin oui
+    rh = app.test_client()
+    login(rh, email_de("MBALLA"))
+    assert rh.post("/parametres/utilisateurs", data={"action": "definir_mdp", "id": u.id,
+                                                    "mot_de_passe": "Choisi12345"}).status_code == 403
+    c2.post("/mot-de-passe", data={"actuel": MDP, "nouveau": "SuperAdmin2026", "confirmation": "SuperAdmin2026"})
+    r = c2.post("/parametres/utilisateurs", data={"action": "definir_mdp", "id": u.id, "mot_de_passe": "Choisi12345"})
+    assert r.status_code == 200 and "Choisi12345" in r.get_data(as_text=True)
+    c3 = app.test_client()
+    assert c3.post("/connexion", data={"email": "nouveau@x.cm", "mot_de_passe": "Choisi12345"}).status_code == 302
+    assert c3.get("/").status_code == 200  # pas de changement imposé
 
 
 def test_import_claude_simule(app, monkeypatch):
@@ -348,14 +370,21 @@ def test_compte_cree_quand_on_devient_n1_puis_acces(app):
     db.session.refresh(yves)
     assert yves.compte and yves.compte.email == "yves.nkoa@x.cm" and yves.compte.en_attente_acces
     page = c.get("/parametres/utilisateurs").get_data(as_text=True)
-    assert "Générer les accès" in page
-    r = c.post("/parametres/utilisateurs", data={"action": "generer_attente"})
+    assert "seul le superadmin" in page  # la RH voit l'attente mais n'attribue pas
+    assert c.post("/parametres/utilisateurs", data={"action": "generer_attente"}).status_code == 403
+    sa = Utilisateur(email="super@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False)
+    sa.set_password(MDP)
+    db.session.add(sa)
+    db.session.commit()
+    csa = app.test_client()
+    login(csa, "super@x.cm")
+    r = csa.post("/parametres/utilisateurs", data={"action": "generer_attente"})
     html = r.get_data(as_text=True)
     mdp = re.search(r"yves\.nkoa@x\.cm</span></td><td><span class=\"code kbd-copy\"[^>]*>([A-Za-z0-9]{12})<", html).group(1)
     c2 = app.test_client()
     r = c2.post("/connexion", data={"email": "yves.nkoa@x.cm", "mot_de_passe": mdp})
     assert r.status_code == 302
-    assert "/mot-de-passe" in c2.get("/").location
+    assert c2.get("/").status_code == 200  # mot de passe attribué : pas de changement imposé
     # L'identifiant suit l'e-mail de la fiche
     r = c.post(f"/personnel/{yves.id}/modifier", data={"matricule": yves.matricule, "nom": "NKOA", "email": "y.nkoa@x.cm"})
     assert r.status_code == 302 and "/personnel/" in r.location, r.location

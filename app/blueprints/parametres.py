@@ -9,6 +9,7 @@ from ..extensions import db
 from ..models import (Affectation, Critere, Departement, Employe, Entite,
                       EvaluationNote, Poste, Projet, Role, Utilisateur)
 from ..permissions import perimetre, rh_requis
+from .auth import valider_mot_de_passe
 from ..services.entites import cond_entite, id_effectif, roles_par_entite
 from ..services import reglages
 from ..services.audit import journaliser
@@ -307,6 +308,11 @@ def utilisateurs():
         if action == "creer":
             # Le compte prend l'e-mail de la fiche : rien d'autre à saisir que le rôle
             donnees = {k: (request.form.get(k) or "").strip() for k in ("role", "employe_id")}
+            mdp_impose = (request.form.get("mot_de_passe") or "").strip()
+            if mdp_impose and not current_user.est_superadmin:
+                abort(403)
+            if mdp_impose and (m := valider_mot_de_passe(mdp_impose)):
+                erreurs["mot_de_passe"] = m
             e = db.session.get(Employe, int(donnees["employe_id"])) if donnees["employe_id"].isdigit() else None
             if donnees["role"] not in Role.TOUS or (donnees["role"] == Role.RH and not current_user.est_superadmin):
                 erreurs["role"] = "Rôle invalide (seul un superadmin peut nommer un compte RH)."
@@ -323,15 +329,21 @@ def utilisateurs():
                 else:
                     db.session.flush()
                     identifiants = []
-                    if u.en_attente_acces:
+                    nouveau = u.en_attente_acces
+                    if nouveau:
                         u.role = donnees["role"]
-                        identifiants = generer_acces([u])
+                        # Seul le superadmin attribue un mot de passe ; sinon le compte attend
+                        if current_user.est_superadmin:
+                            identifiants = generer_acces([u], {u.id: mdp_impose} if mdp_impose else None)
                     journaliser("compte_cree", u.email, Role.LIBELLES[u.role])
                     db.session.commit()
                     if not identifiants:
-                        flash(f"Compte existant {u.email} lié à la fiche de {e.nom_complet}.", "succes")
+                        flash(f"Compte {u.email} créé : le superadmin doit lui attribuer un mot de passe." if nouveau
+                              else f"Compte existant {u.email} lié à la fiche de {e.nom_complet}.", "succes")
                         return redirect(request.path)
                     donnees = {}
+        elif action in ("generer_attente", "reinitialiser", "definir_mdp") and not current_user.est_superadmin:
+            abort(403)  # attribution des mots de passe : superadmin uniquement
         elif action == "generer_attente":
             attente = [u for u in db.session.scalars(select(Utilisateur).where(
                 Utilisateur.actif.is_(True), Utilisateur.acces_en_attente.is_(True),
@@ -366,7 +378,14 @@ def utilisateurs():
                     flash(f"Rôle de {u.email} : {Role.LIBELLES[role]}.", "succes")
             elif action == "reinitialiser":
                 identifiants = generer_acces([u])
-                journaliser("compte_mdp_reinitialise", u.email)
+                journaliser("compte_mdp_attribue", u.email, "généré")
+            elif action == "definir_mdp":
+                mdp = (request.form.get("mot_de_passe") or "").strip()
+                if (m := valider_mot_de_passe(mdp)):
+                    flash(f"{u.email} : {m}", "erreur")
+                    return redirect(request.path)
+                identifiants = generer_acces([u], {u.id: mdp})
+                journaliser("compte_mdp_attribue", u.email, "choisi par le superadmin")
             db.session.commit()
             if not identifiants:
                 return redirect(request.path)

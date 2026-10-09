@@ -99,13 +99,14 @@ def aligner_email(e: Employe) -> str | None:
     return None
 
 
-def generer_acces(comptes: list[Utilisateur]) -> list[tuple[Utilisateur, str]]:
-    """Génère un mot de passe temporaire pour chaque compte (affiché une seule fois)."""
+def generer_acces(comptes: list[Utilisateur], imposes: dict | None = None) -> list[tuple[Utilisateur, str]]:
+    """Attribue un mot de passe à chaque compte (choisi par le superadmin ou généré), affiché une seule fois."""
     resultat = []
+    imposes = imposes or {}
     for u in comptes:
-        mdp = mot_de_passe_temporaire()
+        mdp = imposes.get(u.id) or mot_de_passe_temporaire()
         u.set_password(mdp)
-        u.doit_changer_mdp = True
+        u.doit_changer_mdp = False  # attribué par le superadmin, non modifiable par l'utilisateur
         u.echecs_connexion, u.bloque_jusqua = 0, None
         u.acces_remis_le = utcnow()
         u.acces_en_attente = False

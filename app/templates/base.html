@@ -11,8 +11,8 @@
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=4">
   {% if charte %}<style>
-    :root { --brand: {{ charte.brand }}; --brand-hover: {{ charte.brand_hover }}; --brand-soft: {{ charte.brand_soft }}; --brand-ring: {{ charte.brand_ring }}; }
-    :root[data-theme="dark"] { --brand: {{ charte.dark_brand }}; --brand-hover: {{ charte.dark_brand_hover }}; --brand-soft: {{ charte.dark_brand_soft }}; --brand-ring: {{ charte.dark_brand_ring }}; }
+    :root { --side-bg: {{ charte.side_bg }}; --brand: {{ charte.brand }}; --brand-hover: {{ charte.brand_hover }}; --brand-soft: {{ charte.brand_soft }}; --brand-ring: {{ charte.brand_ring }}; }
+    :root[data-theme="dark"] { --side-bg: {{ charte.side_bg_dark }}; --brand: {{ charte.dark_brand }}; --brand-hover: {{ charte.dark_brand_hover }}; --brand-soft: {{ charte.dark_brand_soft }}; --brand-ring: {{ charte.dark_brand_ring }}; }
   </style>{% endif %}
   {% block head %}{% endblock %}
 </head>
@@ -24,10 +24,10 @@
     <a class="sidebar__logo" href="{{ url_for('tableau_bord.index') }}" aria-label="Accueil {{ entite.nom if entite else company_name }}">
       {% set l1 = logo_entite(entite) %}{% set l2 = logo_entite(entite, True) %}
       {% if l1 and entite and entite.logo %}<img class="logo-entite" src="{{ l1 }}" alt="{{ entite.nom }}">
-      {% elif l1 %}<img class="logo-light" src="{{ l1 }}" alt="{{ company_name }}" width="96" height="38"><img class="logo-dark" src="{{ l2 }}" alt="" width="96" height="38">
+      {% elif l1 %}<img class="logo-entite" src="{{ l1 }}" alt="{{ company_name }}" width="96" height="38">
       {% else %}<span class="logo-texte">{{ entite.nom }}</span>{% endif %}
     </a>
-    <div class="sidebar__product">Performance &amp; KPI</div>
+    <div class="sidebar__product">{{ entite.nom if entite else company_name }}</div>
     <nav class="nav">
       <a href="{{ url_for('tableau_bord.index') }}" {% if nav == 'tableau' %}aria-current="page"{% endif %}>{{ icon('dashboard') }} Tableau de bord</a>
       {% if per.est_evaluateur or per.est_responsable or per.voit_tout %}
@@ -57,7 +57,7 @@
         </div>
       </div>
       <div class="row" style="margin-top:12px">
-        <a class="btn btn--ghost btn--sm" href="{{ url_for('auth.changer_mot_de_passe') }}">{{ icon('lock') }} Mot de passe</a>
+        {% if current_user.est_superadmin %}<a class="btn btn--ghost btn--sm" href="{{ url_for('auth.changer_mot_de_passe') }}">{{ icon('lock') }} Mot de passe</a>{% endif %}
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn--ghost btn--sm" type="submit">{{ icon('logout') }} Quitter</button>
@@ -80,7 +80,7 @@
     </header>
       {% if onglets_entites|length > 1 %}
       <nav class="entite-tabs" aria-label="Changer d'entité">
-        {% for o in onglets_entites %}<a href="{{ url_for('entites.basculer', entite_id=o.id) }}" {% if entite and o.id == entite.id %}aria-current="true"{% endif %} style="--pastille: {{ o.couleur }}"><span class="pastille" aria-hidden="true"></span>{{ o.nom }}</a>{% endfor %}
+        {% for o in onglets_entites %}<a href="{{ url_for('entites.basculer', entite_id=o.id) }}" {% if entite and o.id == entite.id %}aria-current="true"{% endif %} style="--pastille: {{ o.couleur }}; --onglet: {{ palette(o.couleur).side_bg }}"><span class="pastille" aria-hidden="true"></span>{{ o.nom }}</a>{% endfor %}
       </nav>
       {% endif %}
 

@@ -113,6 +113,45 @@
     });
     if (couleur) couleur.addEventListener("input", function () { if (auto) auto.checked = false; peindre(); });
   });
+  /* ---------- Afficher / masquer le mot de passe saisi ---------- */
+  var OEIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var OEIL_BARRE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+  $$('input[type="password"]').forEach(function (input) {
+    var enveloppe = document.createElement("span");
+    enveloppe.className = "mdp-champ";
+    input.parentNode.insertBefore(enveloppe, input);
+    enveloppe.appendChild(input);
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "mdp-voir"; b.innerHTML = OEIL;
+    b.setAttribute("aria-label", "Afficher le mot de passe"); b.setAttribute("aria-pressed", "false");
+    b.title = "Afficher le mot de passe";
+    b.addEventListener("click", function () {
+      var visible = input.type === "password";
+      input.type = visible ? "text" : "password";
+      b.innerHTML = visible ? OEIL_BARRE : OEIL;
+      b.setAttribute("aria-pressed", visible ? "true" : "false");
+      b.setAttribute("aria-label", visible ? "Masquer le mot de passe" : "Afficher le mot de passe");
+      b.title = b.getAttribute("aria-label");
+      input.focus();
+    });
+    enveloppe.appendChild(b);
+  });
+  // Bouton « Générer » à côté d'un champ mot de passe (attribution par le superadmin)
+  $$("[data-generer-mdp]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var cible = document.getElementById(btn.getAttribute("data-generer-mdp"));
+      if (!cible) return;
+      var alpha = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789", mdp = "", tab = new Uint32Array(12);
+      (window.crypto || window.msCrypto).getRandomValues(tab);
+      for (var i = 0; i < 12; i++) mdp += alpha[tab[i] % alpha.length];
+      if (!/[0-9]/.test(mdp)) mdp = mdp.slice(0, 11) + "7";
+      cible.value = mdp; cible.type = "text";
+      var voir = cible.parentNode.querySelector(".mdp-voir");
+      if (voir) { voir.innerHTML = OEIL_BARRE; voir.setAttribute("aria-pressed", "true"); voir.setAttribute("aria-label", "Masquer le mot de passe"); }
+      cible.dispatchEvent(new Event("input"));
+    });
+  });
+
   /* ---------- Connexion : choix de l'entreprise ---------- */
   var auth = $("[data-auth]");
   if (auth) {

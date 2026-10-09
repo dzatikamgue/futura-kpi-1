@@ -64,6 +64,10 @@ def register_filters(app):
         args.update({k: v for k, v in kw.items()})
         return url_for(request.endpoint, **(request.view_args or {}), **args)
 
+    def _palette(c):
+        from .services.entites import palette
+        return palette(c)
+
     def logo_entite(e, blanc=False):
         """URL du logo d'une entité : logo importé, sinon logo FUTURA pour l'entité principale."""
         if e is not None and e.logo:
@@ -88,6 +92,7 @@ def register_filters(app):
             "onglets_entites": onglets,
             "charte": charte,
             "logo_entite": logo_entite,
+            "palette": _palette,
             "app_name": app.config["APP_NAME"],
             "company_name": app.config["COMPANY_NAME"],
             "per": per,

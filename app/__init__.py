@@ -48,7 +48,8 @@ def create_app(config_class=Config):
     @app.before_request
     def forcer_changement_mdp():
         from flask import redirect, url_for
-        if (current_user.is_authenticated and current_user.doit_changer_mdp
+        # Seul le superadmin choisit son propre mot de passe ; les autres utilisent celui qu'il leur attribue
+        if (current_user.is_authenticated and current_user.doit_changer_mdp and current_user.est_superadmin
                 and request.endpoint not in ("auth.changer_mot_de_passe", "auth.logout", "static")):
             return redirect(url_for("auth.changer_mot_de_passe"))
 

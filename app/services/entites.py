@@ -113,6 +113,24 @@ def _melange(c1, c2, t):
     return tuple(a + (b - a) * t for a, b in zip(c1, c2))
 
 
+def _luminance(rgb):
+    def lin(c):
+        c = c / 255
+        return c / 12.92 if c <= .03928 else ((c + .055) / 1.055) ** 2.4
+    r, g_, b = (lin(c) for c in rgb)
+    return .2126 * r + .7152 * g_ + .0722 * b
+
+
+def _fond_lisible(rgb, contraste_min=5.0):
+    """Assombrit la couleur jusqu'à un contraste suffisant avec un texte blanc."""
+    noir = (0, 0, 0)
+    for i in range(0, 21):
+        c = _melange(rgb, noir, i * .04)
+        if 1.05 / (_luminance(c) + .05) >= contraste_min:
+            return c
+    return _melange(rgb, noir, .8)
+
+
 def palette(couleur: str) -> dict:
     """Variables CSS dérivées de la couleur d'accent (clair et sombre)."""
     try:
@@ -122,7 +140,10 @@ def palette(couleur: str) -> dict:
     blanc, noir = (255, 255, 255), (0, 0, 0)
     r, gg, b = base
     clair = _melange(base, blanc, .45)
+    fond = _fond_lisible(base)
     return {
+        "side_bg": _rgb_hex(fond),
+        "side_bg_dark": _rgb_hex(_melange(fond, (12, 14, 18), .45)),
         "brand": _rgb_hex(base),
         "brand_hover": _rgb_hex(_melange(base, noir, .2)),
         "brand_soft": _rgb_hex(_melange(base, blanc, .92)),

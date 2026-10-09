@@ -16,7 +16,7 @@ Application RH de FUTURA : chaque N+1 note ses N-1 chaque mois (critères de 0 �
 | **Import du personnel** | Saisie manuelle, modèle Excel (lu sans IA), ou photo / PDF / Excel libre / texte collé lu par **Claude**. La RH valide sur un écran de vérification avant tout enregistrement. |
 | **Saisie rapide** | Fiche salarié en un écran : poste, département, projet et N+1 choisis dans des listes déroulantes. Matricule automatique si vide. |
 | **Comptes** | L'identifiant est l'e-mail de la fiche. Quand la RH désigne un N+1 qui a un e-mail, son compte est créé ; un compte existant est relié à la fiche portant le même e-mail. La RH génère les mots de passe en un clic. |
-| **Sécurité** | Mots de passe hachés, CSRF, blocage après 5 échecs, changement de mot de passe obligatoire à la 1re connexion, en-têtes CSP/HSTS, journal des actions. |
+| **Sécurité** | Mots de passe hachés (jamais relisibles), attribués par le superadmin uniquement et non modifiables par les utilisateurs ; bouton pour afficher le mot de passe saisi ; CSRF, blocage après 5 échecs, en-têtes CSP/HSTS, journal des actions. |
 | **Terrain** | Responsive (téléphone de chantier) ; la saisie est sauvegardée sur l'appareil en cas de coupure réseau ; polices et graphiques servis localement (aucun CDN). |
 
 **Barème** (note globale et critères, sur 100) : Excellent ≥ 80 · Très bien ≥ 70 · Bien ≥ 60 · Passable ≥ 50 · Insuffisant < 50. Un critère noté sous 40 doit être justifié par un commentaire.
@@ -103,6 +103,12 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
   - *RH du groupe* : toutes les entités, administration, création d'entités.
   - *Direction* / *Collaborateur* : rôle par entité, réglé dans *Comptes & accès → Gérer*.
 - **N+1 croisé** : la RH peut désigner comme N+1 un salarié d'une autre entité ; il obtient automatiquement un onglet vers cette entité, limité aux personnes qu'il note.
+
+## Mots de passe
+
+- Seul le **superadmin** attribue les mots de passe (*Comptes & accès* → « Attribuer / Changer le mot de passe », saisi ou généré). Il s'affiche une seule fois : transmettez-le.
+- Les utilisateurs **ne peuvent pas** changer leur mot de passe. En cas de perte ou de doute, le superadmin en attribue un nouveau.
+- Le superadmin choisit son propre mot de passe (*Mot de passe* en bas du menu).
 
 ## Mises à jour sans toucher aux données
 

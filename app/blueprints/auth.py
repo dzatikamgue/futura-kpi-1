@@ -2,7 +2,7 @@
 from datetime import timedelta
 from urllib.parse import urlparse
 
-from flask import session, Blueprint, flash, redirect, render_template, request, url_for
+from flask import abort, session, Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import select
 
@@ -91,6 +91,9 @@ def logout():
 @bp.route("/mot-de-passe", methods=["GET", "POST"])
 @login_required
 def changer_mot_de_passe():
+    # Les mots de passe sont attribués par le superadmin : seul lui peut changer le sien
+    if not current_user.est_superadmin:
+        abort(403)
     erreurs = {}
     if request.method == "POST":
         actuel = request.form.get("actuel") or ""

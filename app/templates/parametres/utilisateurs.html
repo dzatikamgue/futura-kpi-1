@@ -15,10 +15,10 @@
 
 {% if identifiants %}
 <div class="card" style="margin-bottom:16px;border-color:var(--brand)">
-  <div class="card__head"><div><h2>Accès à transmettre maintenant</h2>
-    <p>Ces mots de passe ne seront plus affichés. Chacun choisira son propre mot de passe à la première connexion.</p></div></div>
+  <div class="card__head"><div><h2>Mots de passe à transmettre</h2>
+    <p>Ils ne seront plus jamais affichés et les utilisateurs ne peuvent pas les modifier. En cas de perte, attribuez-en un nouveau.</p></div></div>
   <div class="table-wrap"><table class="table table--compact">
-    <thead><tr><th>Personne</th><th>Identifiant (e-mail)</th><th>Mot de passe temporaire</th></tr></thead>
+    <thead><tr><th>Personne</th><th>Identifiant (e-mail)</th><th>Mot de passe</th></tr></thead>
     <tbody>{% for u, mdp in identifiants %}<tr><td>{{ u.nom_affiche }}</td><td><span class="code kbd-copy" title="Cliquer pour copier">{{ u.email }}</span></td><td><span class="code kbd-copy" title="Cliquer pour copier">{{ mdp }}</span></td></tr>{% endfor %}</tbody>
   </table></div>
   <div class="card__foot small muted">Adresse de connexion : <span class="code">{{ request.host_url }}</span> — transmettez de préférence par SMS ou en main propre.</div>
@@ -27,9 +27,11 @@
 
 {% if nb_attente %}
 <div class="alert alert--warn" style="margin-bottom:16px;align-items:center">{{ icon('key') }}
-  <span style="flex:1"><strong>{{ nb_attente }} N+1</strong> ont un compte mais n'ont pas encore reçu leur mot de passe.</span>
+  <span style="flex:1"><strong>{{ nb_attente }} compte(s)</strong> attendent leur mot de passe{% if not current_user.est_superadmin %} : seul le superadmin peut l'attribuer{% endif %}.</span>
+  {% if current_user.est_superadmin %}
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="generer_attente">
-    <button class="btn btn--primary btn--sm" type="submit">Générer les accès</button></form>
+    <button class="btn btn--primary btn--sm" type="submit">Générer tous les mots de passe</button></form>
+  {% endif %}
 </div>
 {% endif %}
 {% if resp_sans_email %}
@@ -64,11 +66,20 @@
           {% else %}<div class="row" style="gap:4px;flex-wrap:wrap">{% for e, r in entites_compte.get(u.id, []) %}<span class="badge badge--plain" title="{{ 'Direction' if r == 'direction' else 'Collaborateur' }}"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:{{ e.couleur }}"></span> {{ e.code }}{{ " · Dir." if r == 'direction' }}</span>{% endfor %}
             <a class="btn btn--ghost btn--sm" href="{{ url_for('entites.acces', utilisateur_id=u.id) }}">Gérer</a></div>{% endif %}</td>
         <td class="hide-mobile">{{ u.derniere_connexion|date_fr(True) }}</td>
-        <td>{% if not u.actif %}<span class="badge badge--plain">Désactivé</span>{% elif u.en_attente_acces %}<span class="badge badge--warn">Accès à remettre</span>{% elif u.doit_changer_mdp %}<span class="badge badge--info">1re connexion</span>{% else %}<span class="badge badge--ok">Actif</span>{% endif %}</td>
+        <td>{% if not u.actif %}<span class="badge badge--plain">Désactivé</span>{% elif u.en_attente_acces %}<span class="badge badge--warn">Mot de passe à attribuer</span>{% else %}<span class="badge badge--ok">Actif</span>{% endif %}</td>
         <td class="actions">
-          <form method="post" style="display:inline" data-confirm="Générer un nouveau mot de passe temporaire pour {{ u.email }} ?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="reinitialiser">
-            <button class="btn btn--ghost btn--sm" type="submit">{{ "Générer l'accès" if u.en_attente_acces else "Nouveau mot de passe" }}</button></form>
+          {% if current_user.est_superadmin and u.id != current_user.id %}
+          <details class="attribuer">
+            <summary class="btn btn--ghost btn--sm">{{ "Attribuer le mot de passe" if u.en_attente_acces else "Changer le mot de passe" }}</summary>
+            <form method="post" class="attribuer__form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="definir_mdp">
+              <label class="sr-only" for="mdp-{{ u.id }}">Mot de passe pour {{ u.email }}</label>
+              <input class="input input--sm" id="mdp-{{ u.id }}" name="mot_de_passe" type="password" minlength="10" required autocomplete="new-password" placeholder="10 caractères, lettres et chiffres">
+              <button class="btn btn--ghost btn--sm" type="button" data-generer-mdp="mdp-{{ u.id }}">Générer</button>
+              <button class="btn btn--primary btn--sm" type="submit">Attribuer</button>
+            </form>
+          </details>
+          {% endif %}
           {% if u.id != current_user.id %}
           <form method="post" style="display:inline" data-confirm="{{ 'Désactiver' if u.actif else 'Activer' }} le compte {{ u.email }} ?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ u.id }}"><input type="hidden" name="action" value="basculer">
@@ -99,12 +110,22 @@
             {% for k, l in roles.items() %}{% if k != 'rh' or current_user.est_superadmin %}<option value="{{ k }}" {% if donnees.get('role', 'collaborateur') == k %}selected{% endif %}>{{ "RH du groupe" if k == 'rh' else l }}</option>{% endif %}{% endfor %}
           </select>
           <span class="hint">Rôle dans l'entité du salarié ({{ entite.nom }}). Les autres entités se règlent ensuite avec « Gérer ».</span></div>
-        <div class="form-actions" style="padding-top:4px"><button class="btn btn--primary" type="submit">Créer et afficher le mot de passe</button></div>
+        {% if current_user.est_superadmin %}
+        <div class="field"><label for="f-mdp-nouveau">Mot de passe</label>
+          <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <div style="flex:1"><input class="input" id="f-mdp-nouveau" name="mot_de_passe" type="password" minlength="10" autocomplete="new-password" placeholder="Laissez vide pour en générer un" {% if erreurs.get('mot_de_passe') %}aria-invalid="true"{% endif %}></div>
+            <button class="btn btn--secondary" type="button" data-generer-mdp="f-mdp-nouveau">Générer</button>
+          </div>
+          <span class="hint">L'utilisateur ne pourra pas le modifier.</span>
+          {% if erreurs.get('mot_de_passe') %}<span class="error">{{ erreurs.mot_de_passe }}</span>{% endif %}</div>
+        {% endif %}
+        <div class="form-actions" style="padding-top:4px"><button class="btn btn--primary" type="submit">{{ "Créer le compte et attribuer le mot de passe" if current_user.est_superadmin else "Créer le compte" }}</button></div>
+        {% if not current_user.est_superadmin %}<p class="small muted">Le superadmin attribuera ensuite le mot de passe.</p>{% endif %}
       </form>
     </section>
     <section class="card">
       <div class="card__body small ink-2 stack">
-        <p><strong class="ink">Superadmin</strong> (variable SUPERADMIN_EMAILS / ADMIN_EMAIL) : tout, y compris nommer la RH.</p>
+        <p><strong class="ink">Superadmin</strong> (variable SUPERADMIN_EMAILS / ADMIN_EMAIL) : tout, y compris nommer la RH et attribuer les mots de passe.</p>
         <p><strong class="ink">RH du groupe</strong> : voit et administre toutes les entités, crée des entités.</p>
         <p><strong class="ink">Direction / Collaborateur</strong> : rôle par entité, réglé avec « Gérer » dans la colonne Entités.</p>
       </div>

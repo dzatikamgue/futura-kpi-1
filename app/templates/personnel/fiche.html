@@ -57,8 +57,7 @@
         <dt>Embauche</dt><dd>{{ e.date_embauche|date_fr }}</dd>
         <dt>Compte d'accès</dt><dd>{% if e.compte %}{{ e.compte.role_libelle }}
           {% if not e.compte.actif %}<span class="badge badge--plain">Désactivé</span>
-          {% elif e.compte.en_attente_acces %}<span class="badge badge--warn">Accès à remettre</span>
-          {% elif e.compte.doit_changer_mdp %}<span class="badge badge--info">1re connexion</span>
+          {% elif e.compte.en_attente_acces %}<span class="badge badge--warn">Mot de passe à attribuer</span>
           {% else %}<span class="badge badge--ok">Actif</span>{% endif %}
           {% else %}<span class="muted">Aucun</span>{% endif %}</dd>
         <dt>Mise à jour</dt><dd>{{ e.updated_at|date_fr(True) }}</dd>
@@ -67,12 +66,21 @@
     {% if current_user.est_rh and e.actif %}
     <div class="card__foot">
       {% if e.compte %}
-      <form method="post" action="{{ url_for('parametres.utilisateurs') }}" class="row" style="gap:8px"
-            data-confirm="Générer un nouveau mot de passe temporaire pour {{ e.compte.email }} ? L'ancien ne fonctionnera plus.">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ e.compte.id }}"><input type="hidden" name="action" value="reinitialiser">
+      <div class="row" style="gap:8px">
         <span class="small muted" style="flex:1">Identifiant : <span class="code">{{ e.compte.email }}</span></span>
-        <button class="btn btn--secondary btn--sm" type="submit">{{ icon('key') }} {{ "Générer l'accès" if e.compte.en_attente_acces else "Nouveau mot de passe" }}</button>
-      </form>
+        {% if current_user.est_superadmin and e.compte.id != current_user.id %}
+        <details class="attribuer">
+          <summary class="btn btn--secondary btn--sm">{{ icon('key') }} {{ "Attribuer le mot de passe" if e.compte.en_attente_acces else "Changer le mot de passe" }}</summary>
+          <form method="post" action="{{ url_for('parametres.utilisateurs') }}" class="attribuer__form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ e.compte.id }}"><input type="hidden" name="action" value="definir_mdp">
+            <label class="sr-only" for="mdp-fiche">Mot de passe</label>
+            <input class="input input--sm" id="mdp-fiche" name="mot_de_passe" type="password" minlength="10" required autocomplete="new-password" placeholder="10 caractères, lettres et chiffres">
+            <button class="btn btn--ghost btn--sm" type="button" data-generer-mdp="mdp-fiche">Générer</button>
+            <button class="btn btn--primary btn--sm" type="submit">Attribuer</button>
+          </form>
+        </details>
+        {% elif e.compte.en_attente_acces %}<span class="small muted">Le superadmin attribuera le mot de passe.</span>{% endif %}
+      </div>
       {% elif e.email %}
       <form method="post" action="{{ url_for('parametres.utilisateurs') }}" class="row" style="gap:8px">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="employe_id" value="{{ e.id }}">
