@@ -20,6 +20,13 @@
   <form class="toolbar" method="get" role="search">
     <div class="search">{{ icon('search') }}<label class="sr-only" for="q">Rechercher</label>
       <input class="input" id="q" name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, matricule, poste, e-mail…"></div>
+    {% if postes %}
+    <label class="sr-only" for="flt-poste">Poste</label>
+    <select class="select select--sm" id="flt-poste" name="poste" data-autosubmit style="width:auto;max-width:240px">
+      <option value="">Tous les postes</option>
+      {% for p in postes %}<option value="{{ p }}" {% if request.args.get('poste') == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+    {% endif %}
     {{ filtres_contexte(departements, projets) }}
     <label class="sr-only" for="statut">Statut</label>
     <select class="select select--sm" id="statut" name="statut" data-autosubmit style="width:auto">
@@ -76,7 +83,7 @@
     </tbody>
   </table></div>
   {{ pagination(page, "salariés") }}
-  {% elif request.args.get('q') or request.args.get('departement') or request.args.get('projet') or request.args.get('sans_affectation') %}
+  {% elif request.args.get('q') or request.args.get('poste') or request.args.get('departement') or request.args.get('projet') or request.args.get('sans_affectation') %}
     {{ vide("Aucun résultat", "Aucun salarié ne correspond à ces critères.", "search", url_for('personnel.liste'), "Effacer les filtres") }}
   {% elif current_user.est_rh %}
     {{ vide("Aucun salarié enregistré", "Commencez par importer votre liste du personnel (Excel, photo ou PDF) ou ajoutez un salarié manuellement.", "users", url_for('import_personnel.index'), "Importer le personnel") }}

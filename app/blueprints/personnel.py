@@ -40,6 +40,8 @@ def _requete_liste(per, args=None):
         like = f"%{terme}%"
         q = q.where(or_(Employe.nom.ilike(like), Employe.prenom.ilike(like),
                         Employe.matricule.ilike(like), Employe.poste.ilike(like), Employe.email.ilike(like)))
+    if poste := (args.get("poste") or "").strip():
+        q = q.where(Employe.poste == poste)
     if dep := args.get("departement", type=int):
         q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id == dep,
                                    Affectation.actif.is_(True)))
@@ -72,7 +74,11 @@ def liste():
             return export_excel("Liste du personnel", entetes, lignes, "personnel")
         return export_pdf("Liste du personnel", entetes, lignes, "personnel")
     page = paginer(q, request.args.get("page", 1, type=int), 25)
-    return render_template("personnel/liste.html", page=page,
+    # Postes présents dans le personnel visible (liste du filtre)
+    postes = sorted(set(db.session.scalars(
+        select(Employe.poste).where(per.filtre_employes(), Employe.poste.isnot(None), Employe.poste != "")
+        .distinct())), key=str.lower)
+    return render_template("personnel/liste.html", page=page, postes=postes,
                            departements=per.departements_visibles(), projets=per.projets_visibles())
 
 

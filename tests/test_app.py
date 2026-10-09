@@ -818,3 +818,15 @@ def test_modifier_rattachement_par_listes(app):
     c.post(f"/personnel/{owona.id}/affectations", data={"departement_id": str(daf.id), "evaluateur_id": str(tchoua)})
     db.session.refresh(owona)
     assert any(a.departement_id == daf.id for a in owona.affectations_actives)
+
+
+def test_filtre_par_poste(app):
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    page = c.get("/personnel/").get_data(as_text=True)
+    assert 'id="flt-poste"' in page and ">Topographe<" in page
+    page = c.get("/personnel/?poste=Topographe").get_data(as_text=True)
+    assert "MANGA" in page and "ESSOMBA" not in page
+    # Combinable avec la sélection « tous les résultats » et les exports
+    r = c.get("/personnel/?poste=Topographe&export=xlsx")
+    assert r.status_code == 200
