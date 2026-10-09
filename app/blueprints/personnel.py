@@ -25,29 +25,30 @@ bp = Blueprint("personnel", __name__, url_prefix="/personnel")
 CHAMPS = ("matricule", "nom", "prenom", "poste", "email", "telephone", "date_embauche")
 
 
-def _requete_liste(per):
+def _requete_liste(per, args=None):
+    args = request.args if args is None else args
     q = (select(Employe).options(selectinload(Employe.affectations).selectinload(Affectation.departement),
                                  selectinload(Employe.affectations).selectinload(Affectation.projet),
                                  selectinload(Employe.affectations).selectinload(Affectation.evaluateur))
          .where(per.filtre_employes()))
-    statut = request.args.get("statut", "actif")
+    statut = args.get("statut", "actif")
     if statut == "actif":
         q = q.where(Employe.actif.is_(True))
     elif statut == "inactif":
         q = q.where(Employe.actif.is_(False))
-    if terme := (request.args.get("q") or "").strip():
+    if terme := (args.get("q") or "").strip():
         like = f"%{terme}%"
         q = q.where(or_(Employe.nom.ilike(like), Employe.prenom.ilike(like),
                         Employe.matricule.ilike(like), Employe.poste.ilike(like), Employe.email.ilike(like)))
-    if dep := request.args.get("departement", type=int):
+    if dep := args.get("departement", type=int):
         q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id == dep,
                                    Affectation.actif.is_(True)))
-    if proj := request.args.get("projet", type=int):
+    if proj := args.get("projet", type=int):
         q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.projet_id == proj,
                                    Affectation.actif.is_(True)))
-    if request.args.get("sans_affectation") == "1":
+    if args.get("sans_affectation") == "1":
         q = q.where(~exists().where(Affectation.employe_id == Employe.id, Affectation.actif.is_(True)))
-    tri, sens = request.args.get("tri", "nom"), request.args.get("sens", "asc")
+    tri, sens = args.get("tri", "nom"), args.get("sens", "asc")
     col = {"nom": Employe.nom, "matricule": Employe.matricule, "poste": Employe.poste,
            "embauche": Employe.date_embauche}.get(tri, Employe.nom)
     return q.order_by(col.desc().nulls_last() if sens == "desc" else col.asc().nulls_last(), Employe.prenom)
@@ -324,3 +325,114 @@ def maj_affectation(affectation_id):
             flash("N+1 mis à jour.", "succes")
     db.session.commit()
     return redirect(url_for("personnel.fiche", employe_id=a.employe_id))
+
+
+# --- Sélection : actions groupées et suppression -------------------------------
+def _ids_selectionnes(per, source) -> list[int]:
+    """Fiches choisies (cases cochées, ou « tous les résultats » des filtres), limitées au périmètre."""
+    if source.get("tout") == "1":
+        from urllib.parse import parse_qs
+
+        from werkzeug.datastructures import MultiDict
+        filtres = MultiDict([(k, v) for k, vs in parse_qs(source.get("filtres", "")).items() for v in vs])
+        return [e.id for e in db.session.scalars(_requete_liste(per, filtres))]
+    demandes = {int(i) for i in source.getlist("ids") if str(i).isdigit()}
+    if not demandes:
+        return []
+    return list(db.session.scalars(select(Employe.id).where(Employe.id.in_(demandes), per.filtre_employes())))
+
+
+def _proteges(ids) -> tuple[list[int], list[str]]:
+    """Retire la propre fiche de l'utilisateur et celles liées à un compte superadmin."""
+    from flask_login import current_user
+    gardes, exclus = [], []
+    for e in db.session.scalars(select(Employe).where(Employe.id.in_(ids or [-1]))):
+        if e.id == current_user.employe_id:
+            exclus.append(f"{e.nom_complet} (votre propre fiche)")
+        elif e.compte and e.compte.est_superadmin:
+            exclus.append(f"{e.nom_complet} (compte superadmin)")
+        else:
+            gardes.append(e.id)
+    return gardes, exclus
+
+
+def _page_suppression(per, ids):
+    ids, exclus = _proteges(ids)
+    employes = db.session.scalars(select(Employe).where(Employe.id.in_(ids or [-1]))
+                                  .order_by(Employe.nom, Employe.prenom)).all()
+    if not employes:
+        flash("Aucune fiche à supprimer dans la sélection." + (" Exclues : " + ", ".join(exclus) if exclus else ""), "info")
+        return redirect(url_for("personnel.liste"))
+    from ..services.suppression import impacts
+    return render_template("personnel/suppression.html", employes=employes, impacts=impacts(ids), exclus=exclus)
+
+
+@bp.post("/selection")
+@login_required
+@rh_requis
+def selection():
+    per = perimetre()
+    action = request.form.get("action")
+    ids = _ids_selectionnes(per, request.form)
+    retour = url_for("personnel.liste") + ("?" + request.form.get("filtres") if request.form.get("filtres") else "")
+    if not ids:
+        flash("Sélectionnez au moins un salarié.", "info")
+        return redirect(retour)
+    if action == "supprimer":
+        return _page_suppression(per, ids)
+    if action in ("desactiver", "reactiver"):
+        ids, exclus = _proteges(ids) if action == "desactiver" else (ids, [])
+        actif = action == "reactiver"
+        n = 0
+        for e in db.session.scalars(select(Employe).where(Employe.id.in_(ids or [-1]))):
+            if e.actif == actif:
+                continue
+            e.actif = actif
+            if not actif:
+                for a in e.affectations:
+                    a.actif = False
+                if e.compte:
+                    e.compte.actif = False
+            n += 1
+        journaliser("employes_" + ("reactives" if actif else "desactives"), f"{n} salarié(s)", "sélection groupée")
+        db.session.commit()
+        msg = f"{n} salarié(s) {'réactivé(s)' if actif else 'désactivé(s) : affectations et comptes suspendus, historique conservé'}."
+        if exclus:
+            msg += " Non modifiés : " + ", ".join(exclus) + "."
+        flash(msg, "succes")
+        return redirect(retour)
+    abort(400)
+
+
+@bp.get("/<int:employe_id>/supprimer")
+@login_required
+@rh_requis
+def confirmer_suppression(employe_id):
+    per = perimetre()
+    e = db.session.get(Employe, employe_id) or abort(404)
+    if not per.voit_tout_dans(e.entite_id):
+        abort(403)
+    return _page_suppression(per, [e.id])
+
+
+@bp.post("/supprimer")
+@login_required
+@rh_requis
+def supprimer():
+    from ..services.suppression import supprimer_employes
+    per = perimetre()
+    demandes = {int(i) for i in request.form.getlist("ids") if i.isdigit()}
+    # Contrôle du périmètre : uniquement des fiches d'entités où l'on a tous les droits
+    employes = [e for e in db.session.scalars(select(Employe).where(Employe.id.in_(demandes or {-1})))
+                if per.voit_tout_dans(e.entite_id)]
+    ids, _ = _proteges([e.id for e in employes])
+    if (request.form.get("confirmation") or "").strip().upper() != "SUPPRIMER":
+        flash("Suppression annulée : tapez SUPPRIMER pour confirmer.", "erreur")
+        return _page_suppression(per, ids)
+    noms = {e.id: f"{e.nom_complet} ({e.matricule})" for e in employes if e.id in ids}
+    for i in ids:
+        journaliser("employe_supprime", noms[i], "suppression définitive")
+    n = supprimer_employes(ids)
+    db.session.commit()
+    flash(f"{n} fiche(s) supprimée(s) définitivement, avec leurs évaluations et leurs comptes.", "succes")
+    return redirect(url_for("personnel.liste"))

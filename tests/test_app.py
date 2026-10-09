@@ -705,3 +705,62 @@ def test_page_connexion_liste_les_entreprises(app):
                follow_redirects=True)
     html = r.get_data(as_text=True)
     assert "pas accès à Société Test" in html and "chez FUTURA" in html
+
+
+# ---------------------------------------------------------------- sélection et suppression
+def test_selection_desactiver_puis_reactiver(app):
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ids = [db.session.scalar(select(Employe.id).where(Employe.nom == n)) for n in ("OWONA", "KAMDEM")]
+    page = c.get("/personnel/").get_data(as_text=True)
+    assert "data-selection" in page and "Supprimer…" in page
+    c.post("/personnel/selection", data={"action": "desactiver", "ids": [str(i) for i in ids]})
+    assert all(not db.session.get(Employe, i).actif for i in ids)
+    c.post("/personnel/selection", data={"action": "reactiver", "ids": [str(i) for i in ids]})
+    assert all(db.session.get(Employe, i).actif for i in ids)
+    # Un collaborateur n'a pas accès à la sélection
+    c2 = app.test_client()
+    login(c2, email_de("FOTSO"))
+    assert c2.post("/personnel/selection", data={"action": "desactiver", "ids": [str(ids[0])]}).status_code == 403
+
+
+def test_suppression_individuelle_et_impacts(app):
+    from app.models import JournalAction
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))  # a un compte et des notes
+    eid, uid = essomba.id, essomba.compte.id
+    nb_evals = db.session.scalar(select(db.func.count(Evaluation.id)).where(Evaluation.employe_id == eid))
+    assert nb_evals > 0
+    page = c.get(f"/personnel/{eid}/supprimer").get_data(as_text=True)
+    assert "Supprimer 1 fiche" in page and f"{nb_evals} évaluation(s) reçue(s)" in page
+    # Sans le mot de confirmation : rien n'est supprimé
+    c.post("/personnel/supprimer", data={"ids": [str(eid)], "confirmation": "oui"})
+    assert db.session.get(Employe, eid) is not None
+    r = c.post("/personnel/supprimer", data={"ids": [str(eid)], "confirmation": "supprimer"})
+    assert r.status_code == 302
+    db.session.expire_all()
+    assert db.session.get(Employe, eid) is None
+    assert db.session.get(Utilisateur, uid) is None
+    assert db.session.scalar(select(db.func.count(Evaluation.id)).where(Evaluation.employe_id == eid)) == 0
+    assert db.session.scalar(select(JournalAction).where(JournalAction.action == "employe_supprime"))
+    # Les autres salariés et leurs notes sont intacts
+    assert db.session.scalar(select(db.func.count(Evaluation.id))) > 0
+
+
+def test_suppression_en_masse_par_filtre_et_protections(app):
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    mballa = db.session.scalar(select(Employe).where(Employe.nom == "MBALLA"))
+    # « Tous les résultats » du filtre : uniquement les fiches correspondantes, sans la sienne
+    r = c.post("/personnel/selection", data={"action": "supprimer", "tout": "1", "filtres": "q=NDJOCK"})
+    page = r.get_data(as_text=True)
+    assert "NDJOCK" in page and "ESSOMBA" not in page
+    r = c.post("/personnel/selection", data={"action": "supprimer", "ids": [str(mballa.id)]})
+    assert r.status_code == 302  # sa propre fiche est protégée : rien à supprimer
+    ndjock = db.session.scalar(select(Employe.id).where(Employe.nom == "NDJOCK"))
+    moukoko = db.session.scalar(select(Employe.id).where(Employe.nom == "MOUKOKO"))
+    c.post("/personnel/supprimer", data={"ids": [str(ndjock), str(moukoko), str(mballa.id)], "confirmation": "SUPPRIMER"})
+    db.session.expire_all()
+    assert db.session.get(Employe, ndjock) is None and db.session.get(Employe, moukoko) is None
+    assert db.session.get(Employe, mballa.id) is not None

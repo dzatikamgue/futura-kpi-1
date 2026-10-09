@@ -466,6 +466,40 @@
     });
   });
 
+  /* ---------- Sélection de salariés (actions groupées) ---------- */
+  var formSel = $("[data-selection]");
+  if (formSel) {
+    var barre = $("[data-barre-selection]"), compte = $("[data-selection-compte]"), tout = $("[data-selection-tout]"),
+        casePage = $("[data-selection-page]"), lignes = $$("[data-selection-ligne]"), etendre = $("[data-selection-etendre]");
+    function majSel() {
+      var n = lignes.filter(function (c) { return c.checked; }).length;
+      if (tout.value !== "1") compte.textContent = n + (n > 1 ? " sélectionnés" : " sélectionné");
+      barre.hidden = n === 0 && tout.value !== "1";
+      lignes.forEach(function (c) { c.closest("tr").classList.toggle("ligne--choisie", c.checked); });
+      if (casePage) {
+        casePage.checked = n === lignes.length && n > 0;
+        casePage.indeterminate = n > 0 && n < lignes.length;
+      }
+      if (etendre) etendre.hidden = n !== lignes.length || tout.value === "1";
+    }
+    lignes.forEach(function (c) { c.addEventListener("change", function () { tout.value = ""; majSel(); }); });
+    if (casePage) casePage.addEventListener("change", function () {
+      lignes.forEach(function (c) { c.checked = casePage.checked; }); tout.value = ""; majSel();
+    });
+    if (etendre) etendre.addEventListener("click", function () {
+      tout.value = "1"; compte.textContent = etendre.textContent.replace("Sélectionner les", "Les") + " sont sélectionnés"; etendre.hidden = true;
+    });
+    $("[data-selection-annuler]").addEventListener("click", function () {
+      lignes.forEach(function (c) { c.checked = false; }); tout.value = ""; majSel();
+    });
+    majSel();
+  }
+  // Suppression : le bouton ne s'active qu'une fois le mot de confirmation tapé
+  var saisie = $("[data-confirmation-saisie]"), boutonSuppr = $("[data-confirmation-bouton]");
+  if (saisie && boutonSuppr) saisie.addEventListener("input", function () {
+    boutonSuppr.disabled = saisie.value.trim().toUpperCase() !== "SUPPRIMER";
+  });
+
   /* ---------- Copier dans le presse-papiers ---------- */
   $$(".kbd-copy").forEach(function (el) {
     el.addEventListener("click", function () {

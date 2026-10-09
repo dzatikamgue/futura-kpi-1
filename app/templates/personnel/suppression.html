@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "personnel" %}
+{% block title %}Supprimer des salariés{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.liste') }}">Personnel</a><span class="sep crumb-mid">/</span><span aria-current="page">Suppression</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Supprimer {{ employes|length }} fiche{{ "s" if employes|length > 1 }}</h1>
+  <p>Cette action est définitive. Pour garder l'historique, désactivez plutôt les salariés.</p>
+</div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card__head"><h2>Salariés concernés</h2></div>
+    <div class="table-wrap" style="max-height:420px;overflow:auto"><table class="table table--compact">
+      <thead><tr><th>Salarié</th><th>Matricule</th><th>Poste</th></tr></thead>
+      <tbody>{% for e in employes %}<tr>
+        <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div><div><strong>{{ e.nom_complet }}</strong></div></div></td>
+        <td>{{ e.matricule }}</td><td>{{ e.poste or "—" }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if exclus %}<div class="card__foot small muted">Non supprimés (protégés) : {{ exclus|join(", ") }}.</div>{% endif %}
+  </section>
+
+  <section class="card carte-danger">
+    <div class="card__head"><h2>Ce qui va se passer</h2></div>
+    <div class="card__body stack small">
+      <p><strong>Effacé définitivement :</strong></p>
+      <ul class="liste-impacts">
+        <li>{{ employes|length }} fiche(s) salarié</li>
+        <li>{{ impacts.evaluations }} évaluation(s) reçue(s) et leurs notes</li>
+        <li>{{ impacts.affectations }} affectation(s)</li>
+        <li>{{ impacts.comptes }} compte(s) d'accès</li>
+      </ul>
+      {% if impacts.n_moins_1 or impacts.evaluations_donnees or impacts.responsabilites %}
+      <p><strong>Modifié chez les autres :</strong></p>
+      <ul class="liste-impacts">
+        {% if impacts.n_moins_1 %}<li>{{ impacts.n_moins_1 }} salarié(s) n'auront plus de N+1 : à désigner ensuite</li>{% endif %}
+        {% if impacts.evaluations_donnees %}<li>{{ impacts.evaluations_donnees }} évaluation(s) données à d'autres restent, sans nom d'évaluateur</li>{% endif %}
+        {% if impacts.responsabilites %}<li>{{ impacts.responsabilites }} département(s) / projet(s) n'auront plus de responsable</li>{% endif %}
+      </ul>
+      {% endif %}
+      <form method="post" action="{{ url_for('personnel.supprimer') }}" class="stack" style="margin-top:8px" data-validate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for e in employes %}<input type="hidden" name="ids" value="{{ e.id }}">{% endfor %}
+        <div class="field">
+          <label for="f-confirmation">Tapez <strong>SUPPRIMER</strong> pour confirmer</label>
+          <input class="input" id="f-confirmation" name="confirmation" required autocomplete="off" pattern="[Ss][Uu][Pp][Pp][Rr][Ii][Mm][Ee][Rr]" title="Tapez SUPPRIMER" data-confirmation-saisie>
+        </div>
+        <div class="form-actions">
+          <a class="btn btn--ghost" href="{{ url_for('personnel.liste') }}">Annuler</a>
+          <button class="btn btn--danger" type="submit" data-confirmation-bouton disabled>{{ icon('alert') }} Supprimer définitivement</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

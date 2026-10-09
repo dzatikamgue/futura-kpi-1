@@ -104,6 +104,13 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
   - *Direction* / *Collaborateur* : rôle par entité, réglé dans *Comptes & accès → Gérer*.
 - **N+1 croisé** : la RH peut désigner comme N+1 un salarié d'une autre entité ; il obtient automatiquement un onglet vers cette entité, limité aux personnes qu'il note.
 
+## Sélection et suppression du personnel
+
+- *Personnel* : cochez des salariés (ou la case d'en-tête pour toute la page, puis « Sélectionner les N résultats » pour tout le filtre). Une barre d'actions apparaît : **Réactiver**, **Désactiver**, **Supprimer…**.
+- Une fiche se supprime aussi seule depuis sa page (bouton **Supprimer**).
+- **Désactiver** conserve tout l'historique (recommandé pour un départ). **Supprimer** est définitif : la fiche, ses évaluations reçues, ses affectations et son compte sont effacés. Les évaluations qu'elle a données à d'autres restent (sans nom d'évaluateur), ses N-1 passent « N+1 à désigner ».
+- Avant suppression, l'écran récapitule l'impact ; il faut taper **SUPPRIMER** pour confirmer. Chaque suppression est inscrite au journal. Votre propre fiche et celles des superadmins sont protégées. Réservé à la RH et aux superadmins.
+
 ## Mots de passe
 
 - Seul le **superadmin** attribue les mots de passe (*Comptes & accès* → « Attribuer / Changer le mot de passe », saisi ou généré). Il s'affiche une seule fois : transmettez-le.

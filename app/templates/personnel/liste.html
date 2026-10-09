@@ -29,8 +29,28 @@
     <button class="btn btn--secondary btn--sm" type="submit">Filtrer</button>
   </form>
   {% if page.items %}
+  {% set rh = current_user.est_rh and per.voit_tout %}
+  {% if rh %}
+  <form id="form-selection" method="post" action="{{ url_for('personnel.selection') }}" data-selection>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="filtres" value="{{ request.query_string.decode() }}">
+    <input type="hidden" name="tout" value="" data-selection-tout>
+    <div class="barre-selection" data-barre-selection hidden>
+      <strong data-selection-compte>0 sélectionné</strong>
+      {% if page.total > page.items|length %}
+      <button class="btn btn--ghost btn--sm" type="button" data-selection-etendre>Sélectionner les {{ page.total }} résultats</button>
+      {% endif %}
+      <span class="spacer"></span>
+      <button class="btn btn--ghost btn--sm" type="submit" name="action" value="reactiver">Réactiver</button>
+      <button class="btn btn--secondary btn--sm" type="submit" name="action" value="desactiver" data-confirm="Désactiver les salariés sélectionnés ? Leurs affectations et comptes seront suspendus ; l'historique est conservé.">Désactiver</button>
+      <button class="btn btn--danger btn--sm" type="submit" name="action" value="supprimer">Supprimer…</button>
+      <button class="btn btn--ghost btn--sm" type="button" data-selection-annuler>Annuler</button>
+    </div>
+  </form>
+  {% endif %}
   <div class="table-wrap"><table class="table">
     <thead><tr>
+      {% if rh %}<th class="col-case"><label class="sr-only" for="sel-tout">Tout sélectionner sur cette page</label><input type="checkbox" id="sel-tout" class="case" data-selection-page></th>{% endif %}
       {{ th_tri("Salarié", "nom") }}
       {{ th_tri("Matricule", "matricule", "hide-mobile") }}
       <th>Affectations</th>
@@ -41,6 +61,7 @@
     <tbody>
     {% for e in page.items %}
       <tr>
+        {% if rh %}<td class="col-case"><input type="checkbox" class="case" name="ids" value="{{ e.id }}" form="form-selection" aria-label="Sélectionner {{ e.nom_complet }}" data-selection-ligne></td>{% endif %}
         <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div>
           <div><strong>{{ e.nom_complet }}</strong><span>{{ e.poste or "—" }}</span></div></div></td>
         <td class="hide-mobile num" style="text-align:left">{{ e.matricule }}</td>

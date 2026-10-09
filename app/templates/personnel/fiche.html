@@ -24,8 +24,11 @@
     <form method="post" action="{{ url_for('personnel.basculer_statut', employe_id=e.id) }}"
           data-confirm="{{ 'Désactiver ce salarié ? Ses affectations et son compte seront suspendus ; l\'historique est conservé.' if e.actif else 'Réactiver ce salarié ?' }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn {{ 'btn--danger' if e.actif else 'btn--secondary' }}" type="submit">{{ "Désactiver" if e.actif else "Réactiver" }}</button>
+      <button class="btn {{ 'btn--secondary' if e.actif else 'btn--secondary' }}" type="submit">{{ "Désactiver" if e.actif else "Réactiver" }}</button>
     </form>
+    {% if e.id != current_user.employe_id and per.voit_tout_dans(e.entite_id) %}
+    <a class="btn btn--danger" href="{{ url_for('personnel.confirmer_suppression', employe_id=e.id) }}">Supprimer</a>
+    {% endif %}
     {% endif %}
   </div>
 </div>
