@@ -13,8 +13,8 @@ from ..models import (Affectation, Departement, Employe, Evaluation, Projet,
 from ..permissions import perimetre, rh_requis
 from ..services.audit import journaliser
 from ..services.comptes import aligner_email, synchroniser_comptes
-from ..services.entites import cond_entite, id_effectif
-from ..services.organisation import (affecter, changer_projet, contextes_groupe, evaluateurs_groupe, matricule_auto,
+from ..services.entites import cond_entite, id_effectif, principale
+from ..services.organisation import (affecter, affecter_equipe, changer_projet, contextes_groupe, evaluateurs_groupe, matricule_auto,
                                      matricule_pris, poste_canonique, postes_actifs)
 from ..services.exports import export_excel, export_pdf
 from ..services.notation import MOIS_COURTS, moyenne, mois_du_trimestre, niveau
@@ -385,6 +385,106 @@ def maj_affectation(affectation_id):
             flash("N+1 mis à jour.", "succes")
     db.session.commit()
     return redirect(url_for("personnel.fiche", employe_id=a.employe_id))
+
+
+# --- Équipe d'un département / projet : affectation en masse -----------------
+_TYPES = {"departement": Departement, "projet": Projet}
+
+
+def _contexte_ou_404(type_ctx, ctx_id):
+    model = _TYPES.get(type_ctx) or abort(404)
+    return db.session.get(model, ctx_id) or abort(404)
+
+
+@bp.get("/equipe/<type_ctx>/<int:ctx_id>")
+@login_required
+@rh_requis
+def equipe(type_ctx, ctx_id):
+    ctx = _contexte_ou_404(type_ctx, ctx_id)
+    col = Affectation.projet_id if type_ctx == "projet" else Affectation.departement_id
+    membres = db.session.scalars(
+        select(Affectation).join(Employe, Employe.id == Affectation.employe_id)
+        .options(selectinload(Affectation.employe), selectinload(Affectation.evaluateur))
+        .where(col == ctx.id, Affectation.actif.is_(True), Employe.actif.is_(True))
+        .order_by(Employe.nom, Employe.prenom)).all()
+    deja = {a.employe_id for a in membres}
+    from ..models import Entite
+    candidats = [e for e in db.session.scalars(
+        select(Employe).options(selectinload(Employe.affectations))
+        .where(Employe.actif.is_(True)).order_by(Employe.nom, Employe.prenom)) if e.id not in deja]
+    entites = db.session.scalars(select(Entite).where(Entite.actif.is_(True))
+                                 .order_by(Entite.principale.desc(), Entite.nom)).all()
+    from ..services.projets import affectation_notee
+    return render_template(
+        "personnel/equipe.html", ctx=ctx, type_ctx=type_ctx, membres=membres, candidats=candidats,
+        entites=entites, entite_ctx=id_effectif(ctx.entite_id), id_principale=principale().id,
+        postes=sorted({e.poste for e in candidats if e.poste}, key=str.lower),
+        notee={a.id: affectation_notee(a) for a in membres},
+        groupes_evaluateurs=evaluateurs_groupe())
+
+
+@bp.post("/equipe/<type_ctx>/<int:ctx_id>/ajouter")
+@login_required
+@rh_requis
+def equipe_ajouter(type_ctx, ctx_id):
+    ctx = _contexte_ou_404(type_ctx, ctx_id)
+    retour = redirect(url_for("personnel.equipe", type_ctx=type_ctx, ctx_id=ctx.id))
+    ids = {int(i) for i in request.form.getlist("ids") if str(i).isdigit()}
+    evaluateur_id = request.form.get("evaluateur_id", type=int)
+    if not ids:
+        flash("Cochez au moins un salarié à affecter.", "erreur")
+        return retour
+    if not evaluateur_id or db.session.get(Employe, evaluateur_id) is None:
+        flash("Désignez le N+1 qui notera ces salariés.", "erreur")
+        return retour
+    employes = db.session.scalars(select(Employe).where(Employe.id.in_(ids), Employe.actif.is_(True))).all()
+    n, exclus = affecter_equipe(employes, ctx, evaluateur_id, remplacer=request.form.get("remplacer") == "1")
+    journaliser("equipe_affectee", ctx.nom, f"{n} salarié(s)")
+    synchroniser_comptes([evaluateur_id])
+    db.session.commit()
+    msg = f"{n} salarié(s) affecté(s) à « {ctx.nom} »."
+    if exclus:
+        msg += " Non affectés : " + ", ".join(exclus) + "."
+    flash(msg, "succes")
+    return retour
+
+
+@bp.post("/equipe/<type_ctx>/<int:ctx_id>/membres")
+@login_required
+@rh_requis
+def equipe_membres(type_ctx, ctx_id):
+    ctx = _contexte_ou_404(type_ctx, ctx_id)
+    retour = redirect(url_for("personnel.equipe", type_ctx=type_ctx, ctx_id=ctx.id))
+    col = Affectation.projet_id if type_ctx == "projet" else Affectation.departement_id
+    ids = {int(i) for i in request.form.getlist("aff_ids") if str(i).isdigit()}
+    affs = db.session.scalars(select(Affectation).where(Affectation.id.in_(ids or {-1}), col == ctx.id,
+                                                        Affectation.actif.is_(True))).all()
+    if not affs:
+        flash("Cochez au moins un membre.", "erreur")
+        return retour
+    action = request.form.get("action")
+    if action == "retirer":
+        for a in affs:
+            a.actif = False
+        journaliser("equipe_retrait", ctx.nom, f"{len(affs)} salarié(s)")
+        flash(f"{len(affs)} salarié(s) retiré(s) de « {ctx.nom} ». L'historique des notes est conservé.", "succes")
+    elif action == "n1":
+        nouvel = request.form.get("evaluateur_id", type=int)
+        if not nouvel or db.session.get(Employe, nouvel) is None:
+            flash("Choisissez le nouveau N+1.", "erreur")
+            return retour
+        n = 0
+        for a in affs:
+            if a.employe_id != nouvel:
+                a.evaluateur_id = nouvel
+                n += 1
+        journaliser("equipe_n1", ctx.nom, f"{n} salarié(s)")
+        synchroniser_comptes([nouvel])
+        flash(f"N+1 mis à jour pour {n} salarié(s).", "succes")
+    else:
+        abort(400)
+    db.session.commit()
+    return retour
 
 
 # --- Changement de projet (mutation) -----------------------------------------

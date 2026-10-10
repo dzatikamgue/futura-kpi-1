@@ -22,9 +22,10 @@
           {% if avec_projet %}<td>{% if rattachements.get(x.id) %}{{ rattachements[x.id] }}{% else %}<span class="badge badge--warn">À rattacher</span>{% endif %}</td>
           {% else %}<td class="hide-mobile small">{{ (projets_par_dep.get(x.id) or [])|join(", ") or "—" }}</td>{% endif %}
           {% if avec_projet %}<td class="hide-mobile">{{ x.localisation or "—" }}</td><td class="hide-mobile nowrap">{{ x.date_debut|date_fr }} → {{ x.date_fin|date_fr }}</td>{% endif %}
-          <td class="num">{{ effectifs.get(x.id, 0) }}</td>
+          <td class="num"><a href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}" title="Voir et gérer l'équipe">{{ effectifs.get(x.id, 0) }}</a></td>
           <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="actions">
+            {% if x.actif %}<a class="btn btn--secondary btn--sm" href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}">{{ icon('users') }} Équipe</a>{% endif %}
             <a class="btn btn--ghost btn--sm" href="?modifier={{ x.id }}">Modifier</a>
             <form method="post" style="display:inline" data-confirm="{{ 'Archiver' if x.actif else 'Réactiver' }} « {{ x.nom }} » ?">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ x.id }}"><input type="hidden" name="action" value="basculer">

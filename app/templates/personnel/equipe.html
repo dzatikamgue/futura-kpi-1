@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "projets" if type_ctx == "projet" else "departements" %}
+{% set libelle_type = "projet" if type_ctx == "projet" else "département" %}
+{% block title %}Équipe — {{ ctx.nom }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><a class="crumb-mid" href="{{ url_for('parametres.projets' if type_ctx == 'projet' else 'parametres.departements') }}">{{ "Projets" if type_ctx == "projet" else "Départements" }}</a><span class="sep">/</span><span aria-current="page">{{ ctx.nom }}</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Équipe : {{ ctx.nom }}</h1>
+  <p>Cochez plusieurs salariés pour les affecter à ce {{ libelle_type }} en une fois, avec leur N+1.
+     {% if ctx.responsable %}Responsable : <strong>{{ ctx.responsable.nom_complet }}</strong>.{% endif %}</p>
+</div></div>
+
+<div class="stack-lg">
+{# ---------- Membres actuels ---------- #}
+<section class="card">
+  <div class="card__head"><div><h2>Membres actuels <span class="muted">({{ membres|length }})</span></h2>
+    <p>Retirer clôture l'affectation : l'historique des notes est conservé.</p></div></div>
+  {% if membres %}
+  <form method="post" action="{{ url_for('personnel.equipe_membres', type_ctx=type_ctx, ctx_id=ctx.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap" style="max-height:420px;overflow:auto"><table class="table table--compact">
+      <thead><tr><th class="col-case"><label class="sr-only" for="m-tout">Tout cocher</label><input type="checkbox" id="m-tout" class="case" data-check-all=".case-membre"></th>
+        <th>Salarié</th><th class="hide-mobile">Poste</th><th>N+1</th><th class="hide-mobile">Notation</th></tr></thead>
+      <tbody>{% for a in membres %}<tr>
+        <td class="col-case"><input type="checkbox" class="case case-membre" name="aff_ids" value="{{ a.id }}" aria-label="Choisir {{ a.employe.nom_complet }}"></td>
+        <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ a.employe.initiales }}</div><div><a href="{{ url_for('personnel.fiche', employe_id=a.employe.id) }}"><strong>{{ a.employe.nom_complet }}</strong></a><span>{{ a.employe.matricule }}</span></div></div></td>
+        <td class="hide-mobile">{{ a.employe.poste or "—" }}</td>
+        <td>{% if a.evaluateur %}{{ a.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Non défini</span>{% endif %}</td>
+        <td class="hide-mobile">{% if notee[a.id] %}<span class="badge badge--ok">Noté ici</span>{% else %}<span class="badge badge--plain" title="Noté dans son projet">Noté dans son projet</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="card__foot row" style="gap:8px;flex-wrap:wrap">
+      <label class="sr-only" for="m-n1">Nouveau N+1</label>
+      <select class="select select--sm" id="m-n1" name="evaluateur_id" style="width:auto;min-width:230px">
+        {% with choisi=None, exclure=None %}{% include "personnel/_options_n1.html" %}{% endwith %}
+      </select>
+      <button class="btn btn--secondary btn--sm" type="submit" name="action" value="n1">Changer le N+1 des cochés</button>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost btn--sm" type="submit" name="action" value="retirer" data-confirm="Retirer les salariés cochés de « {{ ctx.nom }} » ? L'historique des notes est conservé.">Retirer de l'équipe</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="card__body"><p class="muted">Personne n'est encore affecté à ce {{ libelle_type }}. Cochez des salariés ci-dessous.</p></div>
+  {% endif %}
+</section>
+
+{# ---------- Ajouter des salariés ---------- #}
+<section class="card" data-equipe>
+  <div class="card__head"><div><h2>Ajouter des salariés</h2>
+    <p>Filtrez, cochez, puis choisissez le N+1 commun. Les salariés d'une autre entité peuvent être ajoutés (multi-entités).</p></div></div>
+  <form method="post" action="{{ url_for('personnel.equipe_ajouter', type_ctx=type_ctx, ctx_id=ctx.id) }}" data-validate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card__body row" style="gap:8px;flex-wrap:wrap;padding-bottom:8px">
+      <label class="sr-only" for="eq-q">Rechercher</label>
+      <input class="input input--sm" id="eq-q" type="search" placeholder="Nom, matricule, poste…" data-filtre-texte style="max-width:260px">
+      <label class="sr-only" for="eq-poste">Poste</label>
+      <select class="select select--sm" id="eq-poste" data-filtre-poste style="width:auto">
+        <option value="">Tous les postes</option>
+        {% for p in postes %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+      </select>
+      {% if entites|length > 1 %}
+      <label class="sr-only" for="eq-ent">Entité</label>
+      <select class="select select--sm" id="eq-ent" data-filtre-entite style="width:auto">
+        <option value="">Toutes les entités</option>
+        {% for ent in entites %}<option value="{{ ent.id }}" {% if ent.id == entite_ctx %}selected{% endif %}>{{ ent.nom }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <label class="row small" style="gap:6px;flex-wrap:nowrap"><input type="checkbox" data-filtre-sans> Sans {{ libelle_type }} actuellement</label>
+    </div>
+    <div class="table-wrap" style="max-height:480px;overflow:auto"><table class="table table--compact">
+      <thead><tr><th class="col-case"><label class="sr-only" for="c-tout">Cocher tous les salariés affichés</label><input type="checkbox" id="c-tout" class="case" data-cocher-visibles></th>
+        <th>Salarié</th><th class="hide-mobile">Poste</th><th>{{ "Projet" if type_ctx == "projet" else "Département" }} actuel</th></tr></thead>
+      <tbody>
+      {% for e in candidats %}
+        {% set actuels = e.affectations|selectattr("actif")|selectattr("projet_id" if type_ctx == "projet" else "departement_id")|map(attribute="contexte_libelle")|list %}
+        {% set eid = e.entite_id if e.entite_id is not none else id_principale %}
+        <tr data-candidat data-texte="{{ (e.nom ~ ' ' ~ (e.prenom or '') ~ ' ' ~ e.matricule ~ ' ' ~ (e.poste or ''))|lower }}" data-poste="{{ e.poste or '' }}" data-entite="{{ eid }}" data-sans="{{ '1' if not actuels else '0' }}">
+          <td class="col-case"><input type="checkbox" class="case" name="ids" value="{{ e.id }}" aria-label="Choisir {{ e.nom_complet }}" data-candidat-case></td>
+          <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div><div><strong>{{ e.nom_complet }}</strong><span>{{ e.matricule }}{% if eid != entite_ctx %} · <span class="badge badge--groupe">{{ e.entite.nom if e.entite else entites[0].nom }}</span>{% endif %}</span></div></div></td>
+          <td class="hide-mobile">{{ e.poste or "—" }}</td>
+          <td class="small">{{ actuels|join(", ") or "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="card__body muted small" data-equipe-vide hidden style="padding-top:12px">Aucun salarié ne correspond aux filtres.</p>
+    <div class="card__foot stack" style="gap:10px">
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin:0;min-width:260px">
+          <label for="eq-n1">N+1 qui notera ces salariés <span style="color:var(--danger)">*</span></label>
+          <select class="select" id="eq-n1" name="evaluateur_id" required>
+            {% with choisi=None, exclure=None %}{% include "personnel/_options_n1.html" %}{% endwith %}
+          </select>
+        </div>
+        <label class="row small" style="gap:8px;max-width:440px;flex-wrap:nowrap;padding-bottom:10px">
+          <input type="checkbox" name="remplacer" value="1" checked>
+          Clôturer leur {{ libelle_type }} actuel dans cette entité (sinon l'affectation s'ajoute)
+        </label>
+        <span class="spacer"></span>
+        <button class="btn btn--primary" type="submit" data-equipe-bouton disabled>Affecter <span data-equipe-compte>0</span> salarié(s)</button>
+      </div>
+    </div>
+  </form>
+</section>
+</div>
+{% endblock %}

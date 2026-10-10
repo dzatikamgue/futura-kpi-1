@@ -500,6 +500,41 @@
     boutonSuppr.disabled = saisie.value.trim().toUpperCase() !== "SUPPRIMER";
   });
 
+  /* ---------- Équipe : filtrer et cocher plusieurs salariés ---------- */
+  var equipe = $("[data-equipe]");
+  if (equipe) {
+    var lignesEq = $$("[data-candidat]", equipe), qEq = $("[data-filtre-texte]", equipe),
+        posteEq = $("[data-filtre-poste]", equipe), entEq = $("[data-filtre-entite]", equipe),
+        sansEq = $("[data-filtre-sans]", equipe), toutEq = $("[data-cocher-visibles]", equipe),
+        boutonEq = $("[data-equipe-bouton]", equipe), compteEq = $("[data-equipe-compte]", equipe),
+        videEq = $("[data-equipe-vide]", equipe);
+    function sansAccents(t) { return (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+    function visibles() { return lignesEq.filter(function (tr) { return !tr.hidden; }); }
+    function compter() {
+      var n = $$("[data-candidat-case]:checked", equipe).length;
+      compteEq.textContent = n; boutonEq.disabled = n === 0;
+      var vis = visibles(), coches = vis.filter(function (tr) { return $("[data-candidat-case]", tr).checked; }).length;
+      toutEq.checked = vis.length > 0 && coches === vis.length;
+      toutEq.indeterminate = coches > 0 && coches < vis.length;
+      lignesEq.forEach(function (tr) { tr.classList.toggle("ligne--choisie", $("[data-candidat-case]", tr).checked); });
+    }
+    function filtrer() {
+      var q = sansAccents(qEq.value.trim()), p = posteEq ? posteEq.value : "", en = entEq ? entEq.value : "";
+      lignesEq.forEach(function (tr) {
+        tr.hidden = (q && sansAccents(tr.dataset.texte).indexOf(q) < 0) || (p && tr.dataset.poste !== p)
+          || (en && tr.dataset.entite !== en) || (sansEq && sansEq.checked && tr.dataset.sans !== "1");
+      });
+      videEq.hidden = visibles().length > 0;
+      compter();
+    }
+    [qEq, posteEq, entEq, sansEq].forEach(function (el) { if (el) el.addEventListener(el.type === "search" ? "input" : "change", filtrer); });
+    toutEq.addEventListener("change", function () {
+      visibles().forEach(function (tr) { $("[data-candidat-case]", tr).checked = toutEq.checked; }); compter();
+    });
+    equipe.addEventListener("change", function (ev) { if (ev.target.matches("[data-candidat-case]")) compter(); });
+    filtrer();
+  }
+
   /* ---------- Copier dans le presse-papiers ---------- */
   $$(".kbd-copy").forEach(function (el) {
     el.addEventListener("click", function () {

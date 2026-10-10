@@ -158,3 +158,30 @@ def changer_projet(e: Employe, nouveau: Projet, evaluateur_id: int,
     nouvelle = affecter(e, projet=nouveau, evaluateur_id=evaluateur_id)
     nouvelle.evaluateur_id = evaluateur_id   # toujours redéfini, même si l'affectation est réactivée
     return nouvelle, fermees
+
+
+def affecter_equipe(employes, ctx, evaluateur_id: int, remplacer: bool) -> tuple[int, list[str]]:
+    """Affecte plusieurs salariés à un département ou un projet, avec le même N+1.
+
+    remplacer=True : leur département (ou projet) actuel dans la même entité est clôturé
+    (historique conservé) ; sinon l'affectation s'ajoute aux autres.
+    Renvoie (nombre affecté, exclus avec motif).
+    """
+    from .entites import entite_affectation, id_effectif
+    est_projet = isinstance(ctx, Projet)
+    eid = id_effectif(ctx.entite_id)
+    n, exclus = 0, []
+    for e in employes:
+        if e.id == evaluateur_id:
+            exclus.append(f"{e.nom_complet} (ne peut pas être son propre N+1)")
+            continue
+        if remplacer:
+            for a in e.affectations:
+                meme_type = a.projet_id if est_projet else a.departement_id
+                if a.actif and meme_type and meme_type != ctx.id and entite_affectation(a) == eid:
+                    a.actif = False
+        a = affecter(e, departement=None if est_projet else ctx, projet=ctx if est_projet else None,
+                     evaluateur_id=evaluateur_id)
+        a.evaluateur_id = evaluateur_id
+        n += 1
+    return n, exclus

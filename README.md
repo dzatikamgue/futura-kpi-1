@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (42 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (43 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -120,6 +120,11 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Un salarié affecté à un projet est noté **une seule fois par mois, dans son projet** ; son affectation département reste visible sur sa fiche (« Non notée ») mais ne crée plus de seconde ligne dans la campagne. Sans projet, il est noté dans son département.
 - Le chef de département consulte les notes des projets de son département ; les moyennes du département les incluent.
 - Le lien est enregistré dans la table de réglages existante (clé `projets_departements`) : aucune table ni colonne ajoutée. Les notes déjà saisies sont conservées.
+
+## Affecter une équipe en une fois
+- Administration → Projets (ou Départements) → bouton « Équipe » sur la ligne.
+- « Ajouter des salariés » : recherche, filtres par poste / entité / « sans projet actuellement », cases à cocher (« tout cocher » coche les salariés affichés), puis un **N+1 commun obligatoire**. Option cochée par défaut : clôturer leur projet (ou département) actuel dans cette entité ; décochée, l'affectation s'ajoute.
+- « Membres actuels » : changer le N+1 ou retirer plusieurs membres à la fois (historique des notes conservé).
 
 ## Changement de projet
 - Sur la fiche, bouton « Changer de projet » sur l'affectation projet : choisir le nouveau projet et **le nouveau N+1 (obligatoire)**. L'ancienne affectation est clôturée, ses notes restent dans l'historique.

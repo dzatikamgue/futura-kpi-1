@@ -982,3 +982,45 @@ def test_salarie_multi_entites(app):
     c.get(f"/entite/{principale}")
     camp = c.get(f"/evaluations/?annee={an}&mois={mo}&par_page=200").get_data(as_text=True)
     assert "Projet Immeuble BALI R+11" in camp and "Projet Société Test" not in camp
+
+
+def test_affectation_en_masse_depuis_le_projet(app):
+    from app.models import Departement, Projet
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    chr_ = db.session.scalar(select(Projet).where(Projet.code == "CHR"))
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))
+    gens = [db.session.scalar(select(Employe).where(Employe.nom == n)) for n in ("ESSOMBA", "OWONA", "MANGA")]
+    assert "Équipe" in c.get("/parametres/projets").get_data(as_text=True)
+    page = c.get(f"/personnel/equipe/projet/{chr_.id}").get_data(as_text=True)
+    assert "Ajouter des salariés" in page and "data-candidat" in page
+    url = f"/personnel/equipe/projet/{chr_.id}/ajouter"
+    # N+1 obligatoire
+    c.post(url, data={"ids": [str(e.id) for e in gens]})
+    db.session.refresh(gens[0])
+    assert not any(a.projet_id == chr_.id for a in gens[0].affectations_actives)
+    r = c.post(url, data={"ids": [str(e.id) for e in gens], "evaluateur_id": str(fotso.id), "remplacer": "1"})
+    assert r.status_code == 302
+    for e in gens:
+        db.session.refresh(e)
+        projets = [a for a in e.affectations_actives if a.projet_id]
+        assert [a.projet_id for a in projets] == [chr_.id] and projets[0].evaluateur_id == fotso.id
+    # Les membres apparaissent ; changement de N+1 et retrait groupés
+    page = c.get(f"/personnel/equipe/projet/{chr_.id}").get_data(as_text=True)
+    assert all(e.nom in page.split("Ajouter des salariés")[0] for e in gens)
+    affs = [next(a for a in e.affectations_actives if a.projet_id == chr_.id) for e in gens]
+    njoya = db.session.scalar(select(Employe.id).where(Employe.nom == "NJOYA"))
+    c.post(f"/personnel/equipe/projet/{chr_.id}/membres",
+           data={"action": "n1", "evaluateur_id": str(njoya), "aff_ids": [str(a.id) for a in affs[:2]]})
+    c.post(f"/personnel/equipe/projet/{chr_.id}/membres", data={"action": "retirer", "aff_ids": [str(affs[2].id)]})
+    for a in affs:
+        db.session.refresh(a)
+    assert affs[0].evaluateur_id == njoya and affs[1].evaluateur_id == njoya
+    assert not affs[2].actif
+    # Département sans remplacement : l'affectation s'ajoute
+    r = c.post(f"/personnel/equipe/departement/{daf.id}/ajouter",
+               data={"ids": [str(gens[0].id)], "evaluateur_id": str(fotso.id)})
+    db.session.refresh(gens[0])
+    assert any(a.departement_id == daf.id for a in gens[0].affectations_actives)
+    assert c.get("/personnel/equipe/autre/1").status_code == 404
