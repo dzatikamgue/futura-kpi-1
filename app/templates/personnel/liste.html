@@ -61,6 +61,7 @@
       {% if rh %}<th class="col-case"><label class="sr-only" for="sel-tout">Tout sélectionner sur cette page</label><input type="checkbox" id="sel-tout" class="case" data-selection-page></th>{% endif %}
       {{ th_tri("Salarié", "nom") }}
       {{ th_tri("Matricule", "matricule", "hide-mobile") }}
+      {{ th_tri("Poste", "poste") }}
       <th>Affectations</th>
       <th class="hide-mobile">N+1</th>
       {{ th_tri("Embauche", "embauche", "hide-mobile") }}
@@ -72,8 +73,9 @@
         {% set ailleurs = (e.entite_id if e.entite_id is not none else id_principale) != entite.id %}
         {% if rh %}<td class="col-case">{% if not ailleurs %}<input type="checkbox" class="case" name="ids" value="{{ e.id }}" form="form-selection" aria-label="Sélectionner {{ e.nom_complet }}" data-selection-ligne>{% endif %}</td>{% endif %}
         <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div>
-          <div><strong>{{ e.nom_complet }}</strong><span>{{ e.poste or "—" }}{% if ailleurs %} {% if e.id in ids_groupe %}<span class="badge badge--groupe" title="Direction / RH du groupe">Groupe, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% else %}<span class="badge badge--groupe" title="Travaille aussi pour cette entité">Multi-entités, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% endif %}{% endif %}</span></div></div></td>
+          <div><strong>{{ e.nom_complet }}</strong>{% if ailleurs %}<span> {% if e.id in ids_groupe %}<span class="badge badge--groupe" title="Direction / RH du groupe">Groupe, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% else %}<span class="badge badge--groupe" title="Travaille aussi pour cette entité">Multi-entités, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% endif %}</span>{% endif %}</div></div></td>
         <td class="hide-mobile num" style="text-align:left">{{ e.matricule }}</td>
+        <td class="col-poste">{% if e.poste %}<a class="lien-discret" href="{{ url_for('personnel.liste', poste=e.poste) }}" title="Voir tous les « {{ e.poste }} »">{{ e.poste }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% for a in e.affectations_actives %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="badge badge--warn">Aucune</span>{% endfor %}
             {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</td>
         <td class="hide-mobile ink-2">{{ e.affectations_actives|map(attribute='evaluateur')|select|map(attribute='nom_complet')|unique|join(', ') or "—" }}</td>

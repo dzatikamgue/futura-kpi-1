@@ -631,3 +631,8 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
   padding: var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
   box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.14)); gap: var(--s2); }
 .mutation__form .select { width: 100%; }
+
+/* Liste du personnel : colonne Poste */
+.col-poste { font-weight: 500; color: var(--ink); max-width: 220px; }
+.lien-discret { color: inherit; text-decoration: none; }
+.lien-discret:hover, .lien-discret:focus-visible { color: var(--brand); text-decoration: underline; }
