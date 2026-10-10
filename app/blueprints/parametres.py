@@ -13,7 +13,7 @@ from .auth import valider_mot_de_passe
 from ..services.entites import cond_entite, id_effectif, roles_par_entite
 from ..services import reglages
 from ..services.audit import journaliser
-from ..services.organisation import cle_texte, postes_actifs
+from ..services.organisation import cle_texte, marquer_poste_supprime, postes_actifs
 from ..services.projets import carte, definir, departement_du_projet
 from ..services.comptes import (generer_acces, ids_evaluateurs, lier_ou_creer,
                                 mot_de_passe_temporaire, synchroniser_comptes)
@@ -261,6 +261,34 @@ def postes():
                 db.session.commit()
                 flash(f"Poste « {p.libelle} » {'réactivé' if p.actif else 'archivé (retiré des listes)'}.", "succes")
             return redirect(request.path)
+        if action == "supprimer":
+            lib = (request.form.get("libelle") or "").strip()
+            if not lib:
+                return redirect(request.path)
+            k = cle_texte(lib)
+            remplacement = (request.form.get("remplacement") or "").strip()
+            if remplacement and (cle_texte(remplacement) == k or
+                                 cle_texte(remplacement) not in {cle_texte(x) for x in postes_actifs(eid)}):
+                flash("Poste de remplacement invalide.", "erreur")
+                return redirect(request.path)
+            # Fiches qui portent ce poste (actives ou non) : remplacé ou vidé, à la demande de la RH
+            n = 0
+            for e in db.session.scalars(select(Employe).where(Employe.poste.isnot(None),
+                                                              cond_entite(Employe.entite_id, eid))):
+                if cle_texte(e.poste) == k:
+                    e.poste = remplacement or None
+                    n += 1
+            for p in db.session.scalars(select(Poste).where(cond_entite(Poste.entite_id, eid))):
+                if cle_texte(p.libelle) == k:
+                    db.session.delete(p)
+            marquer_poste_supprime(eid, lib, True, current_user.id)
+            journaliser("poste_supprime", lib, f"{n} fiche(s) → {remplacement or 'sans poste'}")
+            db.session.commit()
+            msg = f"Poste « {lib} » supprimé."
+            if n:
+                msg += f" {n} fiche(s) : poste {'remplacé par « ' + remplacement + ' »' if remplacement else 'laissé vide'}."
+            flash(msg, "succes")
+            return redirect(request.path)
         ancien = (request.form.get("ancien") or "").strip()
         libelle = " ".join((request.form.get("libelle") or "").split())[:120]
         donnees = {"libelle": libelle, "ancien": ancien}
@@ -286,6 +314,7 @@ def postes():
                 journaliser("poste_renomme", libelle, f"ancien : {ancien}, {n} fiche(s)")
             else:
                 db.session.add(Poste(libelle=libelle, entite_id=eid))
+                marquer_poste_supprime(eid, libelle, False, current_user.id)  # recréé après suppression
                 journaliser("poste_cree", libelle)
             db.session.commit()
             flash(f"Poste « {libelle} » enregistré.", "succes")
@@ -298,16 +327,37 @@ def postes():
                                         .where(Employe.actif.is_(True), Employe.poste.isnot(None),
                                                cond_entite(Employe.entite_id, eid))
                                         .group_by(Employe.poste)).all())
+    # Toutes les fiches (actives ou non) par poste : ce qu'une suppression touchera
+    fiches = {}
+    for lib, nb in db.session.execute(select(Employe.poste, func.count(Employe.id)).where(
+            Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid)).group_by(Employe.poste)):
+        fiches[cle_texte(lib)] = fiches.get(cle_texte(lib), 0) + nb
     actifs = postes_actifs(eid)
     archives = db.session.scalars(select(Poste.libelle).where(Poste.actif.is_(False), cond_entite(Poste.entite_id, eid))
                                   .order_by(Poste.libelle)).all()
     from ..services.transverses import _reglage, poste_est_groupe
     reglage = _reglage()
-    elements = [{"libelle": x, "actif": True, "effectif": effectifs.get(x, 0), "groupe": poste_est_groupe(x, reglage)}
-                for x in actifs] + \
-               [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0), "groupe": False} for x in archives]
+    elements = [{"libelle": x, "actif": True, "effectif": effectifs.get(x, 0), "groupe": poste_est_groupe(x, reglage),
+                 "fiches": fiches.get(cle_texte(x), 0)} for x in actifs] + \
+               [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0), "groupe": False,
+                 "fiches": fiches.get(cle_texte(x), 0)} for x in archives]
     return render_template("parametres/postes.html", elements=elements, edition=edition,
-                           donnees=donnees, erreurs=erreurs)
+                           donnees=donnees, erreurs=erreurs, actifs=actifs)
+
+
+@bp.get("/postes/supprimer")
+@login_required
+@rh_requis
+def supprimer_poste():
+    """Confirmation de suppression d'un poste porté par des fiches : choix du poste de remplacement."""
+    eid = _eid()
+    lib = (request.args.get("libelle") or "").strip() or abort(404)
+    k = cle_texte(lib)
+    fiches = [e for e in db.session.scalars(select(Employe).where(
+        Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid)).order_by(Employe.nom, Employe.prenom))
+        if cle_texte(e.poste) == k]
+    autres = [x for x in postes_actifs(eid) if cle_texte(x) != k]
+    return render_template("parametres/supprimer_poste.html", libelle=lib, fiches=fiches, autres=autres)
 
 
 # --- Clé API Claude -----------------------------------------------------------

@@ -59,12 +59,48 @@ POSTES_DEFAUT = [
 ]
 
 
+CLE_POSTES_SUPPRIMES = "postes_supprimes"
+
+
+def _postes_supprimes_tous() -> dict:
+    import json
+
+    from ..models import Parametre
+    p = db.session.get(Parametre, CLE_POSTES_SUPPRIMES)
+    try:
+        return json.loads(p.valeur) if p else {}
+    except ValueError:
+        return {}
+
+
+def postes_supprimes(entite_id: int) -> set[str]:
+    """Postes supprimés par la RH dans cette entité (clés normalisées), stockés dans Parametre."""
+    return set(_postes_supprimes_tous().get(str(entite_id), []))
+
+
+def marquer_poste_supprime(entite_id: int, libelle: str, supprime: bool, utilisateur_id: int | None) -> None:
+    import json
+
+    from ..models import Parametre
+    tous = _postes_supprimes_tous()
+    cles = set(tous.get(str(entite_id), []))
+    (cles.add if supprime else cles.discard)(cle_texte(libelle))
+    tous[str(entite_id)] = sorted(cles)
+    valeur = json.dumps(tous)
+    p = db.session.get(Parametre, CLE_POSTES_SUPPRIMES)
+    if p:
+        p.valeur, p.updated_by_id = valeur, utilisateur_id
+    else:
+        db.session.add(Parametre(cle=CLE_POSTES_SUPPRIMES, valeur=valeur, updated_by_id=utilisateur_id))
+
+
 def postes_actifs(entite_id: int) -> list[str]:
     """Libellés proposés : référentiel + postes déjà présents sur les fiches + liste par défaut.
 
-    Lecture seule. Un poste archivé dans l'écran Postes n'est plus proposé.
+    Lecture seule. Un poste archivé ou supprimé dans l'écran Postes n'est plus proposé
+    (sauf s'il est recréé : une ligne active du référentiel l'emporte).
     """
-    archives, libelles = set(), {}
+    archives, libelles = set(postes_supprimes(entite_id)), {}
     for p in db.session.scalars(select(Poste).where(cond_entite(Poste.entite_id, entite_id))):
         if p.actif:
             libelles.setdefault(cle_texte(p.libelle), p.libelle)

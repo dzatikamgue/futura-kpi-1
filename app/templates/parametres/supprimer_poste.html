@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "postes" %}
+{% block title %}Supprimer un poste{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><a class="crumb-mid" href="{{ url_for('parametres.postes') }}">Postes</a><span class="sep">/</span><span aria-current="page">Supprimer</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Supprimer le poste « {{ libelle }} »</h1>
+  <p>Le poste disparaît des listes. {{ fiches|length }} fiche(s) le portent : choisissez ce que devient leur poste.</p>
+</div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card__head"><h2>Fiches concernées</h2></div>
+    <div class="table-wrap" style="max-height:460px;overflow:auto"><table class="table table--compact">
+      <thead><tr><th>Salarié</th><th>Matricule</th><th>Statut</th></tr></thead>
+      <tbody>{% for e in fiches %}<tr>
+        <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div><div><strong>{{ e.nom_complet }}</strong></div></div></td>
+        <td>{{ e.matricule }}</td>
+        <td>{% if e.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Inactif</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
+  <section class="card carte-danger">
+    <div class="card__head"><h2>Que devient leur poste ?</h2></div>
+    <form method="post" action="{{ url_for('parametres.postes') }}" class="card__body stack" data-confirm="Supprimer définitivement le poste « {{ libelle }} » ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="supprimer"><input type="hidden" name="libelle" value="{{ libelle }}">
+      <div class="field"><label for="f-rempl">Nouveau poste de ces salariés</label>
+        <select class="select" id="f-rempl" name="remplacement">
+          <option value="">— Laisser vide —</option>
+          {% for a in autres %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+        </select>
+        <span class="hint">Leurs affectations, N+1 et notes ne changent pas.</span></div>
+      <div class="form-actions">
+        <a class="btn btn--ghost" href="{{ url_for('parametres.postes') }}">Annuler</a>
+        <button class="btn btn--danger" type="submit">{{ icon('alert') }} Supprimer le poste</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

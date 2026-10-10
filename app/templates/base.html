@@ -9,7 +9,7 @@
   <link rel="alternate icon" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="preload" href="{{ url_for('static', filename='fonts/inter-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=5">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=6">
   {% if charte %}<style>
     :root { --side-bg: {{ charte.side_bg }}; --brand: {{ charte.brand }}; --brand-hover: {{ charte.brand_hover }}; --brand-soft: {{ charte.brand_soft }}; --brand-ring: {{ charte.brand_ring }}; }
     :root[data-theme="dark"] { --side-bg: {{ charte.side_bg_dark }}; --brand: {{ charte.dark_brand }}; --brand-hover: {{ charte.dark_brand_hover }}; --brand-soft: {{ charte.dark_brand_soft }}; --brand-ring: {{ charte.dark_brand_ring }}; }

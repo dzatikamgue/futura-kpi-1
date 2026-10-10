@@ -5,7 +5,7 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Postes</span>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Postes</h1>
-  <p>La liste proposée dans les fiches salariés et à l'import. Les postes « Groupe » (direction, RH) rendent leurs titulaires visibles dans le personnel de toutes les entités. Cliquez sur « Entité » ou « Tout le groupe » pour changer.</p></div></div>
+  <p>La liste proposée dans les fiches salariés et à l'import. Les postes « Groupe » (direction, RH) rendent leurs titulaires visibles dans le personnel de toutes les entités. Cliquez sur « Entité » ou « Tout le groupe » pour changer. « Archiver » masque un poste en le gardant de côté ; « Supprimer » le retire définitivement.</p></div></div>
 
 <div class="grid grid-main">
   <section class="card">
@@ -28,6 +28,14 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ x.libelle }}"><input type="hidden" name="action" value="basculer">
               <button class="btn btn--ghost btn--sm" type="submit">{{ "Archiver" if x.actif else "Réactiver" }}</button>
             </form>
+            {% if x.fiches %}
+            <a class="btn btn--ghost btn--sm btn--danger-texte" href="{{ url_for('parametres.supprimer_poste', libelle=x.libelle) }}">Supprimer</a>
+            {% else %}
+            <form method="post" style="display:inline" data-confirm="Supprimer définitivement le poste « {{ x.libelle }} » ? Aucune fiche ne le porte.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ x.libelle }}"><input type="hidden" name="action" value="supprimer">
+              <button class="btn btn--ghost btn--sm btn--danger-texte" type="submit">Supprimer</button>
+            </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

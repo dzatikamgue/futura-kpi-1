@@ -1024,3 +1024,29 @@ def test_affectation_en_masse_depuis_le_projet(app):
     db.session.refresh(gens[0])
     assert any(a.departement_id == daf.id for a in gens[0].affectations_actives)
     assert c.get("/personnel/equipe/autre/1").status_code == 404
+
+
+def test_suppression_de_poste(app):
+    from app.services.organisation import postes_actifs
+    from app.services.entites import principale
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    eid = principale().id
+    # Poste de la liste par défaut, porté par personne : supprimé directement
+    assert "Magasinier" in postes_actifs(eid)
+    r = c.post("/parametres/postes", data={"action": "supprimer", "libelle": "Magasinier"})
+    assert r.status_code == 302
+    page = c.get("/parametres/postes").get_data(as_text=True)
+    assert "<strong>Magasinier</strong>" not in page and "supprimé" in page
+    assert "Magasinier" not in postes_actifs(eid)
+    # Poste porté par des fiches : remplacé par un autre
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
+    assert manga.poste == "Topographe"
+    conf = c.get("/parametres/postes/supprimer?libelle=Topographe").get_data(as_text=True)
+    assert "MANGA" in conf and 'name="remplacement"' in conf
+    c.post("/parametres/postes", data={"action": "supprimer", "libelle": "Topographe", "remplacement": "Technicien"})
+    db.session.refresh(manga)
+    assert manga.poste == "Technicien" and "Topographe" not in postes_actifs(eid)
+    # Recréé ensuite : il revient
+    c.post("/parametres/postes", data={"libelle": "Magasinier"})
+    assert "Magasinier" in postes_actifs(eid)
