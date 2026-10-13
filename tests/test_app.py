@@ -1202,3 +1202,70 @@ def test_grille_kpi_par_poste(app):
     # Retour à la grille commune
     c.post(url, data={"libelle": "Topographe", "action": "commune"})
     assert "Utilise la grille commune" in c.get(url).get_data(as_text=True)
+
+
+def test_suppression_des_criteres_kpi(app):
+    from app.models import Critere, EvaluationNote
+    from app.services.notation import periode_courante
+    from app.cli import creer_criteres_defaut
+    an, mo = periode_courante()
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    crits = db.session.scalars(select(Critere).order_by(Critere.ordre)).all()
+    utilise = db.session.scalar(select(EvaluationNote.critere_id).limit(1))
+    page = c.get("/parametres/criteres").get_data(as_text=True)
+    assert "Tout supprimer (grille vide)" in page
+    # Un critère jamais utilisé : effacé
+    c.post("/parametres/criteres", data={"libelle": "Critère temporaire", "poids": "1", "ordre": "9"})
+    libre = db.session.scalar(select(Critere).where(Critere.libelle == "Critère temporaire"))
+    c.post("/parametres/criteres", data={"action": "supprimer", "id": libre.id})
+    assert db.session.get(Critere, libre.id) is None
+    # Tout supprimer : grille vide, l'historique reste lisible
+    c.post("/parametres/criteres", data={"action": "supprimer_masse", "tout": "1"})
+    page = c.get("/parametres/criteres").get_data(as_text=True)
+    assert "Grille vide" in page
+    if utilise:
+        assert db.session.get(Critere, utilise) is not None   # gardé pour les notes passées
+        ev = db.session.scalar(select(Evaluation).join(EvaluationNote).where(EvaluationNote.critere_id == utilise))
+        assert c.get(f"/evaluations/{ev.id}").status_code == 200
+    # Pas de grille par défaut recréée au redémarrage
+    assert creer_criteres_defaut() == 0
+    # Notation impossible tant que la grille est vide
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
+    aff = next(a for a in manga.affectations_actives if a.evaluateur_id)
+    n1 = aff.evaluateur
+    if not n1.compte:
+        u = Utilisateur(email="n1.vide@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=n1.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, n1.compte.email)
+    r = c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}")
+    assert r.status_code == 302
+    # Nouveau critère (même libellé qu'un critère supprimé déjà utilisé : réutilisé)
+    lib = db.session.get(Critere, utilise).libelle if utilise else "Qualité du travail"
+    r = c.post("/parametres/criteres", data={"libelle": lib, "poids": "2", "ordre": "1"})
+    assert r.status_code == 302
+    assert lib in c.get("/parametres/criteres").get_data(as_text=True)
+    assert c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}").status_code == 200
+
+
+def test_organigramme(app):
+    from app.models import Departement
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    c.post("/parametres/departements", data={"code": "METH", "nom": "Méthodes", "parent_id": str(tech.id)})
+    page = c.get("/parametres/organigramme").get_data(as_text=True)
+    assert "Organigramme" in page and "Méthodes" in page and "Direction technique" in page
+    # Le sous-département est dans la branche de son parent
+    org = page[page.index('class="org"'):]
+    assert org.index("Direction technique") < org.index("Méthodes")
+    # Direction : accès en lecture ; collaborateur : refusé
+    c2 = app.test_client()
+    login(c2, email_de("NGUEMA"))
+    assert c2.get("/parametres/organigramme").status_code == 200
+    c3 = app.test_client()
+    login(c3, email_de("FOTSO"))   # chef de projet : pas d'accès
+    assert c3.get("/parametres/organigramme").status_code == 403

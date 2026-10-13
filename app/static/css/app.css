@@ -649,3 +649,41 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .lien-grille { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); text-decoration: none; margin-top: 2px; }
 .lien-grille svg { width: 13px; height: 13px; }
 .lien-grille:hover { color: var(--brand); text-decoration: underline; }
+
+/* ---------- Organigramme ---------- */
+.org-zone { overflow-x: auto; padding: var(--s6) var(--s4); }
+.org { display: flex; justify-content: center; min-width: max-content; }
+.org-niveau { display: flex; justify-content: center; padding: 22px 0 0; margin: 0; list-style: none; position: relative; }
+.org > .org-niveau { padding-top: 0; }
+.org-noeud { position: relative; padding: 22px 8px 0; display: flex; flex-direction: column; align-items: center; }
+/* Traits : barre horizontale entre frères, trait vertical vers chaque carte */
+.org-noeud::before, .org-noeud::after { content: ""; position: absolute; top: 0; right: 50%; width: 50%; height: 22px;
+  border-top: 2px solid var(--line-strong); }
+.org-noeud::after { right: auto; left: 50%; border-left: 2px solid var(--line-strong); }
+.org-noeud:only-child::before, .org-noeud:only-child::after { display: none; }
+.org-noeud:only-child { padding-top: 0; }
+.org-noeud:first-child::before, .org-noeud:last-child::after { border: 0 none; }
+.org-noeud:last-child::before { border-right: 2px solid var(--line-strong); border-radius: 0 6px 0 0; }
+.org-noeud:first-child::after { border-radius: 6px 0 0 0; }
+.org-niveau .org-niveau::before { content: ""; position: absolute; top: 0; left: 50%; height: 22px; border-left: 2px solid var(--line-strong); }
+
+.org-carte { position: relative; width: 220px; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--brand);
+  border-radius: var(--r); padding: var(--s3); box-shadow: var(--shadow-sm); text-align: left; }
+.org-carte--entite { width: 240px; text-align: center; border-top-width: 4px; background: var(--brand-soft); }
+.org-carte__titre { font-weight: 600; color: var(--ink); line-height: 1.3; display: flex; gap: 6px; align-items: baseline; justify-content: space-between; }
+.org-carte--entite .org-carte__titre { justify-content: center; font-size: 15px; }
+.org-carte__titre a { color: inherit; text-decoration: none; }
+.org-carte__titre a:hover { color: var(--brand); text-decoration: underline; }
+.org-carte__resp { display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; margin-top: var(--s2); color: var(--ink-2); }
+.org-carte__resp svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.org-carte__chiffres { display: flex; gap: var(--s3); margin-top: var(--s2); font-size: 12px; color: var(--ink-2); }
+.org-carte__chiffres b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.org-projets { list-style: none; margin: var(--s2) 0 0; padding: var(--s2) 0 0; border-top: 1px dashed var(--line); display: grid; gap: 4px; }
+.org-projets li { font-size: 12px; }
+.org-projets a { color: var(--ink-2); text-decoration: none; }
+.org-projets a:hover { color: var(--brand); }
+.org-projets svg { width: 12px; height: 12px; vertical-align: -1px; }
+@media print {
+  .sidebar, .topbar, .no-print, .breadcrumb { display: none !important; }
+  .org-zone { overflow: visible; border: 0; box-shadow: none; }
+}

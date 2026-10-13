@@ -6,7 +6,8 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">{{ titre }}</span>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ titre }}</h1>
-  <p>Le responsable d'un {{ singulier }} consulte les notes de ses équipes. La note est donnée par le N+1 désigné sur chaque fiche.</p></div></div>
+  <p>Le responsable d'un {{ singulier }} consulte les notes de ses équipes. La note est donnée par le N+1 désigné sur chaque fiche.</p></div>
+  {% if not avec_projet %}<a class="btn btn--secondary" href="{{ url_for('parametres.organigramme') }}">{{ icon('building') }} Voir l'organigramme</a>{% endif %}</div>
 
 <div class="grid grid-main">
   <section class="card">

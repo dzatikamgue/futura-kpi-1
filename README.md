@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (48 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (50 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -147,6 +147,14 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Un salarié est noté avec la grille de son poste ; un poste sans grille propre utilise la grille commune (page Grille KPI). Les critères créés pour un poste n'entrent pas dans la grille commune.
 - Le formulaire de notation indique la grille utilisée. Les évaluations déjà soumises gardent leurs critères et coefficients d'origine.
 - Mémorisé dans la table de réglages (clés `grilles_postes`, `criteres_specifiques`) ; les nouveaux critères vont dans la table existante des critères. Aucune table ni colonne ajoutée.
+
+## Supprimer les critères KPI (grille vide)
+- Grille KPI : bouton « Supprimer » par critère, cases à cocher + « Supprimer les critères cochés », et « Tout supprimer (grille vide) ».
+- Un critère jamais noté est effacé ; un critère déjà utilisé dans des évaluations est retiré des grilles mais reste visible dans l'historique des notes (aucune évaluation n'est modifiée). Le recréer sous le même libellé le fait revenir.
+- La grille par défaut n'est plus recréée au redémarrage une fois la grille vidée. Tant que la grille est vide, la notation est bloquée avec un message clair.
+
+## Organigramme
+- Menu « Organigramme » (RH et direction) : l'entité, ses départements, sous-départements et projets en arbre, avec responsable et effectifs (ici / branche entière). Bouton Imprimer.
 
 ## Changement de projet
 - Sur la fiche, bouton « Changer de projet » sur l'affectation projet : choisir le nouveau projet et **le nouveau N+1 (obligatoire)**. L'ancienne affectation est clôturée, ses notes restent dans l'historique.

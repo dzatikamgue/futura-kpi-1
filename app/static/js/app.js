@@ -560,6 +560,8 @@
     majGrille();
   }
 
+  $$("[data-imprimer]").forEach(function (b) { b.addEventListener("click", function () { window.print(); }); });
+
   /* ---------- Copier dans le presse-papiers ---------- */
   $$(".kbd-copy").forEach(function (el) {
     el.addEventListener("click", function () {

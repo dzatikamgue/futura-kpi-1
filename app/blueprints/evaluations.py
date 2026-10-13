@@ -147,6 +147,10 @@ def noter(affectation_id):
     modifiable = periode_ouverte(annee, mois) or (ev is not None and ev.rouverte)
 
     criteres = _criteres_pour(ev, aff)
+    if not criteres:
+        flash("Aucun critère KPI n'est défini pour ce salarié (grille vide). La RH doit d'abord définir la grille "
+              "dans Administration → Grille KPI ou sur le poste.", "erreur")
+        return redirect(url_for("evaluations.campagne", annee=annee, mois=mois))
     notes_existantes = {n.critere_id: n for n in (ev.notes if ev else [])}
     erreurs, valeurs = {}, {}
 

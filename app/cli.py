@@ -36,6 +36,9 @@ def creer_criteres_defaut(entite_id=None):
         q = q.where(Critere.entite_id == entite_id)
     if db.session.scalar(q.limit(1)):
         return 0
+    from .services.grilles import sans_defaut
+    if sans_defaut(entite_id):      # grille vidée volontairement par la RH : on la laisse vide
+        return 0
     for i, (lib, desc, poids) in enumerate(CRITERES_DEFAUT, 1):
         db.session.add(Critere(libelle=lib, description=desc, poids=poids, ordre=i, entite_id=entite_id))
     return len(CRITERES_DEFAUT)

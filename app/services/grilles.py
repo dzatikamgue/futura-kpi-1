@@ -139,3 +139,85 @@ def renommer_poste(entite_id: int, ancien: str, nouveau: str, utilisateur_id: in
 
 def postes_utilisant(entite_id: int, critere_id: int) -> list[str]:
     return [v["libelle"] for v in grilles(entite_id).values() if critere_id in v["criteres"]]
+
+
+# --- Suppression de critères ---------------------------------------------------
+CLE_MASQUES = "criteres_supprimes"
+CLE_SANS_DEFAUT = "grilles_sans_defaut"
+
+
+def masques(entite_id: int) -> set[int]:
+    """Critères supprimés par la RH mais déjà utilisés dans des évaluations : cachés, gardés pour l'historique."""
+    return {int(x) for x in _lire(CLE_MASQUES).get(str(entite_id), [])}
+
+
+def _maj_ensemble(cle: str, entite_id: int, ids: set[int], ajouter: bool, utilisateur_id: int | None) -> None:
+    tout = dict(_lire(cle))
+    actuels = {int(x) for x in tout.get(str(entite_id), [])}
+    actuels = (actuels | ids) if ajouter else (actuels - ids)
+    tout[str(entite_id)] = sorted(actuels)
+    _ecrire(cle, tout, utilisateur_id)
+
+
+def reprendre_masque(entite_id: int, critere: Critere, utilisateur_id: int | None) -> None:
+    """Un critère supprimé est recréé sous le même libellé : on réutilise la ligne existante."""
+    _maj_ensemble(CLE_MASQUES, entite_id, {critere.id}, False, utilisateur_id)
+    critere.actif = True
+
+
+def supprimer_criteres(entite_id: int, ids: set[int], utilisateur_id: int | None) -> tuple[int, int]:
+    """Supprime des critères de l'entité. Renvoie (supprimés définitivement, cachés car déjà utilisés).
+
+    Un critère déjà noté dans une évaluation n'est pas effacé (les notes passées en dépendent) :
+    il est désactivé et retiré de toutes les listes. Les grilles de poste sont nettoyées.
+    """
+    from ..models import EvaluationNote
+    criteres = db.session.scalars(select(Critere).where(Critere.id.in_(ids or {-1}),
+                                                        cond_entite(Critere.entite_id, entite_id))).all()
+    ids = {c.id for c in criteres}
+    if not ids:
+        return 0, 0
+    utilises = set(db.session.scalars(select(EvaluationNote.critere_id).where(
+        EvaluationNote.critere_id.in_(ids)).distinct()))
+    # Grilles de poste : retirer ces critères
+    tout = dict(_lire(CLE_GRILLES))
+    ent = {k: dict(v) for k, v in tout.get(str(entite_id), {}).items()}
+    for k, v in list(ent.items()):
+        crit = {i: p for i, p in v.get("criteres", {}).items() if int(i) not in ids}
+        if crit:
+            ent[k] = {**v, "criteres": crit}
+        else:
+            ent.pop(k)
+    tout[str(entite_id)] = ent
+    _ecrire(CLE_GRILLES, tout, utilisateur_id)
+    _maj_ensemble(CLE_SPECIFIQUES, entite_id, ids, False, utilisateur_id)
+    definitifs, caches = 0, 0
+    for c in criteres:
+        if c.id in utilises:
+            c.actif = False
+            caches += 1
+        else:
+            db.session.delete(c)
+            definitifs += 1
+    _maj_ensemble(CLE_MASQUES, entite_id, ids & utilises, True, utilisateur_id)
+    # Ne jamais recréer la grille par défaut au démarrage : la RH a choisi de la redéfinir
+    marquer_sans_defaut(entite_id, utilisateur_id)
+    return definitifs, caches
+
+
+def marquer_sans_defaut(entite_id: int, utilisateur_id: int | None) -> None:
+    from .entites import principale
+    cles = {str(entite_id)} | ({"principale"} if entite_id == principale().id else set())
+    tout = dict(_lire(CLE_SANS_DEFAUT))
+    tout["entites"] = sorted(set(tout.get("entites", [])) | cles)
+    _ecrire(CLE_SANS_DEFAUT, tout, utilisateur_id)
+
+
+def sans_defaut(entite_id: int | None) -> bool:
+    """La RH a vidé la grille de cette entité (None = principale) : pas de grille par défaut."""
+    p = db.session.get(Parametre, CLE_SANS_DEFAUT)
+    try:
+        cles = set(json.loads(p.valeur).get("entites", [])) if p else set()
+    except ValueError:
+        cles = set()
+    return ("principale" if entite_id is None else str(entite_id)) in cles

@@ -175,6 +175,43 @@ def _dans_entite_ou_none(model, obj_id):
     return obj if db.session.scalar(select(model.id).where(model.id == obj_id, cond_entite(model.entite_id, _eid()))) else None
 
 
+@bp.get("/organigramme")
+@login_required
+def organigramme():
+    """Organigramme de l'entité : départements, sous-départements et projets rattachés (RH et direction)."""
+    if not perimetre().voit_tout:
+        abort(403)
+    from ..services.hierarchie import parent_de
+    eid = _eid()
+    deps = db.session.scalars(select(Departement).options(joinedload(Departement.responsable))
+                              .where(Departement.actif.is_(True), cond_entite(Departement.entite_id, eid))
+                              .order_by(Departement.nom)).all()
+    projets = db.session.scalars(select(Projet).options(joinedload(Projet.responsable))
+                                 .where(Projet.actif.is_(True), cond_entite(Projet.entite_id, eid))
+                                 .order_by(Projet.nom)).all()
+    eff_dep = dict(db.session.execute(select(Affectation.departement_id, func.count(Affectation.id)).where(
+        Affectation.actif.is_(True), Affectation.departement_id.isnot(None)).group_by(Affectation.departement_id)).all())
+    eff_proj = dict(db.session.execute(select(Affectation.projet_id, func.count(Affectation.id)).where(
+        Affectation.actif.is_(True), Affectation.projet_id.isnot(None)).group_by(Affectation.projet_id)).all())
+    ids = {d.id for d in deps}
+    c = carte()
+    noeuds = {d.id: {"dep": d, "enfants": [], "projets": [p for p in projets if c.get(p.id) == d.id],
+                     "effectif": eff_dep.get(d.id, 0)} for d in deps}
+    racines = []
+    for d in deps:
+        par = parent_de(d.id)
+        (noeuds[par]["enfants"] if par in ids else racines).append(noeuds[d.id])
+
+    def total(n):  # effectif de la branche (sous-départements et projets compris)
+        n["total"] = n["effectif"] + sum(eff_proj.get(p.id, 0) for p in n["projets"]) + sum(total(e) for e in n["enfants"])
+        return n["total"]
+    for r in racines:
+        total(r)
+    sans_dep = [p for p in projets if c.get(p.id) not in ids]
+    return render_template("parametres/organigramme.html", racines=racines, sans_dep=sans_dep,
+                           eff_proj=eff_proj, nb_deps=len(deps), nb_projets=len(projets))
+
+
 @bp.route("/departements", methods=["GET", "POST"])
 @login_required
 @rh_requis
@@ -198,6 +235,27 @@ def criteres():
     if request.method == "POST":
         action = request.form.get("action", "enregistrer")
         c = _dans_entite(db.session.get(Critere, request.form.get("id", type=int) or 0))
+        if action in ("supprimer", "supprimer_masse"):
+            from ..services.grilles import supprimer_criteres
+            if request.form.get("tout") == "1":
+                ids = set(db.session.scalars(select(Critere.id).where(cond_entite(Critere.entite_id, _eid()))))
+            elif action == "supprimer":
+                ids = {c.id} if c else set()
+            else:
+                ids = {int(x) for x in request.form.getlist("ids") if x.isdigit()}
+            if not ids:
+                flash("Cochez au moins un critère.", "info")
+                return redirect(request.path)
+            definitifs, caches = supprimer_criteres(_eid(), ids, current_user.id)
+            journaliser("criteres_supprimes", f"{definitifs + caches} critère(s)",
+                        f"{definitifs} effacé(s), {caches} gardé(s) pour l'historique")
+            db.session.commit()
+            msg = f"{definitifs + caches} critère(s) supprimé(s)."
+            if caches:
+                msg += (f" {caches} déjà utilisé(s) dans des évaluations : retiré(s) des grilles, "
+                        "conservé(s) uniquement dans l'historique des notes.")
+            flash(msg, "succes")
+            return redirect(request.path)
         if action == "basculer" and c:
             c.actif = not c.actif
             journaliser("critere_statut", c.libelle, "actif" if c.actif else "inactif")
@@ -206,11 +264,16 @@ def criteres():
                   "Les évaluations déjà soumises ne changent pas.", "succes")
             return redirect(request.path)
         donnees = {k: (request.form.get(k) or "").strip() for k in ("libelle", "description", "poids", "ordre")}
+        from ..services.grilles import masques as _masques, reprendre_masque
+        homonyme = db.session.scalar(select(Critere).where(func.lower(Critere.libelle) == donnees["libelle"].lower(),
+                                                           Critere.id != (c.id if c else -1),
+                                                           cond_entite(Critere.entite_id, _eid())))
         if not donnees["libelle"]:
             erreurs["libelle"] = "Le libellé est obligatoire."
-        elif db.session.scalar(select(Critere.id).where(func.lower(Critere.libelle) == donnees["libelle"].lower(),
-                                                        Critere.id != (c.id if c else -1),
-                                                        cond_entite(Critere.entite_id, _eid()))):
+        elif homonyme and c is None and homonyme.id in _masques(_eid()):
+            reprendre_masque(_eid(), homonyme, current_user.id)   # recréé après suppression
+            c = homonyme
+        elif homonyme:
             erreurs["libelle"] = "Ce critère existe déjà."
         try:
             poids = int(donnees["poids"] or 1)
@@ -239,8 +302,11 @@ def criteres():
         edition = _dans_entite(db.session.get(Critere, request.args.get("modifier", type=int)) or abort(404))
         donnees = {"libelle": edition.libelle, "description": edition.description or "",
                    "poids": str(edition.poids), "ordre": str(edition.ordre)}
-    elements = db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, _eid()))
-                                  .order_by(Critere.actif.desc(), Critere.ordre, Critere.id)).all()
+    from ..services.grilles import masques as _masques
+    caches = _masques(_eid())
+    elements = [x for x in db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, _eid()))
+                                              .order_by(Critere.actif.desc(), Critere.ordre, Critere.id))
+                if x.id not in caches]
     utilises = set(db.session.scalars(select(EvaluationNote.critere_id).distinct()))
     from ..services import grilles as G
     spe = G.specifiques(_eid())
@@ -455,10 +521,11 @@ def grille_poste():
         if action == "ajouter_critere":
             donnees = {k: (request.form.get(k) or "").strip() for k in ("libelle_critere", "description", "poids")}
             lib = donnees["libelle_critere"][:120]
+            homonyme = db.session.scalar(select(Critere).where(func.lower(Critere.libelle) == lib.lower(),
+                                                               cond_entite(Critere.entite_id, eid))) if lib else None
             if not lib:
                 erreurs["libelle_critere"] = "Le libellé est obligatoire."
-            elif db.session.scalar(select(Critere.id).where(func.lower(Critere.libelle) == lib.lower(),
-                                                            cond_entite(Critere.entite_id, eid))):
+            elif homonyme and homonyme.id not in G.masques(eid):
                 erreurs["libelle_critere"] = "Ce critère existe déjà dans la bibliothèque : cochez-le dans la liste."
             try:
                 poids = int(donnees["poids"] or 1)
@@ -470,9 +537,14 @@ def grille_poste():
             if not erreurs:
                 ordre = (db.session.scalar(select(func.max(Critere.ordre)).where(
                     cond_entite(Critere.entite_id, eid))) or 0) + 1
-                c = Critere(entite_id=eid, libelle=lib, description=donnees["description"][:400] or None,
-                            poids=poids, ordre=ordre)
-                db.session.add(c)
+                if homonyme:            # recréé après suppression : même ligne, historique intact
+                    G.reprendre_masque(eid, homonyme, current_user.id)
+                    c = homonyme
+                    c.description, c.poids, c.ordre = donnees["description"][:400] or None, poids, ordre
+                else:
+                    c = Critere(entite_id=eid, libelle=lib, description=donnees["description"][:400] or None,
+                                poids=poids, ordre=ordre)
+                    db.session.add(c)
                 db.session.flush()
                 G.marquer_specifique(eid, c.id, True, current_user.id)
                 # Le poste démarre de sa grille actuelle (ou de la commune) + ce nouveau critère

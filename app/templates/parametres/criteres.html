@@ -30,10 +30,11 @@
   <section class="card">
     {% if elements %}
     <div class="table-wrap"><table class="table">
-      <thead><tr><th class="num">Ordre</th><th>Critère</th><th class="num">Coef.</th><th class="num">Poids réel</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th class="col-case"><label class="sr-only" for="cr-tout">Tout cocher</label><input type="checkbox" id="cr-tout" class="case" data-check-all=".case-critere"></th><th class="num">Ordre</th><th>Critère</th><th class="num">Coef.</th><th class="num">Poids réel</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for c in elements %}
         <tr {% if not c.actif %}style="opacity:.6"{% endif %}>
+          <td class="col-case"><input type="checkbox" class="case case-critere" name="ids" value="{{ c.id }}" form="form-criteres-masse" aria-label="Cocher {{ c.libelle }}"></td>
           <td class="num">{{ c.ordre }}</td>
           <td><strong>{{ c.libelle }}</strong>
             {% if c.id in specifiques %} <span class="badge badge--info" title="Hors grille commune">Spécifique{% if utilisations.get(c.id) %} : {{ utilisations[c.id]|join(", ") }}{% endif %}</span>
@@ -48,16 +49,28 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ c.id }}"><input type="hidden" name="action" value="basculer">
               <button class="btn btn--ghost btn--sm" type="submit">{{ "Désactiver" if c.actif else "Activer" }}</button>
             </form>
+            <form method="post" style="display:inline" data-confirm="Supprimer le critère « {{ c.libelle }} » ?{% if c.id in utilises %} Il a déjà servi : les notes passées restent dans l'historique.{% endif %}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ c.id }}"><input type="hidden" name="action" value="supprimer">
+              <button class="btn btn--ghost btn--sm btn--danger-texte" type="submit">Supprimer</button>
+            </form>
           </td>
         </tr>
         {% endfor %}
       </tbody>
-      <tfoot><tr><td></td><td>Total des coefficients de la grille commune</td><td class="num">{{ total_poids }}</td><td class="num">100 %</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr><td></td><td></td><td>Total des coefficients de la grille commune</td><td class="num">{{ total_poids }}</td><td class="num">100 %</td><td colspan="2"></td></tr></tfoot>
     </table></div>
+    <form id="form-criteres-masse" method="post" class="card__foot row" style="gap:8px;flex-wrap:wrap" data-confirm="Supprimer les critères cochés ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="supprimer_masse">
+      <span class="small muted">Un critère déjà noté est retiré des grilles mais reste visible dans l'historique des évaluations.</span>
+      <span class="spacer"></span>
+      <button class="btn btn--secondary btn--sm btn--danger-texte" type="submit">Supprimer les critères cochés</button>
+      <button class="btn btn--danger btn--sm" type="submit" name="tout" value="1"
+              data-confirm="Supprimer TOUS les critères ({{ elements|length }}) ? La grille sera vide jusqu'à ce que vous en créiez de nouveaux.">Tout supprimer (grille vide)</button>
+    </form>
     {% else %}
-    {{ vide("Aucun critère", "Ajoutez au moins un critère pour pouvoir noter.", "list") }}
+    {{ vide("Grille vide", "Aucun critère : créez vos critères avec le formulaire. Tant que la grille est vide, personne ne peut être noté.", "list") }}
     {% endif %}
-    <div class="card__foot small muted">Les critères ne sont jamais supprimés : désactivez-les. Chaque note conserve le coefficient en vigueur au moment de la saisie, pour un historique fidèle.</div>
+    <div class="card__foot small muted">Chaque note conserve le coefficient en vigueur au moment de la saisie, pour un historique fidèle.</div>
   </section>
 
   <section class="card">

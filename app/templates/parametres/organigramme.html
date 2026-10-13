@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, vide with context %}
+{% set nav = "organigramme" %}
+{% block title %}Organigramme{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Organigramme</span>{% endblock %}
+
+{% macro noeud(n) -%}
+<li class="org-noeud">
+  <div class="org-carte">
+    <div class="org-carte__titre">
+      {% if current_user.est_rh %}<a href="{{ url_for('personnel.equipe', type_ctx='departement', ctx_id=n.dep.id) }}">{{ n.dep.nom }}</a>{% else %}{{ n.dep.nom }}{% endif %}
+      <span class="code">{{ n.dep.code }}</span>
+    </div>
+    <div class="org-carte__resp">{% if n.dep.responsable %}{{ icon('users') }} <span><strong>{{ n.dep.responsable.nom_complet }}</strong>{% if n.dep.responsable.poste %}<br><span class="muted">{{ n.dep.responsable.poste }}</span>{% endif %}</span>{% else %}<span class="muted">Responsable non désigné</span>{% endif %}</div>
+    <div class="org-carte__chiffres" title="Effectif du département / de toute la branche">
+      <span><b>{{ n.effectif }}</b> ici</span>{% if n.total != n.effectif %}<span><b>{{ n.total }}</b> au total</span>{% endif %}
+    </div>
+    {% if n.projets %}
+    <ul class="org-projets">
+      {% for p in n.projets %}<li>{% if current_user.est_rh %}<a href="{{ url_for('personnel.equipe', type_ctx='projet', ctx_id=p.id) }}">{% endif %}{{ icon('folder') }} {{ p.nom }} <span class="muted">· {{ eff_proj.get(p.id, 0) }}</span>{% if current_user.est_rh %}</a>{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% if n.enfants %}<ul class="org-niveau">{% for e in n.enfants %}{{ noeud(e) }}{% endfor %}</ul>{% endif %}
+</li>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head"><div><h1>Organigramme</h1>
+  <p>{{ nb_deps }} département(s) et {{ nb_projets }} projet(s) actifs de {{ entite.nom if entite else company_name }}. Les sous-départements sont sous leur parent ; les projets apparaissent dans leur département.</p></div>
+  <div class="row no-print">
+    {% if current_user.est_rh %}<a class="btn btn--secondary" href="{{ url_for('parametres.departements') }}">{{ icon('building') }} Gérer les départements</a>{% endif %}
+    <button class="btn btn--ghost" type="button" data-imprimer>Imprimer</button>
+  </div>
+</div>
+
+{% if racines %}
+<section class="card org-zone">
+  <div class="org">
+    <ul class="org-niveau">
+      <li class="org-noeud">
+        <div class="org-carte org-carte--entite">
+          <div class="org-carte__titre">{{ entite.nom if entite else company_name }}</div>
+          <div class="muted small">{{ racines|length }} département(s) principal(aux)</div>
+        </div>
+        <ul class="org-niveau">{% for r in racines %}{{ noeud(r) }}{% endfor %}</ul>
+      </li>
+    </ul>
+  </div>
+</section>
+{% if sans_dep %}
+<section class="card" style="margin-top:var(--s5)">
+  <div class="card__head"><div><h2>Projets non rattachés</h2><p>Rattachez-les à un département dans Administration → Projets.</p></div></div>
+  <div class="card__body row" style="gap:6px">{% for p in sans_dep %}<span class="badge badge--warn">{{ p.nom }}</span>{% endfor %}</div>
+</section>
+{% endif %}
+{% else %}
+<section class="card">{{ vide("Aucun département", "Créez vos départements et sous-départements pour voir l'organigramme.", "building",
+      url_for('parametres.departements') if current_user.est_rh else none, "Créer un département") }}</section>
+{% endif %}
+{% endblock %}

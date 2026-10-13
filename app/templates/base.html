@@ -9,7 +9,7 @@
   <link rel="alternate icon" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="preload" href="{{ url_for('static', filename='fonts/inter-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=10">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=11">
   {% if charte %}<style>
     :root { --side-bg: {{ charte.side_bg }}; --brand: {{ charte.brand }}; --brand-hover: {{ charte.brand_hover }}; --brand-soft: {{ charte.brand_soft }}; --brand-ring: {{ charte.brand_ring }}; }
     :root[data-theme="dark"] { --side-bg: {{ charte.side_bg_dark }}; --brand: {{ charte.dark_brand }}; --brand-hover: {{ charte.dark_brand_hover }}; --brand-soft: {{ charte.dark_brand_soft }}; --brand-ring: {{ charte.dark_brand_ring }}; }
@@ -35,6 +35,9 @@
       {% endif %}
       <a href="{{ url_for('suivi.index') }}" {% if nav == 'suivi' %}aria-current="page"{% endif %}>{{ icon('chart') }} Suivi trimestriel &amp; annuel</a>
       <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur or per.est_responsable else "Ma fiche" }}</a>
+      {% if per.voit_tout %}
+      <a href="{{ url_for('parametres.organigramme') }}" {% if nav == 'organigramme' %}aria-current="page"{% endif %}>{{ icon('building') }} Organigramme</a>
+      {% endif %}
       {% if current_user.est_rh %}
       <div class="nav__section">Administration RH</div>
       <a href="{{ url_for('import_personnel.index') }}" {% if nav == 'import' %}aria-current="page"{% endif %}>{{ icon('upload') }} Importer le personnel</a>
@@ -101,6 +104,6 @@
 <div class="offline-banner" role="alert">Connexion perdue — vos saisies sont conservées sur cet appareil.</div>
 <div class="loading-overlay" aria-hidden="true"><div class="box"><div class="spinner"></div><strong>Traitement en cours…</strong><p class="muted small" style="margin-top:4px">{% block loading_text %}Merci de patienter.{% endblock %}</p></div></div>
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=6" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=7" defer></script>
 </body>
 </html>
