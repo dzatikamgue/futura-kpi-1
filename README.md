@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (50 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (51 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -152,6 +152,11 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Grille KPI : bouton « Supprimer » par critère, cases à cocher + « Supprimer les critères cochés », et « Tout supprimer (grille vide) ».
 - Un critère jamais noté est effacé ; un critère déjà utilisé dans des évaluations est retiré des grilles mais reste visible dans l'historique des notes (aucune évaluation n'est modifiée). Le recréer sous le même libellé le fait revenir.
 - La grille par défaut n'est plus recréée au redémarrage une fois la grille vidée. Tant que la grille est vide, la notation est bloquée avec un message clair.
+
+## Supprimer des départements
+- Départements : bouton « Supprimer » par ligne, cases à cocher + « Supprimer les cochés… », ou « Tout supprimer… ». Une page de confirmation affiche les conséquences.
+- Les affectations en cours sont clôturées, les sous-départements remontent d'un niveau, les projets rattachés deviennent « à rattacher ».
+- Un département sans historique est effacé ; un département qui a déjà eu des salariés reste en base pour l'historique des notes, mais disparaît de toutes les listes. Le recréer sous le même code ou nom le fait revenir.
 
 ## Organigramme
 - Menu « Organigramme » (RH et direction) : l'entité, ses départements, sous-départements et projets en arbre, avec responsable et effectifs (ici / branche entière). Bouton Imprimer.

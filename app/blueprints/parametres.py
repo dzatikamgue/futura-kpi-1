@@ -2,7 +2,7 @@
 from flask import (Blueprint, abort, current_app, flash, redirect,
                    render_template, request, url_for)
 from flask_login import current_user, login_required
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload
 
 from ..extensions import db
@@ -63,6 +63,14 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                    ("code", "nom", "responsable_id", "localisation", "date_debut", "date_fin", "departement_id",
                     "parent_id")}
         code = donnees["code"].upper()
+        if model is Departement and obj is None and code:
+            from ..services.hierarchie import restaurer, supprimes as _deps_supprimes
+            cache = db.session.scalar(select(Departement).where(
+                or_(Departement.code == code, func.lower(Departement.nom) == donnees["nom"].lower()),
+                Departement.id.in_(_deps_supprimes() or {-1}), cond_entite(Departement.entite_id, _eid())))
+            if cache:                    # recréé après suppression : même ligne, historique intact
+                restaurer(cache, current_user.id)
+                obj = cache
         if not code:
             erreurs["code"] = "Le code est obligatoire."
         elif db.session.scalar(select(model.id).where(model.code == code, model.id != (obj.id if obj else -1),
@@ -137,6 +145,10 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
     elements = db.session.scalars(select(model).options(joinedload(model.responsable))
                                   .where(cond_entite(model.entite_id, _eid()))
                                   .order_by(model.actif.desc(), model.nom)).all()
+    if model is Departement:
+        from ..services.hierarchie import supprimes as _deps_supprimes
+        caches = _deps_supprimes()
+        elements = [x for x in elements if x.id not in caches]
     departements = rattachements = projets_par_dep = None
     if avec_projet:
         from ..services.hierarchie import ordonner
@@ -210,6 +222,36 @@ def organigramme():
     sans_dep = [p for p in projets if c.get(p.id) not in ids]
     return render_template("parametres/organigramme.html", racines=racines, sans_dep=sans_dep,
                            eff_proj=eff_proj, nb_deps=len(deps), nb_projets=len(projets))
+
+
+@bp.route("/departements/supprimer", methods=["GET", "POST"])
+@login_required
+@rh_requis
+def supprimer_departements():
+    """Confirmation puis suppression d'un ou plusieurs départements (impacts affichés)."""
+    from ..services.hierarchie import impacts_suppression, supprimer_departements as _supprimer, supprimes
+    caches = supprimes()
+    if request.values.get("tout") == "1":
+        ids = set(db.session.scalars(select(Departement.id).where(cond_entite(Departement.entite_id, _eid()))))
+    else:
+        ids = {int(x) for x in request.values.getlist("ids") if str(x).isdigit()}
+    deps = [d for d in db.session.scalars(select(Departement).where(
+        Departement.id.in_(ids or {-1}), cond_entite(Departement.entite_id, _eid())).order_by(Departement.nom))
+        if d.id not in caches]
+    if not deps:
+        flash("Cochez au moins un département.", "info")
+        return redirect(url_for("parametres.departements"))
+    if request.method == "POST":
+        effaces, gardes = _supprimer(deps, current_user.id)
+        journaliser("departements_supprimes", f"{len(deps)} département(s)",
+                    ", ".join(d.nom for d in deps)[:400])
+        db.session.commit()
+        msg = f"{len(deps)} département(s) supprimé(s)."
+        if gardes:
+            msg += f" {gardes} avai(en)t un historique de notes : conservé(s) uniquement pour l'historique."
+        flash(msg, "succes")
+        return redirect(url_for("parametres.departements"))
+    return render_template("parametres/supprimer_departements.html", deps=deps, impacts=impacts_suppression(deps))
 
 
 @bp.route("/departements", methods=["GET", "POST"])

@@ -13,11 +13,12 @@
   <section class="card">
     {% if elements %}
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>Nom</th><th>Responsable</th>{% if avec_projet %}<th>Département</th>{% else %}<th class="hide-mobile">Rattaché à</th>{% endif %}{% if avec_projet %}<th class="hide-mobile">Localisation</th><th class="hide-mobile">Période</th>{% endif %}<th class="num">Effectif</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr>{% if not avec_projet %}<th class="col-case"><label class="sr-only" for="dep-tout">Tout cocher</label><input type="checkbox" id="dep-tout" class="case" data-check-all=".case-dep"></th>{% endif %}<th>Nom</th><th>Responsable</th>{% if avec_projet %}<th>Département</th>{% else %}<th class="hide-mobile">Rattaché à</th>{% endif %}{% if avec_projet %}<th class="hide-mobile">Localisation</th><th class="hide-mobile">Période</th>{% endif %}<th class="num">Effectif</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
           {% set niv = niveaux.get(x.id, 0) if not avec_projet else 0 %}
+          {% if not avec_projet %}<td class="col-case"><input type="checkbox" class="case case-dep" name="ids" value="{{ x.id }}" form="form-deps-masse" aria-label="Cocher {{ x.nom }}"></td>{% endif %}
           <td>{% if niv %}<span class="arbre" style="padding-left:{{ (niv - 1) * 18 }}px" aria-hidden="true">└</span> {% endif %}<strong>{{ x.nom }}</strong> <span class="code">{{ x.code }}</span>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}{% if niv %}<span class="sr-only"> (sous-département)</span>{% endif %}
             {% if not avec_projet and projets_par_dep.get(x.id) %}<br><span class="small muted" style="padding-left:{{ niv * 18 }}px">Projets : {{ projets_par_dep[x.id]|join(", ") }}</span>{% endif %}</td>
           <td>{{ x.responsable.nom_complet if x.responsable else "—" }}</td>
@@ -32,11 +33,19 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ x.id }}"><input type="hidden" name="action" value="basculer">
               <button class="btn btn--ghost btn--sm" type="submit">{{ "Archiver" if x.actif else "Réactiver" }}</button>
             </form>
+            {% if not avec_projet %}<a class="btn btn--ghost btn--sm btn--danger-texte" href="{{ url_for('parametres.supprimer_departements', ids=x.id) }}">Supprimer</a>{% endif %}
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table></div>
+    {% if not avec_projet %}
+    <form id="form-deps-masse" method="get" action="{{ url_for('parametres.supprimer_departements') }}" class="card__foot row" style="gap:8px">
+      <span class="spacer"></span>
+      <button class="btn btn--secondary btn--sm btn--danger-texte" type="submit">Supprimer les cochés…</button>
+      <button class="btn btn--danger btn--sm" type="submit" name="tout" value="1">Tout supprimer…</button>
+    </form>
+    {% endif %}
     {% else %}
     {{ vide("Aucun " ~ singulier, "Créez votre premier " ~ singulier ~ " avec le formulaire, ou laissez l'import du personnel les créer.", "building" if not avec_projet else "folder") }}
     {% endif %}

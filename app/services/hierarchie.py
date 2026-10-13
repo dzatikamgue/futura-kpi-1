@@ -12,6 +12,8 @@ import json
 
 from flask import g
 
+from sqlalchemy import func, select
+
 from ..extensions import db
 from ..models import Parametre
 
@@ -103,3 +105,83 @@ def ordonner(departements) -> list[tuple[object, int]]:
     for d in departements:          # sécurité : rien ne disparaît
         visiter(d, 0)
     return res
+
+
+# --- Suppression de départements ------------------------------------------------
+CLE_SUPPRIMES = "departements_supprimes"
+
+
+def supprimes() -> set[int]:
+    """Départements supprimés par la RH mais gardés en base car ils ont un historique (affectations / notes)."""
+    p = db.session.get(Parametre, CLE_SUPPRIMES)
+    try:
+        return {int(x) for x in (json.loads(p.valeur) if p else [])}
+    except (ValueError, TypeError):
+        return set()
+
+
+def _ecrire_supprimes(ids: set[int], utilisateur_id: int | None) -> None:
+    valeur = json.dumps(sorted(ids))
+    p = db.session.get(Parametre, CLE_SUPPRIMES)
+    if p:
+        p.valeur, p.updated_by_id = valeur, utilisateur_id
+    else:
+        db.session.add(Parametre(cle=CLE_SUPPRIMES, valeur=valeur, updated_by_id=utilisateur_id))
+
+
+def restaurer(departement, utilisateur_id: int | None) -> None:
+    """Département recréé sous le même code / nom : on reprend la ligne existante."""
+    _ecrire_supprimes(supprimes() - {departement.id}, utilisateur_id)
+    departement.actif = True
+
+
+def impacts_suppression(departements) -> dict:
+    from ..models import Affectation
+    from .projets import carte
+    ids = {d.id for d in departements}
+    membres = db.session.scalar(select(func.count(Affectation.id)).where(
+        Affectation.departement_id.in_(ids or {-1}), Affectation.actif.is_(True))) or 0
+    enfants = [d for d, p in parents().items() if p in ids and d not in ids]
+    projets = [p for p, d in carte().items() if d in ids]
+    return {"membres": membres, "sous_departements": len(enfants), "projets": len(projets)}
+
+
+def supprimer_departements(departements, utilisateur_id: int | None) -> tuple[int, int]:
+    """Supprime des départements. Renvoie (effacés, gardés pour l'historique).
+
+    - Les sous-départements remontent d'un niveau (rattachés au parent du département supprimé).
+    - Les projets rattachés deviennent « à rattacher ».
+    - Les affectations actives sont clôturées.
+    - Un département qui a déjà eu des affectations n'est pas effacé (les notes passées en
+      dépendent) : il est archivé et retiré de toutes les listes.
+    """
+    from ..models import Affectation
+    from .projets import carte, definir
+    ids = {d.id for d in departements}
+    for d in departements:
+        par = parent_de(d.id)
+        while par in ids:                       # remonter au premier ancêtre conservé
+            par = parent_de(par)
+        for enfant, p in list(parents().items()):
+            if p == d.id and enfant not in ids:
+                definir_parent(enfant, par, utilisateur_id)
+        definir_parent(d.id, None, utilisateur_id)
+    for p, dep in list(carte().items()):
+        if dep in ids:
+            definir(p, None, utilisateur_id)
+    effaces, gardes = 0, 0
+    caches = supprimes()
+    for d in departements:
+        a_un_historique = db.session.scalar(select(Affectation.id).where(Affectation.departement_id == d.id).limit(1))
+        if a_un_historique:
+            for a in db.session.scalars(select(Affectation).where(Affectation.departement_id == d.id,
+                                                                  Affectation.actif.is_(True))):
+                a.actif = False
+            d.actif = False
+            caches.add(d.id)
+            gardes += 1
+        else:
+            db.session.delete(d)
+            effaces += 1
+    _ecrire_supprimes(caches, utilisateur_id)
+    return effaces, gardes

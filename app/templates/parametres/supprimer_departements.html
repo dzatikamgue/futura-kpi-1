@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "departements" %}
+{% block title %}Supprimer des départements{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><a class="crumb-mid" href="{{ url_for('parametres.departements') }}">Départements</a><span class="sep">/</span><span aria-current="page">Supprimer</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Supprimer {{ deps|length }} département{{ "s" if deps|length > 1 }}</h1>
+  <p>Vérifiez les conséquences avant de confirmer.</p>
+</div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card__head"><h2>Départements concernés</h2></div>
+    <div class="table-wrap" style="max-height:460px;overflow:auto"><table class="table table--compact">
+      <thead><tr><th>Département</th><th>Code</th><th>Responsable</th></tr></thead>
+      <tbody>{% for d in deps %}<tr><td><strong>{{ d.nom }}</strong></td><td><span class="code">{{ d.code }}</span></td>
+        <td>{{ d.responsable.nom_complet if d.responsable else "—" }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
+  <section class="card carte-danger">
+    <div class="card__head"><h2>Ce qui va se passer</h2></div>
+    <div class="card__body stack small">
+      <ul class="liste-impacts">
+        <li>{{ impacts.membres }} affectation(s) en cours clôturée(s) : ces salariés n'auront plus ce département (à réaffecter si besoin)</li>
+        {% if impacts.sous_departements %}<li>{{ impacts.sous_departements }} sous-département(s) remonte(nt) d'un niveau</li>{% endif %}
+        {% if impacts.projets %}<li>{{ impacts.projets }} projet(s) à rattacher à un autre département</li>{% endif %}
+        <li>Les évaluations déjà saisies restent dans l'historique et le suivi</li>
+      </ul>
+      <form method="post" class="form-actions" data-confirm="Confirmer la suppression ?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for d in deps %}<input type="hidden" name="ids" value="{{ d.id }}">{% endfor %}
+        <a class="btn btn--ghost" href="{{ url_for('parametres.departements') }}">Annuler</a>
+        <button class="btn btn--danger" type="submit">{{ icon('alert') }} Supprimer</button>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

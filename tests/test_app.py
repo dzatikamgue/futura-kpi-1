@@ -1269,3 +1269,37 @@ def test_organigramme(app):
     c3 = app.test_client()
     login(c3, email_de("FOTSO"))   # chef de projet : pas d'accès
     assert c3.get("/parametres/organigramme").status_code == 403
+
+
+def test_suppression_de_departements(app):
+    from app.models import Affectation, Departement, Projet
+    from app.services.hierarchie import parent_de, supprimes
+    from app.services.projets import departement_du_projet
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    bali = db.session.scalar(select(Projet).where(Projet.code == "BALI"))
+    c.post("/parametres/projets", data={"id": bali.id, "code": bali.code, "nom": bali.nom, "departement_id": str(tech.id)})
+    c.post("/parametres/departements", data={"code": "METH", "nom": "Méthodes", "parent_id": str(tech.id)})
+    c.post("/parametres/departements", data={"code": "VIDE", "nom": "Département vide"})
+    meth = db.session.scalar(select(Departement).where(Departement.code == "METH"))
+    vide = db.session.scalar(select(Departement).where(Departement.code == "VIDE"))
+    # Département sans historique : effacé
+    page = c.get(f"/parametres/departements/supprimer?ids={vide.id}").get_data(as_text=True)
+    assert "Ce qui va se passer" in page
+    c.post("/parametres/departements/supprimer", data={"ids": [str(vide.id)]})
+    assert db.session.get(Departement, vide.id) is None
+    # Département avec historique : retiré des listes, affectations clôturées, historique conservé
+    nb_evals = db.session.scalar(select(db.func.count(Evaluation.id)))
+    c.post("/parametres/departements/supprimer", data={"ids": [str(tech.id)]})
+    assert tech.id in supprimes()
+    assert not db.session.scalar(select(Affectation.id).where(Affectation.departement_id == tech.id,
+                                                              Affectation.actif.is_(True)).limit(1))
+    assert db.session.scalar(select(db.func.count(Evaluation.id))) == nb_evals
+    assert parent_de(meth.id) is None and departement_du_projet(bali.id) is None
+    page = c.get("/parametres/departements").get_data(as_text=True)
+    assert "Direction technique" not in page.split("Nouveau département")[0]
+    # Recréé sous le même code : la ligne revient
+    c.post("/parametres/departements", data={"code": "TECH", "nom": "Direction technique"})
+    db.session.refresh(tech)
+    assert tech.actif and tech.id not in supprimes()
