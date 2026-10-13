@@ -111,16 +111,23 @@ def campagne():
 
 
 def _criteres_pour(ev, aff):
-    """Grille de l'entité où le salarié travaille sur cette affectation (chaque entité a sa grille)."""
+    """Grille applicable : celle du poste du salarié si elle existe, sinon la grille commune
+    de l'entité où il travaille sur cette affectation (chaque entité a ses grilles)."""
     from ..services.entites import entite_affectation
-    eid = entite_affectation(aff)
-    actifs = db.session.scalars(select(Critere).where(Critere.actif.is_(True), cond_entite(Critere.entite_id, eid))
-                                .order_by(Critere.ordre, Critere.id)).all()
+    from ..services.grilles import CritereGrille, grille_pour
     if ev and ev.est_soumise:
-        return [n.critere for n in ev.notes]
+        return [CritereGrille(n.critere, n.poids) for n in ev.notes]
+    actifs, _ = grille_pour(entite_affectation(aff), aff.employe.poste)
     ids = {c.id for c in actifs}
-    extra = [n.critere for n in (ev.notes if ev else []) if n.critere_id not in ids]
+    # Brouillon commencé avec un critère qui n'est plus dans la grille : conservé
+    extra = [CritereGrille(n.critere, n.poids) for n in (ev.notes if ev else []) if n.critere_id not in ids]
     return actifs + extra
+
+
+def _grille_propre(aff) -> bool:
+    from ..services.entites import entite_affectation
+    from ..services.grilles import grille_du_poste
+    return grille_du_poste(entite_affectation(aff), aff.employe.poste) is not None
 
 
 @bp.route("/noter/<int:affectation_id>", methods=["GET", "POST"])
@@ -228,6 +235,7 @@ def noter(affectation_id):
 
     return render_template(
         "evaluations/noter.html", aff=aff, ev=ev, annee=annee, mois=mois,
+        grille_propre=_grille_propre(aff),
         periode=libelle_periode(annee, mois), criteres=criteres, valeurs=valeurs, erreurs=erreurs,
         commentaire=request.form.get("commentaire", ev.commentaire if ev else "") or "",
         axes=request.form.get("axes_amelioration", ev.axes_amelioration if ev else "") or "",

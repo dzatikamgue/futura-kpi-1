@@ -19,7 +19,8 @@
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
           <td class="col-case"><input type="checkbox" class="case case-poste" name="libelles" value="{{ x.libelle }}" form="form-postes-masse" aria-label="Cocher {{ x.libelle }}"></td>
           <td class="num col-numero">{{ loop.index }}</td>
-          <td><strong>{{ x.libelle }}</strong>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}</td>
+          <td><strong>{{ x.libelle }}</strong>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}
+            {% if x.actif %}<br><a class="small lien-grille" href="{{ url_for('parametres.grille_poste', libelle=x.libelle) }}">{{ icon('star') }} Grille KPI : {% if x.grille %}<strong>propre ({{ x.grille }} critère{{ "s" if x.grille > 1 }})</strong>{% else %}commune{% endif %}</a>{% endif %}</td>
           <td class="num">{{ x.effectif }}</td>
           <td>{% if x.actif %}<form method="post" style="display:inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ x.libelle }}"><input type="hidden" name="action" value="groupe">

@@ -535,6 +535,31 @@
     filtrer();
   }
 
+  /* ---------- Grille KPI d'un poste : poids réels en direct ---------- */
+  var grille = $("[data-grille]");
+  if (grille) {
+    var lignesG = $$("[data-ligne-grille]", grille);
+    function majGrille() {
+      var total = 0, nb = 0;
+      lignesG.forEach(function (tr) {
+        var on = $("[data-inclus]", tr).checked;
+        tr.classList.toggle("ligne--off", !on);
+        $("[data-poids]", tr).disabled = !on;
+        if (on) { total += +$("[data-poids]", tr).value; nb++; }
+      });
+      lignesG.forEach(function (tr) {
+        var on = $("[data-inclus]", tr).checked;
+        $("[data-part]", tr).textContent = on && total ? Math.round(100 * $("[data-poids]", tr).value / total) + " %" : "—";
+      });
+      $("[data-total]", grille).textContent = total;
+      $("[data-nb-criteres]", grille).textContent = nb;
+    }
+    grille.addEventListener("change", majGrille);
+    // Les coefficients des lignes décochées ne sont pas envoyés : réactivés juste avant l'envoi
+    $("form", grille).addEventListener("submit", function () { $$("[data-poids]", grille).forEach(function (s) { s.disabled = false; }); });
+    majGrille();
+  }
+
   /* ---------- Copier dans le presse-papiers ---------- */
   $$(".kbd-copy").forEach(function (el) {
     el.addEventListener("click", function () {

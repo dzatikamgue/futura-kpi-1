@@ -242,9 +242,16 @@ def criteres():
     elements = db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, _eid()))
                                   .order_by(Critere.actif.desc(), Critere.ordre, Critere.id)).all()
     utilises = set(db.session.scalars(select(EvaluationNote.critere_id).distinct()))
-    total_poids = sum(c.poids for c in elements if c.actif)
+    from ..services import grilles as G
+    spe = G.specifiques(_eid())
+    total_poids = sum(c.poids for c in elements if c.actif and c.id not in spe)
+    gr = G.grilles(_eid())
+    grilles_postes = sorted(((v["libelle"], len(v["criteres"])) for v in gr.values() if v["criteres"]),
+                            key=lambda x: cle_texte(x[0]))
     return render_template("parametres/criteres.html", elements=elements, edition=edition, donnees=donnees,
-                           erreurs=erreurs, utilises=utilises, total_poids=total_poids)
+                           erreurs=erreurs, utilises=utilises, total_poids=total_poids, specifiques=spe,
+                           utilisations={c.id: G.postes_utilisant(_eid(), c.id) for c in elements},
+                           grilles_postes=grilles_postes, postes=postes_actifs(_eid()))
 
 
 # --- Postes -------------------------------------------------------------------
@@ -355,6 +362,8 @@ def postes():
                                                                   cond_entite(Employe.entite_id, eid))):
                     e.poste = libelle
                     n += 1
+                from ..services.grilles import renommer_poste
+                renommer_poste(eid, ancien, libelle, current_user.id)
                 journaliser("poste_renomme", libelle, f"ancien : {ancien}, {n} fiche(s)")
             else:
                 db.session.add(Poste(libelle=libelle, entite_id=eid))
@@ -381,8 +390,11 @@ def postes():
                                   .order_by(Poste.libelle)).all()
     from ..services.transverses import _reglage, poste_est_groupe
     reglage = _reglage()
+    from ..services.grilles import grilles as _grilles
+    gr = _grilles(eid)
     elements = [{"libelle": x, "actif": True, "effectif": effectifs.get(x, 0), "groupe": poste_est_groupe(x, reglage),
-                 "fiches": fiches.get(cle_texte(x), 0)} for x in actifs] + \
+                 "fiches": fiches.get(cle_texte(x), 0),
+                 "grille": len(gr.get(cle_texte(x), {}).get("criteres", {}))} for x in actifs] + \
                [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0), "groupe": False,
                  "fiches": fiches.get(cle_texte(x), 0)} for x in archives]
     return render_template("parametres/postes.html", elements=elements, edition=edition,
@@ -404,7 +416,107 @@ def _supprimer_poste(eid: int, lib: str, remplacement: str) -> int:
         if cle_texte(p.libelle) == k:
             db.session.delete(p)
     marquer_poste_supprime(eid, lib, True, current_user.id)
+    from ..services.grilles import definir_grille
+    definir_grille(eid, lib, {}, current_user.id)
     return n
+
+
+@bp.route("/postes/grille", methods=["GET", "POST"])
+@login_required
+@rh_requis
+def grille_poste():
+    """Grille KPI d'un poste : choix des critères (bibliothèque de l'entité) et de leurs coefficients."""
+    from ..services import grilles as G
+    eid = _eid()
+    poste = (request.values.get("libelle") or "").strip() or abort(404)
+    if cle_texte(poste) not in {cle_texte(x) for x in postes_actifs(eid)}:
+        abort(404)
+    url_retour = url_for("parametres.grille_poste", libelle=poste)
+    erreurs, donnees = {}, {}
+    if request.method == "POST":
+        action = request.form.get("action", "enregistrer")
+        if action == "commune":
+            G.definir_grille(eid, poste, {}, current_user.id)
+            journaliser("grille_poste", poste, "grille commune")
+            db.session.commit()
+            flash(f"« {poste} » utilise de nouveau la grille commune.", "succes")
+            return redirect(url_retour)
+        if action == "copier":
+            source = (request.form.get("source") or "").strip()
+            defn = G.grilles(eid).get(cle_texte(source))
+            if not defn:
+                flash("Ce poste n'a pas de grille propre à copier.", "erreur")
+                return redirect(url_retour)
+            G.definir_grille(eid, poste, defn["criteres"], current_user.id)
+            journaliser("grille_poste", poste, f"copiée de {source}")
+            db.session.commit()
+            flash(f"Grille de « {source} » copiée sur « {poste} ».", "succes")
+            return redirect(url_retour)
+        if action == "ajouter_critere":
+            donnees = {k: (request.form.get(k) or "").strip() for k in ("libelle_critere", "description", "poids")}
+            lib = donnees["libelle_critere"][:120]
+            if not lib:
+                erreurs["libelle_critere"] = "Le libellé est obligatoire."
+            elif db.session.scalar(select(Critere.id).where(func.lower(Critere.libelle) == lib.lower(),
+                                                            cond_entite(Critere.entite_id, eid))):
+                erreurs["libelle_critere"] = "Ce critère existe déjà dans la bibliothèque : cochez-le dans la liste."
+            try:
+                poids = int(donnees["poids"] or 1)
+                if not 1 <= poids <= 5:
+                    raise ValueError
+            except ValueError:
+                erreurs["poids"] = "Coefficient de 1 à 5."
+                poids = 1
+            if not erreurs:
+                ordre = (db.session.scalar(select(func.max(Critere.ordre)).where(
+                    cond_entite(Critere.entite_id, eid))) or 0) + 1
+                c = Critere(entite_id=eid, libelle=lib, description=donnees["description"][:400] or None,
+                            poids=poids, ordre=ordre)
+                db.session.add(c)
+                db.session.flush()
+                G.marquer_specifique(eid, c.id, True, current_user.id)
+                # Le poste démarre de sa grille actuelle (ou de la commune) + ce nouveau critère
+                actuelle, _ = G.grille_pour(eid, poste)
+                G.definir_grille(eid, poste, {**{x.id: x.poids for x in actuelle}, c.id: poids}, current_user.id)
+                journaliser("critere_cree", lib, f"spécifique au poste {poste}")
+                db.session.commit()
+                flash(f"Critère « {lib} » créé et ajouté à la grille de « {poste} ».", "succes")
+                return redirect(url_retour)
+        if action == "enregistrer":
+            choix = {}
+            for cid in request.form.getlist("inclus"):
+                if not cid.isdigit():
+                    continue
+                try:
+                    p_ = max(1, min(5, int(request.form.get(f"poids_{cid}") or 1)))
+                except ValueError:
+                    p_ = 1
+                choix[int(cid)] = p_
+            valides = {c.id for c in db.session.scalars(select(Critere).where(
+                Critere.id.in_(choix or {-1}), Critere.actif.is_(True), cond_entite(Critere.entite_id, eid)))}
+            choix = {k: v for k, v in choix.items() if k in valides}
+            if not choix:
+                flash("Cochez au moins un critère (ou revenez à la grille commune).", "erreur")
+                return redirect(url_retour)
+            G.definir_grille(eid, poste, choix, current_user.id)
+            journaliser("grille_poste", poste, f"{len(choix)} critère(s)")
+            db.session.commit()
+            flash(f"Grille de « {poste} » enregistrée : {len(choix)} critère(s). Elle s'applique aux évaluations à venir.",
+                  "succes")
+            return redirect(url_retour)
+    propre = G.grille_du_poste(eid, poste)
+    selection = {x.id: x.poids for x in (propre or G.grille_commune(eid))}
+    spe = G.specifiques(eid)
+    bibliotheque = db.session.scalars(select(Critere).where(Critere.actif.is_(True), cond_entite(Critere.entite_id, eid))
+                                      .order_by(Critere.ordre, Critere.id)).all()
+    autres_grilles = sorted((v["libelle"] for k, v in G.grilles(eid).items()
+                             if k != cle_texte(poste) and v["criteres"]), key=cle_texte)
+    nb_salaries = sum(1 for p_ in db.session.scalars(select(Employe.poste).where(
+        Employe.actif.is_(True), Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid))) if cle_texte(p_) == cle_texte(poste))
+    return render_template("parametres/grille_poste.html", poste=poste, propre=propre is not None,
+                           selection=selection, bibliotheque=bibliotheque, specifiques=spe,
+                           utilisations={c.id: G.postes_utilisant(eid, c.id) for c in bibliotheque if c.id in spe},
+                           autres_grilles=autres_grilles, nb_salaries=nb_salaries, erreurs=erreurs, donnees=donnees)
 
 
 @bp.post("/postes/importer")

@@ -28,7 +28,7 @@ def app():
     # comme le ferait un vrai serveur.
     def _isoler_requete():
         from flask import g
-        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep"):
+        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep", "_reglages_grilles"):
             g.pop(k, None)
     # Doit passer avant les autres before_request de l'application
     app.before_request_funcs.setdefault(None, []).insert(0, _isoler_requete)
@@ -1143,3 +1143,62 @@ def test_suppression_de_postes_en_masse(app):
     c.post("/parametres/postes", data={"action": "supprimer_masse", "tout": "1", "occupes": "vider"})
     assert postes_actifs(eid) == []
     assert db.session.scalar(select(db.func.count(Employe.id)).where(Employe.poste.isnot(None))) == 0
+
+
+def test_grille_kpi_par_poste(app):
+    from app.models import Critere, Parametre
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    page = c.get("/parametres/postes").get_data(as_text=True)
+    assert "Grille KPI : commune" in page
+    url = "/parametres/postes/grille?libelle=Topographe"
+    page = c.get(url).get_data(as_text=True)
+    assert "Utilise la grille commune" in page and 'name="inclus"' in page
+    criteres = db.session.scalars(select(Critere).where(Critere.actif.is_(True))).all()
+    # Grille propre : 2 critères communs (dont un avec coefficient 5) + 1 critère spécifique
+    c.post(url, data={"libelle": "Topographe", "action": "enregistrer",
+                      "inclus": [str(criteres[0].id), str(criteres[1].id)], f"poids_{criteres[0].id}": "5",
+                      f"poids_{criteres[1].id}": "1"})
+    c.post(url, data={"libelle": "Topographe", "action": "ajouter_critere",
+                      "libelle_critere": "Précision des relevés", "poids": "3"})
+    spe = db.session.scalar(select(Critere).where(Critere.libelle == "Précision des relevés"))
+    assert spe is not None
+    assert "grilles_postes" in {p.cle for p in db.session.scalars(select(Parametre))}
+    page = c.get("/parametres/postes").get_data(as_text=True)
+    assert "propre (3 critères)" in page
+    # Le critère spécifique n'entre pas dans la grille commune
+    page = c.get("/parametres/criteres").get_data(as_text=True)
+    assert "Spécifique : Topographe" in page and "Grilles par poste" in page
+    # MANGA (Topographe) est noté avec la grille du poste
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
+    aff = next(a for a in manga.affectations_actives if a.evaluateur_id)
+    n1 = aff.evaluateur
+    if not n1.compte:
+        u = Utilisateur(email="n1.grille@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=n1.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, n1.compte.email)
+    page = c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}").get_data(as_text=True)
+    assert "Poste : Topographe" in page and "Précision des relevés" in page
+    assert criteres[2].libelle not in page
+    form = {"action": "soumettre", f"note_{criteres[0].id}": "100", f"note_{criteres[1].id}": "50",
+            f"note_{spe.id}": "80"}
+    r = c2.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
+    assert r.status_code == 302
+    ev = db.session.scalar(select(Evaluation).where(Evaluation.affectation_id == aff.id,
+                                                    Evaluation.annee == an, Evaluation.mois == mo))
+    assert ev.est_soumise and ev.note_globale == round((100 * 5 + 50 * 1 + 80 * 3) / 9, 2)
+    # Un autre poste reste sur la grille commune (sans le critère spécifique)
+    owona = db.session.scalar(select(Employe).where(Employe.nom == "OWONA"))
+    aff_o = next(a for a in owona.affectations_actives if a.evaluateur_id)
+    from app.services.grilles import grille_pour
+    from app.services.entites import entite_affectation
+    lignes, propre = grille_pour(entite_affectation(aff_o), owona.poste)
+    assert not propre and spe.id not in {x.id for x in lignes}
+    # Retour à la grille commune
+    c.post(url, data={"libelle": "Topographe", "action": "commune"})
+    assert "Utilise la grille commune" in c.get(url).get_data(as_text=True)

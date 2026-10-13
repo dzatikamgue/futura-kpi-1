@@ -33,7 +33,7 @@
     <div class="stack">
       <section class="card">
         <div class="card__head">
-          <div><h2>Grille d'évaluation</h2><p>Notez chaque critère de 0 à 100. Le coefficient (×) pondère la note globale.</p></div>
+          <div><h2>Grille d'évaluation {% if grille_propre %}<span class="badge badge--info">Poste : {{ aff.employe.poste }}</span>{% else %}<span class="badge badge--plain">Grille commune</span>{% endif %}</h2><p>Notez chaque critère de 0 à 100. Le coefficient (×) pondère la note globale.</p></div>
         </div>
         <div class="card__body" style="padding-top:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">
           <div class="rating-legend">{% for borne, lib, desc in ECHELLE %}<span title="{{ desc }}"><b>{{ "≥ " ~ borne if borne else "< 50" }}</b> {{ lib }}</span>{% endfor %}</div>

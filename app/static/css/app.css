@@ -644,3 +644,8 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .col-numero { width: 1%; color: var(--ink-3, #98A2B3); font-variant-numeric: tabular-nums; padding-right: 0 !important; }
 .table--serree .actions .btn--sm { padding-left: 6px; padding-right: 6px; }
 .table--serree th, .table--serree td { padding-left: 10px; padding-right: 10px; }
+.ligne--off td { opacity: .5; }
+.ligne--off td.col-case { opacity: 1; }
+.lien-grille { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); text-decoration: none; margin-top: 2px; }
+.lien-grille svg { width: 13px; height: 13px; }
+.lien-grille:hover { color: var(--brand); text-decoration: underline; }
