@@ -137,19 +137,16 @@ def poste_canonique(libelle: str, creer: bool, entite_id: int) -> str | None:
 def n1_departement(departement: Departement | None, employe_id: int) -> int | None:
     """N+1 d'un membre de département : le responsable du département.
 
-    Le responsable lui-même est noté par le responsable du département parent (s'il existe).
-    Pas de responsable : aucun N+1 (vide).
+    Pas de responsable (ou le salarié est lui-même le responsable) : on remonte au département
+    parent, puis au grand-parent, etc. Personne trouvé jusqu'en haut : aucun N+1 (vide).
     """
     from .hierarchie import ancetres
     if departement is None:
         return None
-    if departement.responsable_id and departement.responsable_id != employe_id:
-        return departement.responsable_id
-    if departement.responsable_id == employe_id:
-        for pid in ancetres(departement.id):
-            parent = db.session.get(Departement, pid)
-            if parent and parent.actif and parent.responsable_id and parent.responsable_id != employe_id:
-                return parent.responsable_id
+    chaine = [departement] + [db.session.get(Departement, i) for i in ancetres(departement.id)]
+    for d in chaine:
+        if d is not None and (d is departement or d.actif) and d.responsable_id and d.responsable_id != employe_id:
+            return d.responsable_id
     return None
 
 

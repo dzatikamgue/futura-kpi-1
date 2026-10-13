@@ -112,7 +112,7 @@
         {% set ctx_ent = (a.departement or a.projet).entite if (a.departement or a.projet) else none %}
         <td><strong>{{ a.contexte_libelle }}</strong>{% if ctx_ent and (ctx_ent.id != e.entite_id) and not (ctx_ent.principale and e.entite_id is none) %} <span class="badge badge--groupe">{{ ctx_ent.nom }}</span>{% endif %}{% if non_notee %}<br><span class="small muted">Non notée : le salarié est noté dans son projet ({{ projet_actif.contexte_libelle }}).</span>{% endif %}</td>
         <td>{% if a.departement_id %}{% if a.evaluateur %}{{ a.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Aucun responsable</span>{% endif %}
-          <div class="small muted">{{ "Responsable du département" if a.evaluateur and a.departement.responsable_id == a.evaluateur_id else ("Responsable du département parent" if a.evaluateur else "Désignez un responsable du département") }}</div>
+          <div class="small muted">{{ "Responsable du département" if a.evaluateur and a.departement.responsable_id == a.evaluateur_id else ("Responsable d'un département parent" if a.evaluateur else "Aucun responsable dans ce département ni au-dessus") }}</div>
           {% elif current_user.est_rh and a.actif %}
           <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" class="row">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="evaluateur">

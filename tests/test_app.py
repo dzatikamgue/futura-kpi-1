@@ -1336,3 +1336,24 @@ def test_responsable_de_departement_note_ses_membres(app):
     db.session.commit()
     db.session.refresh(a)
     assert a.evaluateur_id is None
+
+
+def test_sans_chef_le_chef_du_departement_mere_note(app):
+    from app.models import Departement
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))   # chef : TCHOUA
+    c.post("/parametres/departements", data={"code": "METH", "nom": "Méthodes", "parent_id": str(tech.id)})
+    meth = db.session.scalar(select(Departement).where(Departement.code == "METH"))
+    c.post("/parametres/departements", data={"code": "BET", "nom": "Bureau d'études", "parent_id": str(meth.id)})
+    bet = db.session.scalar(select(Departement).where(Departement.code == "BET"))
+    c.post("/personnel/nouveau", data={"nom": "ESSAMA", "departement_id": str(bet.id)})
+    a = db.session.scalar(select(Employe).where(Employe.nom == "ESSAMA")).affectations[0]
+    # BET et Méthodes sans chef : on remonte jusqu'au chef de la Direction technique
+    assert a.evaluateur_id == tech.responsable_id
+    # Méthodes reçoit un chef : il devient le N+1 des membres de BET
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))
+    c.post("/parametres/departements", data={"id": meth.id, "code": "METH", "nom": "Méthodes",
+                                             "responsable_id": str(fotso.id), "parent_id": str(tech.id)})
+    db.session.refresh(a)
+    assert a.evaluateur_id == fotso.id

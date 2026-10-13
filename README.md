@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (52 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (53 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -154,7 +154,7 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - La grille par défaut n'est plus recréée au redémarrage une fois la grille vidée. Tant que la grille est vide, la notation est bloquée avec un message clair.
 
 ## Qui note qui
-- **Département** : le N+1 est automatiquement le **responsable du département** (pour tous ses membres). Le responsable lui-même est noté par le responsable du département parent ; sans responsable, le N+1 reste vide.
+- **Département** : le N+1 est automatiquement le **responsable du département** (pour tous ses membres). Sans responsable (ou pour le responsable lui-même), c'est le responsable du département parent qui note, puis le grand-parent, etc. ; si personne n'est trouvé jusqu'en haut, le N+1 reste vide.
 - **Projet** : le N+1 est celui désigné par la RH.
 - Changer le responsable d'un département met à jour le N+1 de tous ses membres. Un alignement automatique (`flask sync-n1`) est aussi lancé à chaque démarrage.
 
