@@ -73,7 +73,8 @@ class Config:
 class TestConfig(Config):
     TESTING = True
     SUPERADMINS = {"super@x.cm"}
-    SQLALCHEMY_DATABASE_URI = "sqlite://"
+    # TEST_DATABASE_URL permet de jouer les tests sur PostgreSQL (comme en production)
+    SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "sqlite://")
     SQLALCHEMY_ENGINE_OPTIONS = {}
     WTF_CSRF_ENABLED = False
     SECRET_KEY = "test"

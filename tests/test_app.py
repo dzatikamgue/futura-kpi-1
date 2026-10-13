@@ -37,7 +37,7 @@ def app():
         db.create_all()
         # Comme la migration multi-entités : l'entité principale existe d'emblée
         from app.models import Entite
-        db.session.add(Entite(id=1, code="FUT", nom="FUTURA", couleur="#213E70", principale=True, actif=True))
+        db.session.add(Entite(code="FUT", nom="FUTURA", couleur="#213E70", principale=True, actif=True))
         db.session.commit()
         runner = app.test_cli_runner()
         res = runner.invoke(args=["demo", "--mdp", MDP])

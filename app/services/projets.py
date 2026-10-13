@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from flask import g
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.orm import aliased
 
 from ..extensions import db
@@ -66,11 +66,12 @@ def cond_affectation_notee():
     from ..services.entites import principale
     pid = principale().id
     autre, proj, dep = aliased(Affectation), aliased(Projet), aliased(Departement)
-    entite_du_dep = (select(func.coalesce(dep.entite_id, pid))
-                     .where(dep.id == Affectation.departement_id).scalar_subquery())
+    # Tout dans le EXISTS (corrélé à l'affectation extérieure) : pas de sous-requête scalaire,
+    # qui renverrait plusieurs lignes sous PostgreSQL.
     a_un_projet = exists().where(and_(autre.employe_id == Affectation.employe_id,
                                       autre.actif.is_(True), autre.projet_id == proj.id,
-                                      func.coalesce(proj.entite_id, pid) == entite_du_dep))
+                                      dep.id == Affectation.departement_id,
+                                      func.coalesce(proj.entite_id, pid) == func.coalesce(dep.entite_id, pid)))
     return or_(Affectation.projet_id.isnot(None), ~a_un_projet)
 
 
