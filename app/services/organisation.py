@@ -134,17 +134,57 @@ def poste_canonique(libelle: str, creer: bool, entite_id: int) -> str | None:
     return libelle
 
 
+def n1_departement(departement: Departement | None, employe_id: int) -> int | None:
+    """N+1 d'un membre de département : le responsable du département.
+
+    Le responsable lui-même est noté par le responsable du département parent (s'il existe).
+    Pas de responsable : aucun N+1 (vide).
+    """
+    from .hierarchie import ancetres
+    if departement is None:
+        return None
+    if departement.responsable_id and departement.responsable_id != employe_id:
+        return departement.responsable_id
+    if departement.responsable_id == employe_id:
+        for pid in ancetres(departement.id):
+            parent = db.session.get(Departement, pid)
+            if parent and parent.actif and parent.responsable_id and parent.responsable_id != employe_id:
+                return parent.responsable_id
+    return None
+
+
+def synchroniser_n1_departements() -> set[int]:
+    """Aligne le N+1 de toutes les affectations « département » actives sur le responsable.
+
+    Idempotent. Renvoie les identifiants des responsables concernés (pour leurs comptes).
+    """
+    responsables = set()
+    for a in db.session.scalars(select(Affectation).where(Affectation.actif.is_(True),
+                                                          Affectation.departement_id.isnot(None))):
+        attendu = n1_departement(a.departement, a.employe_id)
+        if a.evaluateur_id != attendu:
+            a.evaluateur_id = attendu
+        if attendu:
+            responsables.add(attendu)
+    return responsables
+
+
 def affecter(e: Employe, departement: Departement | None = None, projet: Projet | None = None,
              evaluateur_id: int | None = None) -> Affectation:
-    """Crée (ou réactive) l'affectation. Le N+1 est celui désigné par la RH, jamais déduit."""
+    """Crée (ou réactive) l'affectation.
+
+    Projet : N+1 désigné par la RH. Département : N+1 = responsable du département (automatique).
+    """
     ctx = departement or projet
     col = Affectation.departement_id if departement else Affectation.projet_id
+    if departement is not None:
+        evaluateur_id = n1_departement(departement, e.id)
     if evaluateur_id == e.id:
         evaluateur_id = None
     a = db.session.scalar(select(Affectation).where(Affectation.employe_id == e.id, col == ctx.id))
     if a:
         a.actif = True
-        if evaluateur_id:
+        if evaluateur_id or departement is not None:
             a.evaluateur_id = evaluateur_id
     else:
         a = Affectation(employe_id=e.id, evaluateur_id=evaluateur_id,
@@ -208,7 +248,7 @@ def affecter_equipe(employes, ctx, evaluateur_id: int, remplacer: bool) -> tuple
     eid = id_effectif(ctx.entite_id)
     n, exclus = 0, []
     for e in employes:
-        if e.id == evaluateur_id:
+        if est_projet and e.id == evaluateur_id:
             exclus.append(f"{e.nom_complet} (ne peut pas être son propre N+1)")
             continue
         if remplacer:
@@ -218,6 +258,7 @@ def affecter_equipe(employes, ctx, evaluateur_id: int, remplacer: bool) -> tuple
                     a.actif = False
         a = affecter(e, departement=None if est_projet else ctx, projet=ctx if est_projet else None,
                      evaluateur_id=evaluateur_id)
-        a.evaluateur_id = evaluateur_id
+        if est_projet:
+            a.evaluateur_id = evaluateur_id
         n += 1
     return n, exclus

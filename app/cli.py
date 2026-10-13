@@ -70,6 +70,16 @@ def register_cli(app):
         db.session.commit()
         click.echo(f"Compte RH créé : {email} (changement de mot de passe exigé à la 1re connexion).")
 
+    @app.cli.command("sync-n1")
+    def sync_n1():
+        """Aligne le N+1 des membres de département sur le responsable du département (idempotent)."""
+        from .services.comptes import synchroniser_comptes
+        from .services.organisation import synchroniser_n1_departements
+        responsables = synchroniser_n1_departements()
+        synchroniser_comptes(responsables)
+        db.session.commit()
+        click.echo(f"N+1 des départements alignés sur {len(responsables)} responsable(s).")
+
     @app.cli.command("demo")
     @click.option("--mdp", default="Futura2026!", help="Mot de passe des comptes de démonstration")
     def demo(mdp):

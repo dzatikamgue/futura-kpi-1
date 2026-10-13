@@ -122,8 +122,11 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                 definir(obj.id, int(donnees["departement_id"]) if donnees["departement_id"] else None, current_user.id)
             else:
                 from ..services.hierarchie import definir_parent
+                from ..services.organisation import synchroniser_n1_departements
                 db.session.flush()
                 definir_parent(obj.id, int(donnees["parent_id"]) if donnees["parent_id"] else None, current_user.id)
+                # Le responsable devient le N+1 de tous les membres du département
+                synchroniser_comptes(synchroniser_n1_departements())
             journaliser(f"{model.__tablename__}_{'cree' if nouveau else 'modifie'}", obj.nom, code)
             db.session.commit()
             flash(f"« {obj.nom} » enregistré.", "succes")
@@ -243,6 +246,8 @@ def supprimer_departements():
         return redirect(url_for("parametres.departements"))
     if request.method == "POST":
         effaces, gardes = _supprimer(deps, current_user.id)
+        from ..services.organisation import synchroniser_n1_departements
+        synchroniser_n1_departements()   # responsables des sous-départements remontés
         journaliser("departements_supprimes", f"{len(deps)} département(s)",
                     ", ".join(d.nom for d in deps)[:400])
         db.session.commit()

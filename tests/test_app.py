@@ -245,7 +245,9 @@ def test_import_modele_excel_sans_ia(app):
     rose = db.session.scalar(select(Employe).where(Employe.nom == "ATANGANA"))
     assert rose.matricule.startswith("FUT-")
     assert len(biya.affectations) == 2
-    assert all(a.evaluateur_id == rose.id for a in biya.affectations)
+    # Projet : N+1 indiqué dans le fichier ; département (nouveau, sans responsable) : vide
+    assert next(a for a in biya.affectations if a.projet_id).evaluateur_id == rose.id
+    assert next(a for a in biya.affectations if a.departement_id).evaluateur_id is None
     # Rose a un N-1 et un e-mail : son compte est créé automatiquement, accès à remettre
     assert rose.compte and rose.compte.email == "rose@x.cm" and rose.compte.en_attente_acces
     # Les nouveaux postes rejoignent le référentiel
@@ -347,12 +349,12 @@ def test_creation_salarie_avec_rattachement_et_poste(app):
     e = db.session.scalar(select(Employe).where(Employe.nom == "ONDOA"))
     assert e.matricule.startswith("FUT-") and e.poste == "Grutier"
     assert db.session.scalar(select(Poste).where(Poste.libelle == "Grutier"))
-    # Sans N+1 choisi par la RH : personne n'est désigné (aucune déduction automatique)
-    assert e.affectations[0].evaluateur_id is None
+    # Département : le N+1 est automatiquement le responsable du département
+    assert e.affectations[0].evaluateur_id == tech.responsable_id
     r = c.post("/personnel/nouveau", data={"nom": "Mvogo", "departement_id": str(tech.id),
                                           "evaluateur_id": str(db.session.scalar(select(Employe.id).where(Employe.nom == "FOTSO")))})
     mvogo = db.session.scalar(select(Employe).where(Employe.nom == "MVOGO"))
-    assert mvogo.affectations[0].evaluateur.nom == "FOTSO"
+    assert mvogo.affectations[0].evaluateur_id == tech.responsable_id   # le choix manuel ne s'applique pas
     # E-mail en double refusé (c'est l'identifiant de connexion)
     r = c.post("/personnel/nouveau", data={"nom": "Doublon", "email": email_de("FOTSO")})
     assert r.status_code == 200 and "déjà utilisé" in r.get_data(as_text=True)
@@ -651,9 +653,10 @@ def test_n1_dans_une_autre_entite(app):
     c = app.test_client()
     login(c, email_de("MBALLA"))
     ent = _creer_entite(c)
-    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers"})
-    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
     tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    # TCHOUA (FUTURA, direction du groupe) dirige le département de STE : il en note les membres
+    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers", "responsable_id": str(tchoua.id)})
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
     c.post("/personnel/nouveau", data={"nom": "ONANA", "departement_id": str(dep.id), "evaluateur_id": str(tchoua.id)})
     c.post("/personnel/nouveau", data={"nom": "BEKONO", "departement_id": str(dep.id)})
     onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))
@@ -671,7 +674,7 @@ def test_n1_dans_une_autre_entite(app):
     c2.get(f"/entite/{ent.id}")
     an, mo = periode_courante()
     camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
-    assert "ONANA" in camp and "BEKONO" not in camp  # ne voit que la personne qu'il note
+    assert "ONANA" in camp and "BEKONO" in camp  # responsable du département : il note tous ses membres
     r = c2.get(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}")
     assert r.status_code == 200
     # La grille utilisée est celle de STE
@@ -1303,3 +1306,33 @@ def test_suppression_de_departements(app):
     c.post("/parametres/departements", data={"code": "TECH", "nom": "Direction technique"})
     db.session.refresh(tech)
     assert tech.actif and tech.id not in supprimes()
+
+
+def test_responsable_de_departement_note_ses_membres(app):
+    from app.models import Departement
+    from app.services.organisation import synchroniser_n1_departements
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))
+    # Nouveau responsable : il devient le N+1 de tous les membres du département
+    c.post("/parametres/departements", data={"id": daf.id, "code": daf.code, "nom": daf.nom,
+                                             "responsable_id": str(fotso.id)})
+    membres = db.session.scalars(select(Affectation).where(Affectation.departement_id == daf.id,
+                                                           Affectation.actif.is_(True))).all()
+    assert membres and all(a.evaluateur_id == fotso.id for a in membres if a.employe_id != fotso.id)
+    # Le N+1 d'une affectation département ne se modifie pas à la main
+    a = next(x for x in membres if x.employe_id != fotso.id)
+    tchoua = db.session.scalar(select(Employe.id).where(Employe.nom == "TCHOUA"))
+    c.post(f"/personnel/affectations/{a.id}", data={"action": "evaluateur", "evaluateur_id": str(tchoua)})
+    db.session.refresh(a)
+    assert a.evaluateur_id == fotso.id
+    # Pas de responsable : N+1 vide
+    c.post("/parametres/departements", data={"id": daf.id, "code": daf.code, "nom": daf.nom, "responsable_id": ""})
+    db.session.refresh(a)
+    assert a.evaluateur_id is None
+    # La synchronisation (lancée au démarrage) est idempotente
+    synchroniser_n1_departements()
+    db.session.commit()
+    db.session.refresh(a)
+    assert a.evaluateur_id is None

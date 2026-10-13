@@ -55,7 +55,7 @@
       <option value="">— Aucun —</option>
       {% for p in projets %}<option value="{{ p.id }}" {% if donnees.get('projet_id') == p.id|string %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
     {% endcall %}
-    {% call select_champ("evaluateur_id", "N+1 (qui le note)", "Seule cette personne pourra noter le salarié, même s'il est sur le projet d'un autre responsable.") %}
+    {% call select_champ("evaluateur_id", "N+1 sur le projet (qui le note)", "S'applique au projet. Dans un département, le N+1 est automatiquement le responsable du département.") %}
       <option value="">— À désigner plus tard —</option>
       {% for ent, membres in groupes_evaluateurs %}<optgroup label="{{ ent.nom }}">{% for x in membres %}<option value="{{ x.id }}" {% if donnees.get('evaluateur_id') == x.id|string %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}</optgroup>{% endfor %}
     {% endcall %}

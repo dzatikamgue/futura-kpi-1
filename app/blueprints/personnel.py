@@ -263,7 +263,8 @@ def _maj_rattachement(e: Employe, eid: int, donnees: dict) -> int | None:
             if cible:
                 a = affecter(e, **{("departement" if model is Departement else "projet"): cible}, evaluateur_id=n1)
                 journaliser("affectation_ajoutee", e.nom_complet, a.contexte_libelle)
-        elif actuelle and n1 != actuelle.evaluateur_id and "evaluateur_id" in request.form:
+        elif (actuelle and model is Projet and n1 != actuelle.evaluateur_id
+              and "evaluateur_id" in request.form):  # département : N+1 = responsable (automatique)
             actuelle.evaluateur_id = n1
             journaliser("affectation_n1_modifie", e.nom_complet, actuelle.contexte_libelle)
     return n1
@@ -375,6 +376,9 @@ def maj_affectation(affectation_id):
         a.actif = False
         journaliser("affectation_retiree", a.employe.nom_complet, a.contexte_libelle)
         flash("Affectation clôturée. L'historique des notes est conservé.", "succes")
+    elif action == "evaluateur" and a.departement_id:
+        flash("Dans un département, le N+1 est automatiquement le responsable du département. "
+              "Changez le responsable dans Administration → Départements.", "info")
     elif action == "evaluateur":
         nouvel = request.form.get("evaluateur_id", type=int)
         if nouvel == a.employe_id:
@@ -435,7 +439,7 @@ def equipe_ajouter(type_ctx, ctx_id):
     if not ids:
         flash("Cochez au moins un salarié à affecter.", "erreur")
         return retour
-    if not evaluateur_id or db.session.get(Employe, evaluateur_id) is None:
+    if type_ctx == "projet" and (not evaluateur_id or db.session.get(Employe, evaluateur_id) is None):
         flash("Désignez le N+1 qui notera ces salariés.", "erreur")
         return retour
     employes = db.session.scalars(select(Employe).where(Employe.id.in_(ids), Employe.actif.is_(True))).all()
@@ -469,6 +473,9 @@ def equipe_membres(type_ctx, ctx_id):
             a.actif = False
         journaliser("equipe_retrait", ctx.nom, f"{len(affs)} salarié(s)")
         flash(f"{len(affs)} salarié(s) retiré(s) de « {ctx.nom} ». L'historique des notes est conservé.", "succes")
+    elif action == "n1" and type_ctx == "departement":
+        flash("Dans un département, le N+1 est automatiquement le responsable du département.", "info")
+        return retour
     elif action == "n1":
         nouvel = request.form.get("evaluateur_id", type=int)
         if not nouvel or db.session.get(Employe, nouvel) is None:
