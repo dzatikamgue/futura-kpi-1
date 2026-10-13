@@ -1121,3 +1121,25 @@ def test_sous_departements(app):
     assert "BIYA" in liste
     page = c.get("/parametres/departements").get_data(as_text=True)
     assert "└" in page
+
+
+def test_suppression_de_postes_en_masse(app):
+    from app.services.organisation import postes_actifs
+    from app.services.entites import principale
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    eid = principale().id
+    page = c.get("/parametres/postes").get_data(as_text=True)
+    assert 'form="form-postes-masse"' in page and "Supprimer tous les postes" in page
+    # Sélection : un poste libre et un poste occupé (conservé par défaut)
+    c.post("/parametres/postes", data={"action": "supprimer_masse", "libelles": ["Chauffeur", "Maçon"]})
+    actifs = postes_actifs(eid)
+    assert "Chauffeur" not in actifs and "Maçon" in actifs
+    # Tout supprimer en conservant les postes occupés
+    c.post("/parametres/postes", data={"action": "supprimer_masse", "tout": "1", "occupes": "garder"})
+    occupes = {p for p in db.session.scalars(select(Employe.poste).where(Employe.poste.isnot(None)))}
+    assert set(postes_actifs(eid)) == occupes
+    # Tout supprimer, y compris les postes occupés : les fiches n'ont plus de poste
+    c.post("/parametres/postes", data={"action": "supprimer_masse", "tout": "1", "occupes": "vider"})
+    assert postes_actifs(eid) == []
+    assert db.session.scalar(select(db.func.count(Employe.id)).where(Employe.poste.isnot(None))) == 0

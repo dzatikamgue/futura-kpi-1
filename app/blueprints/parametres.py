@@ -286,6 +286,35 @@ def postes():
                 db.session.commit()
                 flash(f"Poste « {p.libelle} » {'réactivé' if p.actif else 'archivé (retiré des listes)'}.", "succes")
             return redirect(request.path)
+        if action == "supprimer_masse":
+            libelles = [x.strip() for x in request.form.getlist("libelles") if x.strip()]
+            if request.form.get("tout") == "1":
+                libelles = postes_actifs(eid) + list(db.session.scalars(select(Poste.libelle).where(
+                    Poste.actif.is_(False), cond_entite(Poste.entite_id, eid))))
+            if not libelles:
+                flash("Cochez au moins un poste.", "info")
+                return redirect(request.path)
+            vider = request.form.get("occupes") == "vider"
+            portes = {cle_texte(x) for x in db.session.scalars(select(Employe.poste).where(
+                Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid)).distinct())}
+            supprimes, gardes, fiches = 0, [], 0
+            for lib in dict.fromkeys(libelles):
+                if cle_texte(lib) in portes and not vider:
+                    gardes.append(lib)
+                    continue
+                fiches += _supprimer_poste(eid, lib, "")
+                supprimes += 1
+            journaliser("postes_supprimes", f"{supprimes} poste(s)",
+                        f"{fiches} fiche(s) sans poste" if fiches else "aucune fiche modifiée")
+            db.session.commit()
+            msg = f"{supprimes} poste(s) supprimé(s)."
+            if fiches:
+                msg += f" {fiches} fiche(s) n'ont plus de poste : à renseigner."
+            if gardes:
+                msg += (f" {len(gardes)} conservé(s) car occupé(s) par des salariés : {', '.join(gardes[:8])}"
+                        f"{'…' if len(gardes) > 8 else ''}.")
+            flash(msg, "succes")
+            return redirect(request.path)
         if action == "supprimer":
             lib = (request.form.get("libelle") or "").strip()
             if not lib:
@@ -296,17 +325,7 @@ def postes():
                                  cle_texte(remplacement) not in {cle_texte(x) for x in postes_actifs(eid)}):
                 flash("Poste de remplacement invalide.", "erreur")
                 return redirect(request.path)
-            # Fiches qui portent ce poste (actives ou non) : remplacé ou vidé, à la demande de la RH
-            n = 0
-            for e in db.session.scalars(select(Employe).where(Employe.poste.isnot(None),
-                                                              cond_entite(Employe.entite_id, eid))):
-                if cle_texte(e.poste) == k:
-                    e.poste = remplacement or None
-                    n += 1
-            for p in db.session.scalars(select(Poste).where(cond_entite(Poste.entite_id, eid))):
-                if cle_texte(p.libelle) == k:
-                    db.session.delete(p)
-            marquer_poste_supprime(eid, lib, True, current_user.id)
+            n = _supprimer_poste(eid, lib, remplacement)
             journaliser("poste_supprime", lib, f"{n} fiche(s) → {remplacement or 'sans poste'}")
             db.session.commit()
             msg = f"Poste « {lib} » supprimé."
@@ -368,6 +387,24 @@ def postes():
                  "fiches": fiches.get(cle_texte(x), 0)} for x in archives]
     return render_template("parametres/postes.html", elements=elements, edition=edition,
                            donnees=donnees, erreurs=erreurs, actifs=actifs)
+
+
+def _supprimer_poste(eid: int, lib: str, remplacement: str) -> int:
+    """Supprime un poste de l'entité ; les fiches qui le portent reçoivent `remplacement` (ou rien).
+
+    Renvoie le nombre de fiches modifiées. Ne valide pas la transaction.
+    """
+    k = cle_texte(lib)
+    n = 0
+    for e in db.session.scalars(select(Employe).where(Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid))):
+        if cle_texte(e.poste) == k:
+            e.poste = remplacement or None
+            n += 1
+    for p in db.session.scalars(select(Poste).where(cond_entite(Poste.entite_id, eid))):
+        if cle_texte(p.libelle) == k:
+            db.session.delete(p)
+    marquer_poste_supprime(eid, lib, True, current_user.id)
+    return n
 
 
 @bp.post("/postes/importer")

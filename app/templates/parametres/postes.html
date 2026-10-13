@@ -12,11 +12,12 @@
     {% if elements %}
     {% set nb_actifs = elements|selectattr("actif")|list|length %}
     <div class="card__head"><h2>{{ nb_actifs }} poste{{ "s" if nb_actifs > 1 }} actif{{ "s" if nb_actifs > 1 }}{% if elements|length > nb_actifs %} <span class="muted">· {{ elements|length - nb_actifs }} archivé{{ "s" if elements|length - nb_actifs > 1 }}</span>{% endif %}</h2></div>
-    <div class="table-wrap"><table class="table">
-      <thead><tr><th class="num col-numero">N°</th><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+    <div class="table-wrap"><table class="table table--serree">
+      <thead><tr><th class="col-case"><label class="sr-only" for="pt-tout">Tout cocher</label><input type="checkbox" id="pt-tout" class="case" data-check-all=".case-poste"></th><th class="num col-numero">N°</th><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
+          <td class="col-case"><input type="checkbox" class="case case-poste" name="libelles" value="{{ x.libelle }}" form="form-postes-masse" aria-label="Cocher {{ x.libelle }}"></td>
           <td class="num col-numero">{{ loop.index }}</td>
           <td><strong>{{ x.libelle }}</strong>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="num">{{ x.effectif }}</td>
@@ -43,6 +44,19 @@
         {% endfor %}
       </tbody>
     </table></div>
+    <form id="form-postes-masse" method="post" class="card__foot row" style="gap:8px;flex-wrap:wrap"
+          data-confirm="Supprimer définitivement les postes concernés ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="supprimer_masse">
+      <label class="small" for="pt-occupes">Postes occupés par des salariés :</label>
+      <select class="select select--sm" id="pt-occupes" name="occupes" style="width:auto">
+        <option value="garder">Les conserver</option>
+        <option value="vider">Les supprimer aussi (fiches sans poste)</option>
+      </select>
+      <span class="spacer"></span>
+      <button class="btn btn--secondary btn--sm btn--danger-texte" type="submit">Supprimer les postes cochés</button>
+      <button class="btn btn--danger btn--sm" type="submit" name="tout" value="1"
+              data-confirm="Supprimer TOUS les postes de la liste ({{ elements|length }}) ?">Supprimer tous les postes</button>
+    </form>
     {% else %}
     {{ vide("Aucun poste", "Ajoutez les postes de l'entreprise : conducteur de travaux, chef de chantier, comptable…", "list") }}
     {% endif %}

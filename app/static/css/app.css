@@ -642,3 +642,5 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .btn--danger-texte:hover { background: var(--danger-soft, rgba(220, 38, 38, .08)); }
 .arbre { color: var(--ink-3, #98A2B3); font-family: var(--mono, monospace); }
 .col-numero { width: 1%; color: var(--ink-3, #98A2B3); font-variant-numeric: tabular-nums; padding-right: 0 !important; }
+.table--serree .actions .btn--sm { padding-left: 6px; padding-right: 6px; }
+.table--serree th, .table--serree td { padding-left: 10px; padding-right: 10px; }
