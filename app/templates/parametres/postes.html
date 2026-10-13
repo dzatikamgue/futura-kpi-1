@@ -10,11 +10,14 @@
 <div class="grid grid-main">
   <section class="card">
     {% if elements %}
+    {% set nb_actifs = elements|selectattr("actif")|list|length %}
+    <div class="card__head"><h2>{{ nb_actifs }} poste{{ "s" if nb_actifs > 1 }} actif{{ "s" if nb_actifs > 1 }}{% if elements|length > nb_actifs %} <span class="muted">· {{ elements|length - nb_actifs }} archivé{{ "s" if elements|length - nb_actifs > 1 }}</span>{% endif %}</h2></div>
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th class="num col-numero">N°</th><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
+          <td class="num col-numero">{{ loop.index }}</td>
           <td><strong>{{ x.libelle }}</strong>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="num">{{ x.effectif }}</td>
           <td>{% if x.actif %}<form method="post" style="display:inline">
