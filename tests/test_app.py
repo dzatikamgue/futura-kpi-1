@@ -28,7 +28,7 @@ def app():
     # comme le ferait un vrai serveur.
     def _isoler_requete():
         from flask import g
-        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe"):
+        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep"):
             g.pop(k, None)
     # Doit passer avant les autres before_request de l'application
     app.before_request_funcs.setdefault(None, []).insert(0, _isoler_requete)
@@ -1050,3 +1050,74 @@ def test_suppression_de_poste(app):
     # Recréé ensuite : il revient
     c.post("/parametres/postes", data={"libelle": "Magasinier"})
     assert "Magasinier" in postes_actifs(eid)
+
+
+def test_import_liste_de_postes(app):
+    import io as _io
+    from app.services.organisation import postes_actifs
+    from app.services.entites import principale
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    eid = principale().id
+    # Le modèle téléchargé se réimporte tel quel
+    modele = c.get("/parametres/postes/modele.xlsx")
+    assert modele.status_code == 200
+    c.post("/parametres/postes", data={"action": "supprimer", "libelle": "Magasinier"})
+    r = c.post("/parametres/postes/importer", data={"fichier": (_io.BytesIO(modele.data), "modele_postes.xlsx")},
+               content_type="multipart/form-data")
+    assert r.status_code == 302
+    assert "Magasinier" in postes_actifs(eid)
+    # Texte collé (doublons et en-tête ignorés)
+    c.post("/parametres/postes/importer", data={"texte": "Poste\nGrutier\ngrutier\nOpérateur drone"})
+    actifs = postes_actifs(eid)
+    assert "Grutier" in actifs and "Opérateur drone" in actifs
+    # CSV avec une colonne « Fonction » ; ne garder que la liste
+    csv_ = "Nom;Fonction\nA;Grutier\nB;Topographe\n".encode()
+    c.post("/parametres/postes/importer", data={"fichier": (_io.BytesIO(csv_), "p.csv"), "ne_garder_que": "1"},
+           content_type="multipart/form-data")
+    actifs = postes_actifs(eid)
+    assert "Grutier" in actifs and "Topographe" in actifs
+    assert "Magasinier" not in actifs          # absent du fichier et porté par personne
+    assert "Maçon" in actifs                   # porté par un salarié : conservé
+    assert "Opérateur drone" not in actifs
+    page = c.get("/parametres/postes").get_data(as_text=True)
+    assert "Importer une liste" in page
+
+
+def test_sous_departements(app):
+    from app.models import Departement, Parametre
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    tech.responsable_id = tchoua.id
+    db.session.commit()
+    page = c.get("/parametres/departements").get_data(as_text=True)
+    assert 'name="parent_id"' in page
+    r = c.post("/parametres/departements", data={"code": "METH", "nom": "Méthodes", "parent_id": str(tech.id)})
+    assert r.status_code == 302
+    meth = db.session.scalar(select(Departement).where(Departement.code == "METH"))
+    assert str(meth.id) in db.session.get(Parametre, "departements_parents").valeur
+    # Pas de cycle : TECH ne peut pas dépendre de son sous-département
+    r = c.post("/parametres/departements", data={"id": tech.id, "code": tech.code, "nom": tech.nom, "parent_id": str(meth.id)})
+    assert r.status_code == 200 and "sous-départements" in r.get_data(as_text=True)
+    # Un salarié du sous-département est visible par le chef du département parent
+    c.post("/personnel/nouveau", data={"nom": "BIYA", "departement_id": str(meth.id),
+                                        "evaluateur_id": str(db.session.scalar(select(Employe.id).where(Employe.nom == "FOTSO")))})
+    u = tchoua.compte
+    if not u:
+        u = Utilisateur(email="tchoua.sd@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=tchoua.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, u.email)
+    camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
+    assert "BIYA" in camp
+    # Filtre du personnel par département parent : inclut le sous-département
+    liste = c.get(f"/personnel/?departement={tech.id}").get_data(as_text=True)
+    assert "BIYA" in liste
+    page = c.get("/parametres/departements").get_data(as_text=True)
+    assert "└" in page

@@ -24,9 +24,12 @@ def _base_evals(per, annee, departement_id=None, projet_id=None):
                 per.filtre_evaluations()))
     if departement_id:
         # Le département inclut les notes des projets qui lui sont rattachés
+        # Le département inclut ses sous-départements et les projets qui leur sont rattachés
+        from .hierarchie import branche
         from .projets import projets_du_departement
-        pids = projets_du_departement(int(departement_id))
-        cond = Evaluation.departement_id == departement_id
+        deps = branche(int(departement_id))
+        pids = set().union(*(projets_du_departement(d) for d in deps))
+        cond = Evaluation.departement_id.in_(deps)
         q = q.where(or_(cond, Evaluation.projet_id.in_(pids)) if pids else cond)
     if projet_id:
         q = q.where(Evaluation.projet_id == projet_id)
@@ -151,7 +154,8 @@ def moyennes_par_contexte(per, annee, mois):
 
 
 def _par_departement(per, annee, mois):
-    """Moyenne par département, notes des projets rattachés comprises."""
+    """Moyenne par département, notes des projets rattachés et des sous-départements comprises."""
+    from .hierarchie import ancetres
     from .projets import carte
     c = carte()
     rows = db.session.execute(
@@ -162,7 +166,8 @@ def _par_departement(per, annee, mois):
     for dep, proj, note in rows:
         d = dep or c.get(proj)
         if d and note is not None:
-            notes[d].append(float(note))
+            for x in [d] + ancetres(d):     # compte aussi pour les départements parents
+                notes[x].append(float(note))
     if not notes:
         return []
     noms = dict(db.session.execute(select(Departement.id, Departement.nom).where(Departement.id.in_(notes))).all())

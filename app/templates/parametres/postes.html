@@ -11,17 +11,16 @@
   <section class="card">
     {% if elements %}
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th>Poste</th><th class="num">Effectif</th><th>Visibilité</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
-          <td><strong>{{ x.libelle }}</strong></td>
+          <td><strong>{{ x.libelle }}</strong>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="num">{{ x.effectif }}</td>
           <td>{% if x.actif %}<form method="post" style="display:inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ x.libelle }}"><input type="hidden" name="action" value="groupe">
               <button class="badge {{ 'badge--info' if x.groupe else 'badge--plain' }} badge-bouton" type="submit" title="Cliquer pour changer">{{ "Tout le groupe" if x.groupe else "Entité" }}</button>
             </form>{% endif %}</td>
-          <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="actions">
             {% if x.actif %}<a class="btn btn--ghost btn--sm" href="?modifier={{ x.libelle|urlencode }}#formulaire">Renommer</a>{% endif %}
             <form method="post" style="display:inline">
@@ -55,6 +54,22 @@
       {{ champ("libelle", "Libellé", donnees.get('libelle'), erreurs, requis=True,
                aide=("Le nouveau libellé sera appliqué aux fiches qui portent ce poste." if edition else "Ex. Conducteur de travaux"), attrs='maxlength="120" autofocus') }}
       <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>
+    </form>
+
+    <div class="card__head" id="import" style="border-top:1px solid var(--line)"><div><h2>Importer une liste</h2>
+      <p>Excel ou CSV (colonne « Poste », sinon la 1<sup>re</sup> colonne), ou collez un poste par ligne.</p></div></div>
+    <form class="card__body stack" method="post" action="{{ url_for('parametres.importer_postes') }}" enctype="multipart/form-data" data-loading>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field"><label for="f-fichier-postes">Fichier</label>
+        <input class="input" id="f-fichier-postes" type="file" name="fichier" accept=".xlsx,.xlsm,.csv,.txt">
+        <span class="hint"><a href="{{ url_for('parametres.modele_postes') }}">Télécharger le modèle Excel</a></span></div>
+      <div class="field"><label for="f-texte-postes">… ou collez la liste</label>
+        <textarea class="input" id="f-texte-postes" name="texte" rows="5" placeholder="Conducteur de travaux&#10;Chef de chantier&#10;Comptable"></textarea></div>
+      <label class="row small" style="gap:8px;flex-wrap:nowrap;align-items:flex-start">
+        <input type="checkbox" name="ne_garder_que" value="1" style="margin-top:3px">
+        <span>Ne garder que les postes de cette liste (les autres sont supprimés, sauf ceux portés par des salariés)</span>
+      </label>
+      <div class="form-actions"><button class="btn btn--secondary" type="submit">{{ icon('upload') }} Importer</button></div>
     </form>
   </section>
 </div>

@@ -14,6 +14,7 @@ from ..services.entites import cond_entite, id_effectif, roles_par_entite
 from ..services import reglages
 from ..services.audit import journaliser
 from ..services.organisation import cle_texte, marquer_poste_supprime, postes_actifs
+from ..services.hierarchie import parent_de
 from ..services.projets import carte, definir, departement_du_projet
 from ..services.comptes import (generer_acces, ids_evaluateurs, lier_ou_creer,
                                 mot_de_passe_temporaire, synchroniser_comptes)
@@ -59,7 +60,8 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
             flash(f"« {obj.nom} » {'réactivé' if obj.actif else 'archivé'}.", "succes")
             return redirect(request.path)
         donnees = {k: (request.form.get(k) or "").strip() for k in
-                   ("code", "nom", "responsable_id", "localisation", "date_debut", "date_fin", "departement_id")}
+                   ("code", "nom", "responsable_id", "localisation", "date_debut", "date_fin", "departement_id",
+                    "parent_id")}
         code = donnees["code"].upper()
         if not code:
             erreurs["code"] = "Le code est obligatoire."
@@ -90,6 +92,13 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
             elif not dep and db.session.scalar(select(Departement.id).where(
                     cond_entite(Departement.entite_id, _eid()), Departement.actif.is_(True)).limit(1)):
                 erreurs["departement_id"] = "Choisissez le département de rattachement du projet."
+        if model is Departement and donnees["parent_id"]:
+            from ..services.hierarchie import sous_departements
+            par = donnees["parent_id"]
+            if not (par.isdigit() and _dans_entite_ou_none(Departement, int(par))):
+                erreurs["parent_id"] = "Département parent inconnu dans cette entité."
+            elif obj and (int(par) == obj.id or int(par) in sous_departements(obj.id)):
+                erreurs["parent_id"] = "Un département ne peut pas dépendre de lui-même ni de l'un de ses sous-départements."
         if not erreurs:
             nouveau = obj is None
             obj = obj or model(entite_id=_eid())
@@ -103,6 +112,10 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
             if avec_projet:
                 db.session.flush()
                 definir(obj.id, int(donnees["departement_id"]) if donnees["departement_id"] else None, current_user.id)
+            else:
+                from ..services.hierarchie import definir_parent
+                db.session.flush()
+                definir_parent(obj.id, int(donnees["parent_id"]) if donnees["parent_id"] else None, current_user.id)
             journaliser(f"{model.__tablename__}_{'cree' if nouveau else 'modifie'}", obj.nom, code)
             db.session.commit()
             flash(f"« {obj.nom} » enregistré.", "succes")
@@ -115,7 +128,8 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                    "localisation": getattr(edition, "localisation", "") or "",
                    "date_debut": edition.date_debut.isoformat() if getattr(edition, "date_debut", None) else "",
                    "date_fin": edition.date_fin.isoformat() if getattr(edition, "date_fin", None) else "",
-                   "departement_id": str(departement_du_projet(edition.id) or "") if avec_projet else ""}
+                   "departement_id": str(departement_du_projet(edition.id) or "") if avec_projet else "",
+                   "parent_id": "" if avec_projet else str(parent_de(edition.id) or "")}
 
     col = Affectation.departement_id if model is Departement else Affectation.projet_id
     effectifs = dict(db.session.execute(
@@ -125,12 +139,21 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                                   .order_by(model.actif.desc(), model.nom)).all()
     departements = rattachements = projets_par_dep = None
     if avec_projet:
-        departements = db.session.scalars(select(Departement).where(
-            cond_entite(Departement.entite_id, _eid()), Departement.actif.is_(True)).order_by(Departement.nom)).all()
+        from ..services.hierarchie import ordonner
+        departements = ordonner(db.session.scalars(select(Departement).where(
+            cond_entite(Departement.entite_id, _eid()), Departement.actif.is_(True)).order_by(Departement.nom)).all())
         noms = dict(db.session.execute(select(Departement.id, Departement.nom)
                                        .where(cond_entite(Departement.entite_id, _eid()))).all())
         rattachements = {p: noms.get(d) for p, d in carte().items()}
+        niveaux, parents_possibles, noms_dep = {}, [], {}
     else:
+        from ..services.hierarchie import ordonner, sous_departements
+        arbre = ordonner(elements)
+        elements = [d for d, _ in arbre]
+        niveaux = {d.id: n for d, n in arbre}
+        noms_dep = {d.id: d.nom for d in elements}
+        exclus = ({edition.id} | sous_departements(edition.id)) if edition is not None and edition.id else set()
+        parents_possibles = [(d, n) for d, n in arbre if d.actif and d.id not in exclus]
         noms_p = dict(db.session.execute(select(Projet.id, Projet.nom)
                                          .where(cond_entite(Projet.entite_id, _eid()))).all())
         projets_par_dep = {}
@@ -140,7 +163,9 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
     return render_template(modele_tpl, elements=elements, effectifs=effectifs, edition=edition,
                            donnees=donnees, erreurs=erreurs, employes=_employes_actifs(),
                            titre=titre, avec_projet=avec_projet, departements=departements,
-                           rattachements=rattachements, projets_par_dep=projets_par_dep)
+                           rattachements=rattachements, projets_par_dep=projets_par_dep,
+                           niveaux=niveaux, parents_possibles=parents_possibles, noms_dep=noms_dep,
+                           parent_de=parent_de)
 
 
 def _dans_entite_ou_none(model, obj_id):
@@ -343,6 +368,44 @@ def postes():
                  "fiches": fiches.get(cle_texte(x), 0)} for x in archives]
     return render_template("parametres/postes.html", elements=elements, edition=edition,
                            donnees=donnees, erreurs=erreurs, actifs=actifs)
+
+
+@bp.post("/postes/importer")
+@login_required
+@rh_requis
+def importer_postes():
+    from ..services.postes_import import ErreurImportPostes, importer, lire_fichier, lire_texte
+    eid = _eid()
+    f = request.files.get("fichier")
+    try:
+        if f and f.filename:
+            libelles = lire_fichier(f.filename, f.read())
+        else:
+            libelles = lire_texte(request.form.get("texte"))
+        bilan = importer(eid, libelles, current_user.id, ne_garder_que=request.form.get("ne_garder_que") == "1")
+    except ErreurImportPostes as exc:
+        flash(str(exc), "erreur")
+        return redirect(url_for("parametres.postes") + "#import")
+    journaliser("postes_importes", f"{len(bilan['ajoutes'])} ajouté(s)",
+                f"{bilan['lus']} lu(s), {bilan['deja']} déjà présent(s), {len(bilan['retires'])} retiré(s)")
+    db.session.commit()
+    msg = f"{bilan['lus']} poste(s) lu(s) : {len(bilan['ajoutes'])} ajouté(s), {bilan['deja']} déjà dans la liste."
+    if bilan["retires"]:
+        msg += f" {len(bilan['retires'])} poste(s) absent(s) du fichier retiré(s)."
+    if bilan["gardes"]:
+        msg += (f" Conservés car portés par des salariés : {', '.join(bilan['gardes'][:8])}"
+                f"{'…' if len(bilan['gardes']) > 8 else ''}.")
+    flash(msg, "succes")
+    return redirect(url_for("parametres.postes"))
+
+
+@bp.get("/postes/modele.xlsx")
+@login_required
+@rh_requis
+def modele_postes():
+    from ..services.exports import export_excel
+    exemples = ["Directeur général", "Conducteur de travaux", "Chef de chantier", "Comptable", "Magasinier"]
+    return export_excel("Liste des postes", ["Poste"], [[x] for x in exemples], "modele_postes")
 
 
 @bp.get("/postes/supprimer")

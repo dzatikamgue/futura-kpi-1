@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (44 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (46 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -130,6 +130,16 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Administration → Postes → « Supprimer » : le poste disparaît des listes (même un poste de la liste par défaut). « Archiver » reste possible pour le mettre de côté.
 - S'il est porté par des fiches, une page de confirmation les liste et propose un poste de remplacement (ou de laisser vide). Affectations, N+1 et notes ne changent pas.
 - Mémorisé dans la table de réglages (clé `postes_supprimes`) ; recréer le poste le fait revenir.
+
+## Importer une liste de postes
+- Administration → Postes → « Importer une liste » : fichier Excel / CSV (colonne « Poste », « Fonction », « Libellé »… sinon la 1re colonne) ou liste collée, un poste par ligne. Modèle Excel téléchargeable.
+- Les doublons (casse, accents) sont ignorés ; un poste archivé ou supprimé figurant dans la liste revient.
+- Option « Ne garder que les postes de cette liste » : les autres sont supprimés, sauf ceux portés par des salariés. Aucune fiche salarié n'est modifiée.
+
+## Sous-départements
+- Administration → Départements → champ « Département parent » : le département devient un sous-département (plusieurs niveaux possibles, sans boucle). La liste s'affiche en arbre.
+- Le chef d'un département voit aussi ses sous-départements et leurs projets ; les filtres « département » (personnel, campagne, suivi) et les moyennes du parent incluent les sous-départements.
+- Mémorisé dans la table de réglages (clé `departements_parents`) : aucune table ni colonne ajoutée.
 
 ## Changement de projet
 - Sur la fiche, bouton « Changer de projet » sur l'affectation projet : choisir le nouveau projet et **le nouveau N+1 (obligatoire)**. L'ancienne affectation est clôturée, ses notes restent dans l'historique.

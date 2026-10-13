@@ -67,7 +67,11 @@ class Perimetre:
                 select(Departement.id).where(Departement.responsable_id == self.employe_id)))
             self.projet_ids = set(db.session.scalars(
                 select(Projet.id).where(Projet.responsable_id == self.employe_id)))
-            # Le chef de département consulte aussi les projets rattachés à son département
+            # Le chef de département consulte aussi ses sous-départements…
+            from .services.hierarchie import sous_departements
+            for d in list(self.dept_ids):
+                self.dept_ids |= sous_departements(d)
+            # … et les projets rattachés à ces départements
             from .services.projets import carte
             self.projet_ids |= {p for p, d in carte().items() if d in self.dept_ids}
         else:

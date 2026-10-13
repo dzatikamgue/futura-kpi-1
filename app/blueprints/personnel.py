@@ -43,7 +43,8 @@ def _requete_liste(per, args=None):
     if poste := (args.get("poste") or "").strip():
         q = q.where(Employe.poste == poste)
     if dep := args.get("departement", type=int):
-        q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id == dep,
+        from ..services.hierarchie import branche
+        q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id.in_(branche(dep)),
                                    Affectation.actif.is_(True)))
     if proj := args.get("projet", type=int):
         q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.projet_id == proj,

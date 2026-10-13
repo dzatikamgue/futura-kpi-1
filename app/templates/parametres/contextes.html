@@ -12,18 +12,18 @@
   <section class="card">
     {% if elements %}
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>Code</th><th>Nom</th><th>Responsable</th>{% if avec_projet %}<th>Département</th>{% else %}<th class="hide-mobile">Projets rattachés</th>{% endif %}{% if avec_projet %}<th class="hide-mobile">Localisation</th><th class="hide-mobile">Période</th>{% endif %}<th class="num">Effectif</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr><th>Nom</th><th>Responsable</th>{% if avec_projet %}<th>Département</th>{% else %}<th class="hide-mobile">Rattaché à</th>{% endif %}{% if avec_projet %}<th class="hide-mobile">Localisation</th><th class="hide-mobile">Période</th>{% endif %}<th class="num">Effectif</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         {% for x in elements %}
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
-          <td><span class="code">{{ x.code }}</span></td>
-          <td><strong>{{ x.nom }}</strong></td>
+          {% set niv = niveaux.get(x.id, 0) if not avec_projet else 0 %}
+          <td>{% if niv %}<span class="arbre" style="padding-left:{{ (niv - 1) * 18 }}px" aria-hidden="true">└</span> {% endif %}<strong>{{ x.nom }}</strong> <span class="code">{{ x.code }}</span>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}{% if niv %}<span class="sr-only"> (sous-département)</span>{% endif %}
+            {% if not avec_projet and projets_par_dep.get(x.id) %}<br><span class="small muted" style="padding-left:{{ niv * 18 }}px">Projets : {{ projets_par_dep[x.id]|join(", ") }}</span>{% endif %}</td>
           <td>{{ x.responsable.nom_complet if x.responsable else "—" }}</td>
           {% if avec_projet %}<td>{% if rattachements.get(x.id) %}{{ rattachements[x.id] }}{% else %}<span class="badge badge--warn">À rattacher</span>{% endif %}</td>
-          {% else %}<td class="hide-mobile small">{{ (projets_par_dep.get(x.id) or [])|join(", ") or "—" }}</td>{% endif %}
+          {% else %}<td class="hide-mobile small">{{ noms_dep.get(parent_de(x.id)) or "—" }}</td>{% endif %}
           {% if avec_projet %}<td class="hide-mobile">{{ x.localisation or "—" }}</td><td class="hide-mobile nowrap">{{ x.date_debut|date_fr }} → {{ x.date_fin|date_fr }}</td>{% endif %}
           <td class="num"><a href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}" title="Voir et gérer l'équipe">{{ effectifs.get(x.id, 0) }}</a></td>
-          <td>{% if x.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Archivé</span>{% endif %}</td>
           <td class="actions">
             {% if x.actif %}<a class="btn btn--secondary btn--sm" href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}">{{ icon('users') }} Équipe</a>{% endif %}
             <a class="btn btn--ghost btn--sm" href="?modifier={{ x.id }}">Modifier</a>
@@ -55,11 +55,20 @@
           {% for e in employes %}<option value="{{ e.id }}" {% if donnees.get('responsable_id') == e.id|string %}selected{% endif %}>{{ e.nom_complet }}{{ " — " ~ e.poste if e.poste }}</option>{% endfor %}
         </select>
         <span class="hint">{{ "Chef de projet" if avec_projet else "Chef de département" }} : il consulte les notes de ce {{ singulier }}. Il ne note que les personnes dont la RH l'a désigné N+1.</span></div>
+      {% if not avec_projet %}
+      <div class="field"><label for="f-parent">Département parent</label>
+        <select class="select" id="f-parent" name="parent_id" {% if erreurs.get('parent_id') %}aria-invalid="true"{% endif %}>
+          <option value="">— Aucun (département principal) —</option>
+          {% for d, n in parents_possibles %}<option value="{{ d.id }}" {% if donnees.get('parent_id') == d.id|string %}selected{% endif %}>{{ "— " * n }}{{ d.nom }}</option>{% endfor %}
+        </select>
+        <span class="hint">Pour en faire un sous-département. Le chef du département parent voit aussi ses sous-départements, et les moyennes du parent les incluent.</span>
+        {% if erreurs.get('parent_id') %}<span class="error">{{ erreurs.parent_id }}</span>{% endif %}</div>
+      {% endif %}
       {% if avec_projet %}
       <div class="field"><label for="f-dep">Département de rattachement{% if departements %} <span style="color:var(--danger)">*</span>{% endif %}</label>
         <select class="select" id="f-dep" name="departement_id" {% if departements %}required{% endif %} {% if erreurs.get('departement_id') %}aria-invalid="true"{% endif %}>
           <option value="">— Choisir —</option>
-          {% for d in departements %}<option value="{{ d.id }}" {% if donnees.get('departement_id') == d.id|string %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
+          {% for d, n in departements %}<option value="{{ d.id }}" {% if donnees.get('departement_id') == d.id|string %}selected{% endif %}>{{ "— " * n }}{{ d.nom }}</option>{% endfor %}
         </select>
         <span class="hint">Le chef de ce département voit les notes du projet. Un salarié affecté au projet est noté une seule fois, dans le projet.</span>
         {% if erreurs.get('departement_id') %}<span class="error">{{ erreurs.departement_id }}</span>{% endif %}</div>

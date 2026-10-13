@@ -46,7 +46,11 @@ def _requete_campagne(per, annee, mois):
         q = q.where(or_(Evaluation.id.is_(None), Evaluation.statut == StatutEvaluation.BROUILLON))
 
     if dep := request.args.get("departement", type=int):
-        q = q.where(Affectation.departement_id == dep)
+        from ..services.hierarchie import branche
+        from ..services.projets import projets_du_departement
+        deps = branche(dep)
+        pids = set().union(*(projets_du_departement(d) for d in deps))
+        q = q.where(or_(Affectation.departement_id.in_(deps), Affectation.projet_id.in_(pids or {-1})))
     if proj := request.args.get("projet", type=int):
         q = q.where(Affectation.projet_id == proj)
     if terme := (request.args.get("q") or "").strip():

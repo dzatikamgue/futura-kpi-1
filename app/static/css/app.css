@@ -640,3 +640,4 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .lien-discret:hover, .lien-discret:focus-visible { color: var(--brand); text-decoration: underline; }
 .btn--danger-texte { color: var(--danger); }
 .btn--danger-texte:hover { background: var(--danger-soft, rgba(220, 38, 38, .08)); }
+.arbre { color: var(--ink-3, #98A2B3); font-family: var(--mono, monospace); }
