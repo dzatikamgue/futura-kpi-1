@@ -1393,3 +1393,47 @@ def test_rattacher_a_une_autre_entite_avec_poste_et_notation(app):
     c.get(f"/entite/{principale}")
     liste = c.get("/personnel/").get_data(as_text=True)
     assert "Conducteur de travaux" in liste[liste.index("<strong>ESSOMBA"):][:2500]
+
+
+def test_extraction_kpi_par_ia(app, monkeypatch):
+    import io as _io
+    from app.models import Critere
+    from app.services import kpi_ia
+    from app.services.grilles import grille_pour, specifiques
+    from app.services.entites import principale
+    def faux_claude(outil, consigne, nom, mime, contenu, texte=""):
+        assert outil["name"] == "enregistrer_kpi" and contenu
+        return {"kpis": [
+            {"libelle": "Respect des délais", "description": "Livrables à l'heure", "poids": 5,
+             "ponderation_document": "30 %", "poste": "", "confiance": "haute"},
+            {"libelle": "Précision des relevés", "description": "Écarts < 2 cm", "poids": 3,
+             "poste": "Topographe", "confiance": "haute"},
+            {"libelle": "Implantation des ouvrages", "poids": 2, "poste": "Géomètre", "confiance": "moyenne"},
+        ], "remarques": "Fiche KPI 2026"}
+    monkeypatch.setattr(kpi_ia, "appeler_claude", faux_claude)
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    assert "Extraire les KPI d'un document" in c.get("/parametres/criteres").get_data(as_text=True)
+    r = c.post("/parametres/criteres/extraire", data={"fichier": (_io.BytesIO(b"%PDF-1.4 x"), "kpi.pdf")},
+               content_type="multipart/form-data")
+    assert r.status_code == 302 and "/criteres/extraction/" in r.location
+    page = c.get(r.location).get_data(as_text=True)
+    assert "Respect des délais" in page and "Nouveau poste : Géomètre" in page and "30 %" in page
+    assert 'value="poste:Topographe" selected' in page
+    r = c.post(r.location, data={
+        "action": "importer",
+        "k0_inclure": "1", "k0_libelle": "Respect des délais", "k0_description": "Livrables à l'heure", "k0_poids": "5", "k0_destination": "",
+        "k1_inclure": "1", "k1_libelle": "Précision des relevés", "k1_description": "Écarts < 2 cm", "k1_poids": "3", "k1_destination": "poste:Topographe",
+        "k2_inclure": "1", "k2_libelle": "Implantation des ouvrages", "k2_description": "", "k2_poids": "2", "k2_destination": "nouveau:Géomètre"})
+    assert r.status_code == 302
+    eid = principale().id
+    precis = db.session.scalar(select(Critere).where(Critere.libelle == "Précision des relevés"))
+    assert precis and precis.id in specifiques(eid)
+    topo, propre = grille_pour(eid, "Topographe")
+    assert propre and [x.libelle for x in topo] == ["Précision des relevés"]
+    geo, propre = grille_pour(eid, "Géomètre")
+    assert propre and geo[0].libelle == "Implantation des ouvrages"
+    # « Respect des délais » existait déjà : réutilisé, pas dupliqué
+    assert db.session.scalar(select(db.func.count(Critere.id)).where(Critere.libelle == "Respect des délais")) == 1
+    commune, _ = grille_pour(eid, "Maçon")
+    assert "Précision des relevés" not in {x.libelle for x in commune}

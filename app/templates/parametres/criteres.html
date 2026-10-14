@@ -4,10 +4,25 @@
 {% block title %}Grille KPI{% endblock %}
 {% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Grille KPI</span>{% endblock %}
 {% block content %}
+{% set poste_cible = none %}
 <div class="page-head"><div><h1>Grille KPI</h1>
   <p>Critères notés de 0 à 100 chaque mois. Note globale = moyenne pondérée des critères, sur 100.
      Cette page est la <strong>grille commune</strong> (et la bibliothèque des critères). Un poste peut avoir sa propre grille : elle remplace alors la grille commune pour ses titulaires.</p></div></div>
 
+<section class="card" id="extraire-kpi" style="margin-bottom:var(--s5)">
+  <div class="card__head"><div><h2>Extraire les KPI d'un document (IA)</h2>
+    <p>Photo, PDF, Word, Excel ou texte collé : Claude repère les KPI et leurs pondérations, vous vérifiez avant l'import.{% if poste_cible %} Destination proposée : poste « {{ poste_cible }} ».{% endif %}</p></div></div>
+  <form class="card__body row" method="post" action="{{ url_for('parametres.extraire_kpi_document') }}" enctype="multipart/form-data" data-loading style="gap:8px;align-items:flex-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+    {% if poste_cible %}<input type="hidden" name="poste" value="{{ poste_cible }}">{% endif %}
+    <div class="field" style="margin:0;flex:1;min-width:240px"><label for="kpi-fichier">Fichier ou photo</label>
+      <input class="input" id="kpi-fichier" type="file" name="fichier" accept=".pdf,.docx,.xlsx,.xlsm,.csv,.txt,.jpg,.jpeg,.png,.webp,image/*"></div>
+    <div class="field" style="margin:0;flex:1;min-width:240px"><label for="kpi-texte">… ou collez le texte</label>
+      <textarea class="textarea" id="kpi-texte" name="texte" rows="1" placeholder="Ex. Respect des délais 30 %, Qualité 25 %…"></textarea></div>
+    <button class="btn btn--primary" type="submit">{{ icon('sparkles') }} Analyser</button>
+  </form>
+</section>
 <section class="card" style="margin-bottom:var(--s5)">
   <div class="card__head"><div><h2>Grilles par poste</h2>
     <p>{% if grilles_postes %}{{ grilles_postes|length }} poste(s) ont leur propre grille ; les autres utilisent la grille commune.{% else %}Aucun poste n'a encore sa propre grille : tous utilisent la grille commune.{% endif %}</p></div>

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "criteres" %}
+{% block title %}Vérifier les KPI extraits{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><a class="crumb-mid" href="{{ url_for('parametres.criteres') }}">Grille KPI</a><span class="sep">/</span><span aria-current="page">Vérification</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Vérifier les KPI extraits</h1>
+  <p>{{ lignes|length }} KPI détecté(s) dans « {{ b.source_nom }} ». Corrigez si besoin, choisissez la grille de chaque KPI, puis importez. Rien n'est enregistré avant.</p>
+</div></div>
+{% if b.remarques %}<div class="alert alert--info" style="margin-bottom:var(--s4)">{{ icon('info') }}<span>{{ b.remarques }}</span></div>{% endif %}
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card__body row" style="gap:8px;padding-bottom:0">
+    <label class="small" for="dest-tous">Mettre tous les KPI cochés dans :</label>
+    <select class="select select--sm" id="dest-tous" style="width:auto" data-destination-tous>
+      <option value="">— choisir —</option>
+      <option value="__commune__">Grille commune</option>
+      {% for p in postes %}<option value="poste:{{ p }}">Poste : {{ p }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="table-wrap"><table class="table table--serree">
+    <thead><tr><th class="col-case"><label class="sr-only" for="k-tout">Tout cocher</label><input type="checkbox" id="k-tout" class="case" data-check-all=".case-kpi" checked></th>
+      <th>KPI</th><th class="num">Coef.</th><th>Grille de destination</th></tr></thead>
+    <tbody>
+    {% for k in lignes %}{% set i = loop.index0 %}
+      <tr>
+        <td class="col-case"><input type="checkbox" class="case case-kpi" name="k{{ i }}_inclure" value="1" checked aria-label="Importer ce KPI"></td>
+        <td style="min-width:320px">
+          <label class="sr-only" for="k{{ i }}l">Libellé</label>
+          <input class="input input--sm" id="k{{ i }}l" name="k{{ i }}_libelle" value="{{ k.libelle }}" maxlength="120" style="font-weight:600">
+          <label class="sr-only" for="k{{ i }}d">Description</label>
+          <textarea class="textarea" id="k{{ i }}d" name="k{{ i }}_description" rows="2" maxlength="400" style="margin-top:6px;font-size:13px">{{ k.description }}</textarea>
+          <div class="small muted" style="margin-top:4px">
+            {% if k.ponderation %}Pondération du document : {{ k.ponderation }} · {% endif %}
+            {% if k.poste %}Poste indiqué : {{ k.poste }} · {% endif %}
+            {% if k.confiance == "basse" %}<span class="badge badge--warn">Lecture douteuse</span>{% elif k.confiance == "moyenne" %}<span class="badge badge--plain">À vérifier</span>{% endif %}
+          </div>
+        </td>
+        <td class="num"><label class="sr-only" for="k{{ i }}p">Coefficient</label>
+          <select class="select select--sm" id="k{{ i }}p" name="k{{ i }}_poids" style="width:auto">
+            {% for v in range(1, 6) %}<option value="{{ v }}" {% if k.poids == v %}selected{% endif %}>×{{ v }}</option>{% endfor %}
+          </select></td>
+        <td><label class="sr-only" for="k{{ i }}g">Grille</label>
+          <select class="select select--sm" id="k{{ i }}g" name="k{{ i }}_destination" data-destination style="max-width:260px">
+            <option value="" {% if not k.destination %}selected{% endif %}>Grille commune</option>
+            {% for p in postes %}<option value="poste:{{ p }}" {% if k.destination == "poste:" ~ p %}selected{% endif %}>Poste : {{ p }}</option>{% endfor %}
+            {% for n in nouveaux %}<option value="nouveau:{{ n }}" {% if k.destination == "nouveau:" ~ n %}selected{% endif %}>Nouveau poste : {{ n }}</option>{% endfor %}
+          </select></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="card__foot form-actions">
+    <button class="btn btn--ghost" type="submit" name="action" value="abandonner" formnovalidate>Abandonner</button>
+    <button class="btn btn--primary" type="submit" name="action" value="importer">{{ icon('upload') }} Importer les KPI cochés</button>
+  </div>
+  <div class="card__foot small muted" style="padding-top:0">Un KPI dont le libellé existe déjà n'est pas dupliqué : il est réutilisé. Un KPI destiné à un poste n'entre pas dans la grille commune.</div>
+</form>
+{% endblock %}

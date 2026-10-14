@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (54 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (55 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -147,6 +147,11 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Un salarié est noté avec la grille de son poste ; un poste sans grille propre utilise la grille commune (page Grille KPI). Les critères créés pour un poste n'entrent pas dans la grille commune.
 - Le formulaire de notation indique la grille utilisée. Les évaluations déjà soumises gardent leurs critères et coefficients d'origine.
 - Mémorisé dans la table de réglages (clés `grilles_postes`, `criteres_specifiques`) ; les nouveaux critères vont dans la table existante des critères. Aucune table ni colonne ajoutée.
+
+## Extraire les KPI d'un document (IA)
+- Grille KPI (ou page « Grille KPI : <poste> ») → « Extraire les KPI d'un document » : photo, PDF, Word (.docx), Excel/CSV ou texte collé. Claude repère les KPI, leur description et leur pondération (convertie en coefficient 1–5), et le poste concerné si le document le précise.
+- Écran de vérification : libellé, description, coefficient et grille de destination (commune, poste existant ou nouveau poste) modifiables ; rien n'est enregistré avant « Importer ». Un KPI déjà existant est réutilisé, pas dupliqué.
+- Nécessite la clé API Claude (Administration RH → Clé API Claude).
 
 ## Supprimer les critères KPI (grille vide)
 - Grille KPI : bouton « Supprimer » par critère, cases à cocher + « Supprimer les critères cochés », et « Tout supprimer (grille vide) ».

@@ -366,6 +366,150 @@ def criteres():
                            grilles_postes=grilles_postes, postes=postes_actifs(_eid()))
 
 
+# --- Extraction de KPI par l'IA (document / image) --------------------------
+@bp.post("/criteres/extraire")
+@login_required
+@rh_requis
+def extraire_kpi_document():
+    from ..models import ImportBrouillon
+    from ..services.import_ia import ErreurImport
+    from ..services.kpi_ia import extraire_kpi
+    f = request.files.get("fichier")
+    texte = request.form.get("texte") or ""
+    contenu, nom, mime = (f.read(), f.filename, f.mimetype or "") if f and f.filename else (None, "", "")
+    retour = request.form.get("retour") or url_for("parametres.criteres")
+    if not retour.startswith("/"):
+        retour = url_for("parametres.criteres")
+    if not contenu and not texte.strip():
+        flash("Ajoutez un fichier, une photo ou collez un texte.", "erreur")
+        return redirect(retour)
+    try:
+        kpis, remarques = extraire_kpi(nom, mime, contenu, texte)
+    except ErreurImport as exc:
+        flash(str(exc), "erreur")
+        return redirect(retour)
+    except Exception:
+        current_app.logger.exception("Extraction KPI")
+        flash("L'analyse a échoué de façon inattendue. Réessayez avec un document plus lisible.", "erreur")
+        return redirect(retour)
+    if not kpis:
+        flash("Aucun KPI détecté dans ce document.", "erreur")
+        return redirect(retour)
+    # Un seul brouillon KPI par utilisateur (les brouillons d'import du personnel ne sont pas touchés)
+    for b in db.session.scalars(select(ImportBrouillon).where(ImportBrouillon.utilisateur_id == current_user.id)):
+        if (b.donnees or {}).get("type") == "kpi":
+            db.session.delete(b)
+    b = ImportBrouillon(utilisateur_id=current_user.id, entite_id=_eid(), source_nom=nom or "Texte collé",
+                        donnees={"type": "kpi", "kpis": kpis, "poste": request.form.get("poste") or ""},
+                        remarques=remarques)
+    db.session.add(b)
+    journaliser("kpi_analyse", b.source_nom, f"{len(kpis)} KPI détecté(s)")
+    db.session.commit()
+    return redirect(url_for("parametres.verifier_kpi", brouillon_id=b.id))
+
+
+def _brouillon_kpi(brouillon_id):
+    from ..models import ImportBrouillon
+    b = db.session.get(ImportBrouillon, brouillon_id) or abort(404)
+    if b.utilisateur_id != current_user.id or (b.donnees or {}).get("type") != "kpi":
+        abort(404)
+    return b
+
+
+@bp.route("/criteres/extraction/<int:brouillon_id>", methods=["GET", "POST"])
+@login_required
+@rh_requis
+def verifier_kpi(brouillon_id):
+    """Vérification des KPI extraits : correction, grille de destination, puis import."""
+    from ..services import grilles as G
+    b = _brouillon_kpi(brouillon_id)
+    eid = b.entite_id or _eid()
+    postes = postes_actifs(eid)
+    par_cle = {cle_texte(p): p for p in postes}
+    kpis = b.donnees.get("kpis", [])
+    if request.method == "POST":
+        if request.form.get("action") == "abandonner":
+            db.session.delete(b)
+            db.session.commit()
+            flash("Extraction abandonnée : rien n'a été importé.", "info")
+            return redirect(url_for("parametres.criteres"))
+        caches = G.masques(eid)
+        existants = {cle_texte(c.libelle): c for c in db.session.scalars(
+            select(Critere).where(cond_entite(Critere.entite_id, eid)))}
+        ordre = (db.session.scalar(select(func.max(Critere.ordre)).where(cond_entite(Critere.entite_id, eid))) or 0)
+        grilles_maj: dict[str, dict[int, int]] = {}
+        crees = repris = 0
+        for i in range(len(kpis)):
+            if request.form.get(f"k{i}_inclure") != "1":
+                continue
+            lib = " ".join((request.form.get(f"k{i}_libelle") or "").split())[:120]
+            if not lib:
+                continue
+            desc = " ".join((request.form.get(f"k{i}_description") or "").split())[:400] or None
+            try:
+                poids = max(1, min(5, int(request.form.get(f"k{i}_poids") or 1)))
+            except ValueError:
+                poids = 1
+            dest = request.form.get(f"k{i}_destination") or ""
+            poste = None
+            if dest.startswith("poste:"):
+                poste = par_cle.get(cle_texte(dest[6:]))
+            elif dest.startswith("nouveau:") and dest[8:].strip():
+                from ..services.organisation import poste_canonique
+                poste = poste_canonique(dest[8:], True, eid)
+                marquer_poste_supprime(eid, poste, False, current_user.id)
+            c = existants.get(cle_texte(lib))
+            if c is None:
+                ordre += 1
+                c = Critere(entite_id=eid, libelle=lib, description=desc, poids=poids, ordre=ordre)
+                db.session.add(c)
+                db.session.flush()
+                existants[cle_texte(lib)] = c
+                crees += 1
+                if poste:
+                    G.marquer_specifique(eid, c.id, True, current_user.id)
+            elif c.id in caches:           # critère supprimé auparavant : il revient
+                G.reprendre_masque(eid, c, current_user.id)
+                c.description, c.poids = desc, poids
+                if poste:
+                    G.marquer_specifique(eid, c.id, True, current_user.id)
+                repris += 1
+            elif not poste:
+                c.actif = True
+                G.marquer_specifique(eid, c.id, False, current_user.id)   # entre dans la grille commune
+            if poste:
+                if poste not in grilles_maj:
+                    actuelle = G.grilles(eid).get(cle_texte(poste))
+                    grilles_maj[poste] = dict(actuelle["criteres"]) if actuelle else {}
+                grilles_maj[poste][c.id] = poids
+        for poste, crit in grilles_maj.items():
+            G.definir_grille(eid, poste, crit, current_user.id)
+        journaliser("kpi_importes", b.source_nom,
+                    f"{crees} créé(s), {repris} repris ; grilles de poste : {', '.join(grilles_maj) or 'aucune'}")
+        db.session.delete(b)
+        db.session.commit()
+        msg = f"KPI importés : {crees} nouveau(x) critère(s)"
+        if repris:
+            msg += f", {repris} repris"
+        if grilles_maj:
+            msg += " ; grilles mises à jour : " + ", ".join(grilles_maj)
+        flash(msg + ".", "succes")
+        return redirect(url_for("parametres.criteres"))
+    prefill = b.donnees.get("poste") or ""
+    lignes = []
+    for k in kpis:
+        cible = prefill or k.get("poste") or ""
+        if not cible:
+            dest = ""
+        elif cle_texte(cible) in par_cle:
+            dest = "poste:" + par_cle[cle_texte(cible)]
+        else:
+            dest = "nouveau:" + cible
+        lignes.append({**k, "destination": dest})
+    nouveaux = sorted({l["destination"][8:] for l in lignes if l["destination"].startswith("nouveau:")})
+    return render_template("parametres/verifier_kpi.html", b=b, lignes=lignes, postes=postes, nouveaux=nouveaux)
+
+
 # --- Postes -------------------------------------------------------------------
 @bp.route("/postes", methods=["GET", "POST"])
 @login_required

@@ -560,6 +560,14 @@
     majGrille();
   }
 
+  var destTous = $("[data-destination-tous]");
+  if (destTous) destTous.addEventListener("change", function () {
+    if (!destTous.value) return;
+    $$("tbody tr").forEach(function (tr) {
+      var c = $(".case-kpi", tr), sel = $("[data-destination]", tr);
+      if (c && sel && c.checked) sel.value = destTous.value === "__commune__" ? "" : destTous.value;
+    });
+  });
   $$("[data-imprimer]").forEach(function (b) { b.addEventListener("click", function () { window.print(); }); });
 
   /* ---------- Copier dans le presse-papiers ---------- */

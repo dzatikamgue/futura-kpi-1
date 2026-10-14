@@ -160,13 +160,32 @@ def lire_tableur_modele(nom: str, contenu: bytes) -> list[dict] | None:
     return personnes
 
 
-def extraire_personnel(nom_fichier: str, type_mime: str, contenu: bytes | None, texte: str = ""):
-    """Appelle Claude et renvoie (personnes, remarques)."""
+def _docx_en_texte(contenu: bytes) -> str:
+    """Texte d'un document Word (.docx), sans dépendance supplémentaire."""
+    import zipfile
+    from xml.etree import ElementTree as ET
+    try:
+        with zipfile.ZipFile(io.BytesIO(contenu)) as z:
+            xml = z.read("word/document.xml")
+    except Exception as exc:
+        raise ErreurImport("Document Word illisible. Enregistrez-le en .docx ou en PDF puis réessayez.") from exc
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    lignes = []
+    for para in ET.fromstring(xml).iter(ns + "p"):
+        t = "".join(x.text or "" for x in para.iter(ns + "t")).strip()
+        if t:
+            lignes.append(t)
+    return "\n".join(lignes)[:60000]
+
+
+def appeler_claude(outil: dict, consigne: str, nom_fichier: str, type_mime: str, contenu: bytes | None,
+                   texte: str = "") -> dict:
+    """Envoie le document (image, PDF, Excel/CSV, Word ou texte) à Claude et renvoie l'entrée de l'outil."""
     from .reglages import cle_api
     cle = cle_api()
     if not cle:
         raise ErreurImport("La clé API Claude n'est pas configurée : renseignez-la dans "
-                           "Administration RH → Clé API Claude, ou utilisez le modèle Excel.")
+                           "Administration RH → Clé API Claude.")
     import anthropic
 
     ext = "." + nom_fichier.rsplit(".", 1)[-1].lower() if nom_fichier and "." in nom_fichier else ""
@@ -181,25 +200,30 @@ def extraire_personnel(nom_fichier: str, type_mime: str, contenu: bytes | None, 
                                                          "data": base64.b64encode(contenu).decode()}})
         elif ext in (".xlsx", ".xlsm", ".csv"):
             blocs.append({"type": "text", "text": f"Contenu du fichier {nom_fichier} :\n{_tableur_en_texte(nom_fichier, contenu)}"})
+        elif ext == ".docx":
+            blocs.append({"type": "text", "text": f"Contenu du document {nom_fichier} :\n{_docx_en_texte(contenu)}"})
+        elif ext in (".txt",):
+            blocs.append({"type": "text", "text": contenu.decode("utf-8", errors="replace")[:60000]})
         else:
-            raise ErreurImport("Format non pris en charge. Formats acceptés : photo (JPG, PNG, WEBP), PDF, Excel (.xlsx) ou CSV.")
+            raise ErreurImport("Format non pris en charge. Formats acceptés : photo (JPG, PNG, WEBP), PDF, "
+                               "Word (.docx), Excel (.xlsx) ou CSV.")
     if texte.strip():
-        blocs.append({"type": "text", "text": f"Liste collée par l'utilisateur :\n{texte[:30000]}"})
+        blocs.append({"type": "text", "text": f"Texte collé par l'utilisateur :\n{texte[:30000]}"})
     if not blocs:
-        raise ErreurImport("Ajoutez un fichier ou collez une liste.")
-    blocs.append({"type": "text", "text": CONSIGNE.format(entreprise=current_app.config["COMPANY_NAME"])})
+        raise ErreurImport("Ajoutez un fichier ou collez un texte.")
+    blocs.append({"type": "text", "text": consigne})
 
     client = anthropic.Anthropic(api_key=cle, timeout=120.0, max_retries=2)
     modele = current_app.config["ANTHROPIC_MODEL"]
 
     def appeler(tool_choice, max_tokens):
         return client.messages.create(
-            model=modele, max_tokens=max_tokens, tools=[OUTIL], tool_choice=tool_choice,
+            model=modele, max_tokens=max_tokens, tools=[outil], tool_choice=tool_choice,
             messages=[{"role": "user", "content": blocs}])
 
     try:
         try:
-            reponse = appeler({"type": "tool", "name": OUTIL["name"]}, 16000)
+            reponse = appeler({"type": "tool", "name": outil["name"]}, 16000)
         except anthropic.BadRequestError as exc:
             # Certains modèles / réglages refusent l'outil forcé ou une longueur de sortie : on adapte.
             bas = detail_erreur_api(exc).lower()
@@ -208,7 +232,7 @@ def extraire_personnel(nom_fichier: str, type_mime: str, contenu: bytes | None, 
                 reponse = appeler({"type": "auto"}, 16000)
             elif "max_tokens" in bas:
                 current_app.logger.warning("max_tokens refusé (%s) : repli à 8000", bas[:200])
-                reponse = appeler({"type": "tool", "name": OUTIL["name"]}, 8000)
+                reponse = appeler({"type": "tool", "name": outil["name"]}, 8000)
             else:
                 raise
     except anthropic.AuthenticationError as exc:
@@ -225,14 +249,22 @@ def extraire_personnel(nom_fichier: str, type_mime: str, contenu: bytes | None, 
 
     for bloc in reponse.content:
         if getattr(bloc, "type", "") == "tool_use":
-            data = bloc.input or {}
-            personnes = []
-            for p in data.get("personnes", []):
-                propre = {k: str(p.get(k) or "").strip() for k in CHAMPS}
-                if not propre["nom"]:
-                    continue
-                propre["confiance"] = p.get("confiance") or "moyenne"
-                propre["remarque"] = str(p.get("remarque") or "").strip()
-                personnes.append(propre)
-            return personnes, str(data.get("remarques") or "")
-    raise ErreurImport("Claude n'a renvoyé aucune liste exploitable. Essayez avec un document plus lisible.")
+            return bloc.input or {}
+    raise ErreurImport("Claude n'a renvoyé aucun résultat exploitable. Essayez avec un document plus lisible.")
+
+
+def extraire_personnel(nom_fichier: str, type_mime: str, contenu: bytes | None, texte: str = ""):
+    """Appelle Claude et renvoie (personnes, remarques)."""
+    data = appeler_claude(OUTIL, CONSIGNE.format(entreprise=current_app.config["COMPANY_NAME"]),
+                          nom_fichier, type_mime, contenu, texte)
+    personnes = []
+    for p in data.get("personnes", []):
+        propre = {k: str(p.get(k) or "").strip() for k in CHAMPS}
+        if not propre["nom"]:
+            continue
+        propre["confiance"] = p.get("confiance") or "moyenne"
+        propre["remarque"] = str(p.get("remarque") or "").strip()
+        personnes.append(propre)
+    if not personnes and not data.get("personnes"):
+        raise ErreurImport("Claude n'a renvoyé aucune liste exploitable. Essayez avec un document plus lisible.")
+    return personnes, str(data.get("remarques") or "")
