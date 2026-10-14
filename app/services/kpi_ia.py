@@ -23,7 +23,7 @@ OUTIL_KPI = {
                         "libelle": {"type": "string", "description": "Intitulé court du critère (moins de 120 caractères)"},
                         "description": {"type": "string",
                                         "description": "Ce qui est évalué, indicateurs, objectifs chiffrés (moins de 400 caractères)"},
-                        "poids": {"type": "integer", "minimum": 1, "maximum": 100,
+                        "poids": {"type": "number", "minimum": 0.01, "maximum": 100,
                                   "description": "Coefficient : la pondération du document telle quelle (ex. 30 pour 30 %), sinon 1 à 5 selon l'importance"},
                         "ponderation_document": {"type": "string",
                                                  "description": "Pondération telle qu'écrite dans le document (ex. « 20 % »), sinon vide"},
@@ -67,7 +67,8 @@ def extraire_kpi(nom_fichier: str, type_mime: str, contenu: bytes | None, texte:
         if not lib:
             continue
         try:
-            poids = max(1, min(100, int(k.get("poids") or 1)))
+            from .grilles import lire_coefficient
+            poids = lire_coefficient(k.get("poids")) or 1
         except (TypeError, ValueError):
             poids = 1
         kpis.append({"libelle": lib, "description": " ".join(str(k.get("description") or "").split())[:400],

@@ -23,7 +23,7 @@
         <thead><tr><th>Critère</th><th class="num">Coef.</th><th class="num">Note</th><th>Appréciation</th><th>Commentaire</th></tr></thead>
         <tbody>
           {% for n in ev.notes %}
-          <tr><td><strong>{{ n.critere.libelle }}</strong></td><td class="num">×{{ n.poids }}</td>
+          <tr><td><strong>{{ n.critere.libelle }}</strong></td><td class="num">×{{ poids_note(n)|coef }}</td>
             <td class="num"><strong>{{ n.note }}</strong><span class="muted">/100</span></td>
             <td>{{ badge_niveau(n.note) }}</td><td class="ink-2">{{ n.commentaire or "—" }}</td></tr>
           {% else %}

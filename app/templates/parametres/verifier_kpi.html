@@ -39,7 +39,7 @@
           </div>
         </td>
         <td class="num"><label class="sr-only" for="k{{ i }}p">Coefficient</label>
-          <input class="input input--sm input--coef" type="number" min="1" max="100" step="1" id="k{{ i }}p" name="k{{ i }}_poids" value="{{ k.poids }}"></td>
+          <input class="input input--sm input--coef" type="text" inputmode="decimal" maxlength="7" id="k{{ i }}p" name="k{{ i }}_poids" value="{{ k.poids|coef }}"></td>
         <td><label class="sr-only" for="k{{ i }}g">Grille</label>
           <select class="select select--sm" id="k{{ i }}g" name="k{{ i }}_destination" data-destination style="max-width:260px">
             <option value="" {% if not k.destination %}selected{% endif %}>Grille commune</option>

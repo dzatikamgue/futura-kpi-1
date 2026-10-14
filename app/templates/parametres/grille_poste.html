@@ -46,8 +46,8 @@
               {% if c.id in specifiques %}<span class="badge badge--info">Spécifique{% if utilisations.get(c.id) %} : {{ utilisations[c.id]|join(", ") }}{% endif %}</span>{% endif %}
               {% if c.description %}<div class="small muted">{{ c.description }}</div>{% endif %}</td>
             <td class="num"><label class="sr-only" for="p-{{ c.id }}">Coefficient de {{ c.libelle }}</label>
-              <input class="input input--sm input--coef" type="number" min="1" max="100" step="1" id="p-{{ c.id }}" name="poids_{{ c.id }}"
-                     value="{{ selection.get(c.id, coefs.get(c.id, c.poids)) }}" data-poids></td>
+              <input class="input input--sm input--coef" type="text" inputmode="decimal" maxlength="7" id="p-{{ c.id }}" name="poids_{{ c.id }}"
+                     value="{{ selection.get(c.id, coefs.get(c.id, c.poids))|coef }}" data-poids></td>
             <td class="num" data-part>—</td>
           </tr>
         {% else %}
@@ -71,7 +71,7 @@
         {{ champ("libelle_critere", "Libellé", donnees.get('libelle_critere'), erreurs, requis=True, attrs='maxlength="120" placeholder="Ex. Respect du planning chantier"') }}
         <div class="field"><label for="f-desc">Description (aide pour l'évaluateur)</label>
           <textarea class="textarea" id="f-desc" name="description" maxlength="400" rows="2">{{ donnees.get('description', '') }}</textarea></div>
-        {{ champ("poids", "Coefficient (1–100)", donnees.get('poids', '1'), erreurs, "number", True, attrs='min="1" max="100" step="1"') }}
+        {{ champ("poids", "Coefficient", donnees.get('poids', '1'), erreurs, "text", True, aide="Décimales possibles (ex. 1,5).", attrs='inputmode="decimal" maxlength="7"') }}
         <div class="form-actions"><button class="btn btn--secondary" type="submit">{{ icon('plus') }} Ajouter à la grille</button></div>
       </form>
     </section>

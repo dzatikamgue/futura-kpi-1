@@ -44,7 +44,7 @@
           {% set err = erreurs.get('note_' ~ c.id) or erreurs.get('commentaire_' ~ c.id) %}
           <div class="criterion {% if err %}has-error{% endif %}" data-critere data-poids="{{ c.poids }}">
             <div>
-              <div class="criterion__title" id="lbl-{{ c.id }}">{{ c.libelle }} <span class="criterion__weight" title="Coefficient">×{{ c.poids }}</span></div>
+              <div class="criterion__title" id="lbl-{{ c.id }}">{{ c.libelle }} <span class="criterion__weight" title="Coefficient">×{{ c.poids|coef }}</span></div>
               {% if c.description %}<div class="criterion__desc">{{ c.description }}</div>{% endif %}
             </div>
             <div class="score-input {% if not v.note %}is-empty{% endif %}">

@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (57 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (58 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -149,8 +149,8 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Mémorisé dans la table de réglages (clés `grilles_postes`, `criteres_specifiques`) ; les nouveaux critères vont dans la table existante des critères. Aucune table ni colonne ajoutée.
 
 ## Coefficients des critères
-- Coefficient libre de 1 à 100 (grille commune, grille d'un poste, import IA) : on peut saisir 1 à 5 ou directement des pourcentages (30, 25, 20…). Le poids réel (%) est affiché.
-- La table des critères limitant le poids à 1–5, le coefficient réel est mémorisé dans la table de réglages (clé `coefficients`) ; chaque note garde le coefficient du moment.
+- Coefficient libre de 0,01 à 100, décimales possibles (1,5 · 2,25), virgule ou point (grille commune, grille d'un poste, import IA) ; des pourcentages (30, 25…) conviennent aussi. Le poids réel (%) est affiché.
+- La table des critères limitant le poids à 1–5, le coefficient réel est mémorisé dans la table de réglages (clés `coefficients` et, pour l'historique des notes décimales, `coefficients_notes`) ; chaque note garde le coefficient du moment.
 
 ## Extraire les KPI d'un document (IA)
 - Grille KPI (ou page « Grille KPI : <poste> ») → « Extraire les KPI d'un document » : photo, PDF, Word (.docx), Excel/CSV ou texte collé. Claude repère les KPI, leur description et leur pondération (convertie en coefficient 1–5), et le poste concerné si le document le précise.

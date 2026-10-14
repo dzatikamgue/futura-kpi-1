@@ -299,7 +299,7 @@
       var somme = 0, poids = 0, notes = 0;
       criteres.forEach(function (c) {
         var n = lireNote(c);
-        if (n != null && !isNaN(n)) { var p = parseInt(c.getAttribute("data-poids"), 10) || 1; somme += n * p; poids += p; notes++; }
+        if (n != null && !isNaN(n)) { var p = parseFloat(c.getAttribute("data-poids")) || 1; somme += n * p; poids += p; notes++; }
       });
       var note = poids ? Math.round(somme / poids * 100) / 100 : null;
       var niv = note == null ? ["aucun", "Aucune note"] : niveau(note);
@@ -539,19 +539,20 @@
   var grille = $("[data-grille]");
   if (grille) {
     var lignesG = $$("[data-ligne-grille]", grille);
+    function coefDe(tr) { return parseFloat(($("[data-poids]", tr).value || "0").replace(",", ".")) || 0; }
     function majGrille() {
       var total = 0, nb = 0;
       lignesG.forEach(function (tr) {
         var on = $("[data-inclus]", tr).checked;
         tr.classList.toggle("ligne--off", !on);
         $("[data-poids]", tr).disabled = !on;
-        if (on) { total += +$("[data-poids]", tr).value; nb++; }
+        if (on) { total += coefDe(tr); nb++; }
       });
       lignesG.forEach(function (tr) {
         var on = $("[data-inclus]", tr).checked;
-        $("[data-part]", tr).textContent = on && total ? Math.round(100 * $("[data-poids]", tr).value / total) + " %" : "—";
+        $("[data-part]", tr).textContent = on && total ? Math.round(100 * coefDe(tr) / total) + " %" : "—";
       });
-      $("[data-total]", grille).textContent = total;
+      $("[data-total]", grille).textContent = (Math.round(total * 100) / 100).toString().replace(".", ",");
       $("[data-nb-criteres]", grille).textContent = nb;
     }
     grille.addEventListener("change", majGrille);

@@ -74,8 +74,15 @@ def specifiques(entite_id: int) -> set[int]:
 def grilles(entite_id: int) -> dict:
     """{clé_poste: {"libelle": poste, "criteres": {critere_id(int): poids}}}"""
     brut = _lire(CLE_GRILLES).get(str(entite_id), {})
-    return {k: {"libelle": v.get("libelle", k), "criteres": {int(i): int(p) for i, p in v.get("criteres", {}).items()}}
+    return {k: {"libelle": v.get("libelle", k),
+                "criteres": {int(i): _nombre(p) for i, p in v.get("criteres", {}).items()}}
             for k, v in brut.items()}
+
+
+def _nombre(x):
+    """Coefficient stocké → int s'il est entier, sinon float (2 décimales)."""
+    f = round(float(x), 2)
+    return int(f) if f.is_integer() else f
 
 
 def _criteres_actifs(entite_id: int) -> list[Critere]:
@@ -112,7 +119,7 @@ def definir_grille(entite_id: int, poste: str, criteres: dict[int, int], utilisa
     ent = dict(tout.get(str(entite_id), {}))
     k = cle_texte(poste)
     if criteres:
-        ent[k] = {"libelle": poste, "criteres": {str(i): int(p) for i, p in criteres.items()}}
+        ent[k] = {"libelle": poste, "criteres": {str(i): _nombre(p) for i, p in criteres.items()}}
     else:
         ent.pop(k, None)
     tout = dict(tout)
@@ -223,32 +230,66 @@ def sans_defaut(entite_id: int | None) -> bool:
     return ("principale" if entite_id is None else str(entite_id)) in cles
 
 
-# --- Coefficients libres (1 à 100) ------------------------------------------------
-# La table des critères limite le poids à 1–5 ; pour permettre des coefficients libres
-# (ex. pourcentages 30, 25, 20…), le coefficient réel est mémorisé dans Parametre
-# (clé « coefficients », {critere_id: coefficient}). Les grilles de poste stockent déjà le leur.
+# --- Coefficients libres (0,01 à 100, décimales autorisées) ------------------------
+# La table des critères limite le poids à un entier 1–5 et celle des notes à un entier :
+# le coefficient réel est mémorisé dans Parametre — « coefficients » {critere_id: coef} pour la
+# grille commune, et « coefficients_notes » {"evaluation_id:critere_id": coef} pour garder dans
+# l'historique un coefficient décimal utilisé lors d'une notation. Aucune colonne modifiée.
 CLE_COEFFS = "coefficients"
-COEF_MIN, COEF_MAX = 1, 100
+CLE_COEFFS_NOTES = "coefficients_notes"
+COEF_MIN, COEF_MAX = 0.01, 100
 
 
-def lire_coefficient(valeur, defaut: int = 1) -> int | None:
-    """Coefficient saisi → entier 1–100, ou None si invalide."""
+def lire_coefficient(valeur, defaut=1):
+    """Coefficient saisi (« 1,5 » ou « 1.5 ») → nombre de 0,01 à 100 (2 décimales), ou None si invalide."""
+    texte = str(valeur if valeur is not None else "").strip().replace(",", ".").replace(" ", "")
     try:
-        n = int(str(valeur).strip() or defaut)
+        n = round(float(texte or defaut), 2)
     except (TypeError, ValueError):
         return None
-    return n if COEF_MIN <= n <= COEF_MAX else None
+    if n != n or not COEF_MIN <= n <= COEF_MAX:        # NaN ou hors limites
+        return None
+    return _nombre(n)
 
 
-def coefficient(c: Critere) -> int:
-    return int(_lire(CLE_COEFFS).get(str(c.id), c.poids))
+def coefficient(c: Critere):
+    return _nombre(_lire(CLE_COEFFS).get(str(c.id), c.poids))
 
 
-def definir_coefficient(c: Critere, n: int, utilisateur_id: int | None) -> None:
-    c.poids = min(max(n, 1), 5)          # valeur compatible avec la contrainte de la table
+def definir_coefficient(c: Critere, n, utilisateur_id: int | None) -> None:
+    c.poids = min(max(int(round(n)), 1), 5)          # valeur compatible avec la contrainte de la table
     tout = dict(_lire(CLE_COEFFS))
     if n == c.poids:
         tout.pop(str(c.id), None)
     else:
-        tout[str(c.id)] = n
+        tout[str(c.id)] = _nombre(n)
     _ecrire(CLE_COEFFS, tout, utilisateur_id)
+
+
+def poids_pour_note(n) -> int:
+    """Valeur entière à ranger dans la colonne des notes (le coefficient exact va dans Parametre)."""
+    return max(1, int(round(n)))
+
+
+def memoriser_coefficients_note(evaluation_id: int, coefs: dict[int, float], utilisateur_id: int | None) -> None:
+    """Garde le coefficient exact (décimal) de chaque critère d'une évaluation."""
+    tout = dict(_lire(CLE_COEFFS_NOTES))
+    for cid, n in coefs.items():
+        cle = f"{evaluation_id}:{cid}"
+        if float(n).is_integer():
+            tout.pop(cle, None)
+        else:
+            tout[cle] = _nombre(n)
+    _ecrire(CLE_COEFFS_NOTES, tout, utilisateur_id)
+
+
+def poids_note(note) -> float | int:
+    """Coefficient exact d'une note d'évaluation (décimal si besoin)."""
+    v = _lire(CLE_COEFFS_NOTES).get(f"{note.evaluation_id}:{note.critere_id}")
+    return _nombre(v) if v is not None else note.poids
+
+
+def format_coef(n) -> str:
+    """1.5 → « 1,5 » ; 2 → « 2 »."""
+    n = _nombre(n)
+    return str(n).replace(".", ",")

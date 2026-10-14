@@ -55,7 +55,7 @@
             {% if c.id in specifiques %} <span class="badge badge--info" title="Hors grille commune">Spécifique{% if utilisations.get(c.id) %} : {{ utilisations[c.id]|join(", ") }}{% endif %}</span>
             {% elif utilisations.get(c.id) %} <span class="small muted">· aussi dans : {{ utilisations[c.id]|join(", ") }}</span>{% endif %}
             <div class="small muted">{{ c.description or "" }}</div></td>
-          <td class="num">×{{ coefs[c.id] }}</td>
+          <td class="num">×{{ coefs[c.id]|coef }}</td>
           <td class="num">{% if c.actif and total_poids and c.id not in specifiques %}{{ (100 * coefs[c.id] / total_poids)|round(0)|int }} %{% else %}—{% endif %}</td>
           <td>{% if c.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Inactif</span>{% endif %}</td>
           <td class="actions">
@@ -72,7 +72,7 @@
         </tr>
         {% endfor %}
       </tbody>
-      <tfoot><tr><td></td><td></td><td>Total des coefficients de la grille commune</td><td class="num">{{ total_poids }}</td><td class="num">100 %</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr><td></td><td></td><td>Total des coefficients de la grille commune</td><td class="num">{{ total_poids|coef }}</td><td class="num">100 %</td><td colspan="2"></td></tr></tfoot>
     </table></div>
     <form id="form-criteres-masse" method="post" class="card__foot row" style="gap:8px;flex-wrap:wrap" data-confirm="Supprimer les critères cochés ?">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="supprimer_masse">
@@ -98,7 +98,7 @@
       <div class="field"><label for="f-desc">Description (aide pour l'évaluateur)</label>
         <textarea class="textarea" id="f-desc" name="description" maxlength="400" rows="3">{{ donnees.get('description', '') }}</textarea></div>
       <div class="grid grid-2" style="gap:12px">
-        {{ champ("poids", "Coefficient (1–100)", donnees.get('poids', '1'), erreurs, "number", True, aide="Libre : 1 à 5, ou directement un pourcentage (ex. 30).", attrs='min="1" max="100" step="1"') }}
+        {{ champ("poids", "Coefficient", donnees.get('poids', '1'), erreurs, "text", True, aide="Libre, décimales possibles : 1,5 · 2,25 · ou un pourcentage (30).", attrs='inputmode="decimal" maxlength="7"') }}
         {{ champ("ordre", "Ordre d'affichage", donnees.get('ordre', (elements|length + 1)|string), erreurs, "number", attrs='min="0" step="1"') }}
       </div>
       <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>

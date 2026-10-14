@@ -77,6 +77,8 @@ def register_filters(app):
         return None
 
     from .services.multi_entites import poste_dans_entite
+    from .services.grilles import format_coef, poids_note
+    app.jinja_env.filters["coef"] = format_coef
 
     @app.context_processor
     def globals_gabarits():
@@ -104,6 +106,7 @@ def register_filters(app):
             "company_name": app.config["COMPANY_NAME"],
             "per": per,
             "poste_de": lambda e: poste_dans_entite(e, entite.id if entite else None),
+            "poids_note": poids_note,
             "url_tri": url_tri,
             "url_page": url_page,
             "url_avec": url_avec,

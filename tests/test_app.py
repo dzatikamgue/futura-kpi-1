@@ -1489,3 +1489,46 @@ def test_coefficients_libres(app):
                       f"poids_{crit.id}": "45"})
     lignes, propre = grille_pour(eid, "Topographe")
     assert propre and lignes[0].poids == 45
+
+
+def test_coefficients_decimaux(app):
+    from app.models import Critere
+    from app.services.grilles import grille_pour
+    from app.services.entites import principale
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    eid = principale().id
+    crits = db.session.scalars(select(Critere).where(Critere.actif.is_(True)).order_by(Critere.ordre)).all()
+    # Grille du poste Topographe : coefficients décimaux (virgule ou point)
+    url = "/parametres/postes/grille?libelle=Topographe"
+    c.post(url, data={"libelle": "Topographe", "action": "enregistrer", "inclus": [str(crits[0].id), str(crits[1].id)],
+                      f"poids_{crits[0].id}": "1,5", f"poids_{crits[1].id}": "2.25"})
+    lignes, propre = grille_pour(eid, "Topographe")
+    assert propre and sorted(x.poids for x in lignes) == [1.5, 2.25]
+    assert "1,5" in c.get(url).get_data(as_text=True)
+    # Notation de MANGA (Topographe) : note globale pondérée avec les décimales
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
+    aff = next(a for a in manga.affectations_actives if a.evaluateur_id)
+    n1 = aff.evaluateur
+    if not n1.compte:
+        u = Utilisateur(email="n1.dec@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=n1.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c2 = app.test_client()
+    login(c2, n1.compte.email)
+    r = c2.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}",
+                data={"action": "soumettre", f"note_{crits[0].id}": "100", f"note_{crits[1].id}": "70"})
+    assert r.status_code == 302
+    ev = db.session.scalar(select(Evaluation).where(Evaluation.affectation_id == aff.id,
+                                                    Evaluation.annee == an, Evaluation.mois == mo))
+    assert ev.note_globale == round((100 * 1.5 + 70 * 2.25) / 3.75, 2)
+    detail = c2.get(f"/evaluations/{ev.id}").get_data(as_text=True)
+    assert "×1,5" in detail and "×2,25" in detail
+    # Grille commune : coefficient décimal ; invalide refusé
+    c.post("/parametres/criteres", data={"libelle": "Rendement", "poids": "0,75", "ordre": "30"})
+    assert "×0,75" in c.get("/parametres/criteres").get_data(as_text=True)
+    r = c.post("/parametres/criteres", data={"libelle": "Autre", "poids": "abc", "ordre": "31"})
+    assert r.status_code == 200 and "Coefficient invalide" in r.get_data(as_text=True)

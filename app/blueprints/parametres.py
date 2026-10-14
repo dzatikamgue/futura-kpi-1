@@ -278,6 +278,11 @@ def __coef(c):
     return coefficient(c)
 
 
+def __format_coef(n):
+    from ..services.grilles import format_coef
+    return format_coef(n)
+
+
 @bp.route("/criteres", methods=["GET", "POST"])
 @login_required
 @rh_requis
@@ -329,7 +334,7 @@ def criteres():
         from ..services.grilles import definir_coefficient, lire_coefficient
         poids = lire_coefficient(donnees["poids"])
         if poids is None:
-            erreurs["poids"] = "Le coefficient doit être un entier de 1 à 100."
+            erreurs["poids"] = "Coefficient invalide : nombre de 0,01 à 100 (ex. 1,5)."
             poids = 1
         try:
             ordre = int(donnees["ordre"] or 0)
@@ -352,7 +357,8 @@ def criteres():
     elif request.args.get("modifier", type=int):
         edition = _dans_entite(db.session.get(Critere, request.args.get("modifier", type=int)) or abort(404))
         donnees = {"libelle": edition.libelle, "description": edition.description or "",
-                   "poids": str(__coef(edition)), "ordre": str(edition.ordre)}
+                   "poids": __format_coef(__coef(edition)),
+                   "ordre": str(edition.ordre)}
     from ..services.grilles import masques as _masques
     caches = _masques(_eid())
     elements = [x for x in db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, _eid()))
@@ -464,7 +470,7 @@ def verifier_kpi(brouillon_id):
             c = existants.get(cle_texte(lib))
             if c is None:
                 ordre += 1
-                c = Critere(entite_id=eid, libelle=lib, description=desc, poids=min(poids, 5), ordre=ordre)
+                c = Critere(entite_id=eid, libelle=lib, description=desc, poids=min(max(int(round(poids)), 1), 5), ordre=ordre)
                 db.session.add(c)
                 db.session.flush()
                 G.definir_coefficient(c, poids, current_user.id)
@@ -725,7 +731,7 @@ def grille_poste():
                 erreurs["libelle_critere"] = "Ce critère existe déjà dans la bibliothèque : cochez-le dans la liste."
             poids = G.lire_coefficient(donnees["poids"])
             if poids is None:
-                erreurs["poids"] = "Coefficient : entier de 1 à 100."
+                erreurs["poids"] = "Coefficient invalide : nombre de 0,01 à 100 (ex. 1,5)."
                 poids = 1
             if not erreurs:
                 ordre = (db.session.scalar(select(func.max(Critere.ordre)).where(
@@ -733,10 +739,10 @@ def grille_poste():
                 if homonyme:            # recréé après suppression : même ligne, historique intact
                     G.reprendre_masque(eid, homonyme, current_user.id)
                     c = homonyme
-                    c.description, c.poids, c.ordre = donnees["description"][:400] or None, min(poids, 5), ordre
+                    c.description, c.poids, c.ordre = donnees["description"][:400] or None, min(max(int(round(poids)), 1), 5), ordre
                 else:
                     c = Critere(entite_id=eid, libelle=lib, description=donnees["description"][:400] or None,
-                                poids=min(poids, 5), ordre=ordre)
+                                poids=min(max(int(round(poids)), 1), 5), ordre=ordre)
                     db.session.add(c)
                 db.session.flush()
                 G.marquer_specifique(eid, c.id, True, current_user.id)

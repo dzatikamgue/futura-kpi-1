@@ -14,6 +14,7 @@ from ..permissions import perimetre, rh_requis
 from ..services.audit import journaliser
 from ..services.entites import cond_entite, id_effectif
 from ..services.exports import export_excel
+from ..services.grilles import memoriser_coefficients_note, poids_pour_note
 from ..services.notation import (NOTE_MAX, NOTE_MIN, SEUIL_JUSTIFICATION,
                                  calculer_note_globale, libelle_periode,
                                  periode_ouverte, periodes_saisissables,
@@ -114,15 +115,15 @@ def _criteres_pour(ev, aff):
     """Grille applicable : celle du poste du salarié si elle existe, sinon la grille commune
     de l'entité où il travaille sur cette affectation (chaque entité a ses grilles)."""
     from ..services.entites import entite_affectation
-    from ..services.grilles import CritereGrille, grille_pour
+    from ..services.grilles import CritereGrille, grille_pour, poids_note
     if ev and ev.est_soumise:
-        return [CritereGrille(n.critere, n.poids) for n in ev.notes]
+        return [CritereGrille(n.critere, poids_note(n)) for n in ev.notes]
     from ..services.multi_entites import poste_dans_entite
     eid = entite_affectation(aff)
     actifs, _ = grille_pour(eid, poste_dans_entite(aff.employe, eid))
     ids = {c.id for c in actifs}
     # Brouillon commencé avec un critère qui n'est plus dans la grille : conservé
-    extra = [CritereGrille(n.critere, n.poids) for n in (ev.notes if ev else []) if n.critere_id not in ids]
+    extra = [CritereGrille(n.critere, poids_note(n)) for n in (ev.notes if ev else []) if n.critere_id not in ids]
     return actifs + extra
 
 
@@ -205,9 +206,10 @@ def noter(affectation_id):
                         db.session.delete(existante)
                     continue
                 if existante:
-                    existante.note, existante.commentaire, existante.poids = n, com, c.poids
+                    existante.note, existante.commentaire, existante.poids = n, com, poids_pour_note(c.poids)
                 else:
-                    ev.notes.append(EvaluationNote(critere_id=c.id, note=n, commentaire=com, poids=c.poids))
+                    ev.notes.append(EvaluationNote(critere_id=c.id, note=n, commentaire=com,
+                                                   poids=poids_pour_note(c.poids)))
             ev.note_globale = calculer_note_globale([(n, c.poids) for c, n, _ in saisie if n is not None])
             if action == "soumettre":
                 ev.statut = StatutEvaluation.SOUMISE
@@ -215,6 +217,9 @@ def noter(affectation_id):
                 ev.rouverte = False
             try:
                 db.session.flush()
+                # Coefficients décimaux : la valeur exacte est gardée pour l'historique
+                memoriser_coefficients_note(ev.id, {c.id: c.poids for c, n, _ in saisie if n is not None},
+                                            current_user.id)
             except Exception:
                 db.session.rollback()
                 flash("Cette évaluation vient d'être enregistrée par une autre personne. Rechargez la page.", "erreur")
