@@ -58,7 +58,7 @@
       {% for aff, ev in lignes %}
         <tr>
           <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ aff.employe.initiales }}</div>
-            <div><strong><a href="{{ url_for('personnel.fiche', employe_id=aff.employe.id) }}" style="color:inherit">{{ aff.employe.nom_complet }}</a></strong><span>{{ aff.employe.poste or "—" }} · {{ aff.employe.matricule }}</span></div></div></td>
+            <div><strong><a href="{{ url_for('personnel.fiche', employe_id=aff.employe.id) }}" style="color:inherit">{{ aff.employe.nom_complet }}</a></strong><span>{{ poste_de(aff.employe) or "—" }} · {{ aff.employe.matricule }}</span></div></div></td>
           <td>{{ aff.contexte_libelle }}</td>
           <td class="hide-mobile">{% if aff.evaluateur %}{{ aff.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Non défini</span>{% endif %}</td>
           <td>{{ badge_statut(ev) }}</td>

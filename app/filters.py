@@ -76,6 +76,8 @@ def register_filters(app):
             return url_for("static", filename="img/logo-white.svg" if blanc else "img/logo.svg")
         return None
 
+    from .services.multi_entites import poste_dans_entite
+
     @app.context_processor
     def globals_gabarits():
         per = entite = None
@@ -101,6 +103,7 @@ def register_filters(app):
             "app_name": app.config["APP_NAME"],
             "company_name": app.config["COMPANY_NAME"],
             "per": per,
+            "poste_de": lambda e: poste_dans_entite(e, entite.id if entite else None),
             "url_tri": url_tri,
             "url_page": url_page,
             "url_avec": url_avec,

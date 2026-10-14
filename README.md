@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (53 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (54 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -171,6 +171,9 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - En groupe (fin de chantier) : cochez les salariés dans Personnel → « Changer de projet… ». Leur projet actuel dans l'entité du nouveau projet est clôturé ; leurs projets dans d'autres entités continuent.
 
 ## Salarié travaillant pour plusieurs entités
+- Fiche → carte « Entités » → « Rattacher aussi à une autre entité » : poste dans cette entité, département et/ou projet. Le salarié apparaît alors dans le personnel de l'entité avec ce poste (sa grille KPI y dépend de ce poste). Le poste par entité se change dans la même carte.
+- Pouvoir de notation dans une autre entité : nommez-le responsable d'un département de cette entité (tout le personnel du groupe peut être choisi), ou N+1 d'un projet. Il apparaît dans le personnel de cette entité.
+- Postes par entité mémorisés dans la table de réglages (clé `postes_par_entite`).
 - Sa fiche reste dans son entité d'origine. Sur la fiche, « Ajouter » propose les départements et projets de **toutes les entités** : affectez-le dans l'autre entité avec son N+1.
 - Il apparaît alors dans le personnel de cette entité (badge « Multi-entités ») et dans sa campagne, noté avec la grille de cette entité. Il est noté une fois par entité (projet en priorité, sinon département).
 - Aucune donnée modifiée : l'entité d'une affectation est déduite de son département / projet.

@@ -35,14 +35,13 @@ def _dans_entite(obj):
 
 
 def _employes_actifs():
-    """Responsables possibles : personnel de l'entité active + direction / RH du groupe."""
-    from ..services.transverses import ids_personnel_groupe
-    cond = cond_entite(Employe.entite_id, _eid())
-    groupe = ids_personnel_groupe()
-    if groupe:
-        cond = cond | Employe.id.in_(groupe)
-    return db.session.scalars(select(Employe).where(Employe.actif.is_(True), cond)
+    """Responsables possibles : tout le personnel actif du groupe (un salarié peut diriger et
+    noter dans plusieurs entités). Le personnel de l'entité active vient en premier."""
+    from ..services.entites import id_effectif
+    eid = _eid()
+    tous = db.session.scalars(select(Employe).where(Employe.actif.is_(True))
                               .order_by(Employe.nom, Employe.prenom)).all()
+    return sorted(tous, key=lambda e: id_effectif(e.entite_id) != eid)
 
 
 # --- Départements & projets -------------------------------------------------

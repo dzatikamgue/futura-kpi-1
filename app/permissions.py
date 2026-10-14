@@ -173,7 +173,12 @@ class Perimetre:
             from .services.transverses import ids_personnel_groupe
             groupe = ids_personnel_groupe()
             # + salariés d'une autre entité qui travaillent aussi pour celle-ci
-            conds = [dans_entite, Employe.id.in_(ids_employes_affectes(self.entite_id))]
+            conds = [dans_entite, Employe.id.in_(ids_employes_affectes(self.entite_id)),
+                     # responsables d'un département / projet de l'entité (même venant d'une autre entité)
+                     Employe.id.in_(select(Departement.responsable_id).where(
+                         Departement.actif.is_(True), cond_entite(Departement.entite_id, self.entite_id))),
+                     Employe.id.in_(select(Projet.responsable_id).where(
+                         Projet.actif.is_(True), cond_entite(Projet.entite_id, self.entite_id)))]
             if groupe:
                 conds.append(Employe.id.in_(groupe))
             return or_(*conds)

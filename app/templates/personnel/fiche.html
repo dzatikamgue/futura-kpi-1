@@ -9,7 +9,7 @@
     <div class="avatar avatar--lg" aria-hidden="true">{{ e.initiales }}</div>
     <div>
       <h1>{{ e.nom_complet }} {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</h1>
-      <p>{{ e.poste or "Poste non renseigné" }} · Matricule {{ e.matricule }}{% if onglets_entites|length > 1 %} · {{ e.entite.nom if e.entite else entite.nom }}{% endif %}</p>
+      <p>{{ poste_de(e) or "Poste non renseigné" }} · Matricule {{ e.matricule }}{% if onglets_entites|length > 1 %} · {{ e.entite.nom if e.entite else nom_principale }}{% endif %}</p>
     </div>
   </div>
   <div class="page-head__actions">
@@ -98,6 +98,69 @@
     {% endif %}
   </section>
 </div>
+
+<section class="card" id="entites" style="margin-bottom:16px">
+  <div class="card__head"><div><h2>Entités</h2>
+    <p>{% if entites_salarie|length > 1 %}Ce salarié travaille pour {{ entites_salarie|length }} entités : il apparaît dans le personnel de chacune, avec le poste indiqué.{% else %}Ce salarié travaille pour une seule entité.{% endif %}</p></div></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Entité</th><th>Poste dans l'entité</th><th>Rattachements</th></tr></thead>
+    <tbody>
+    {% for l in entites_salarie %}
+      <tr>
+        <td><strong>{{ l.entite.nom }}</strong>{% if l.origine %} <span class="badge badge--plain">Origine</span>{% endif %}</td>
+        <td>{% if l.origine or not current_user.est_rh %}{{ l.poste or "—" }}{% if l.origine and current_user.est_rh %} <span class="small muted">(modifiable sur la fiche)</span>{% endif %}
+          {% else %}
+          <form method="post" action="{{ url_for('personnel.entites_salarie', employe_id=e.id) }}" class="row" style="gap:6px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="entite_id" value="{{ l.entite.id }}"><input type="hidden" name="action" value="poste">
+            <label class="sr-only" for="pe-{{ l.entite.id }}">Poste dans {{ l.entite.nom }}</label>
+            <select class="select select--sm" id="pe-{{ l.entite.id }}" name="poste" data-autosubmit style="max-width:240px">
+              <option value="">Même poste qu'à l'origine ({{ e.poste or "—" }})</option>
+              {% for p in l.postes %}<option {% if l.poste_propre == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+            </select>
+          </form>{% endif %}</td>
+        <td class="small">{% for a in l.affectations %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if current_user.est_rh and e.actif %}
+  <div class="card__foot">
+    {% if rattacher %}
+    <form method="post" action="{{ url_for('personnel.entites_salarie', employe_id=e.id) }}" class="stack" style="gap:10px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="entite_id" value="{{ rattacher.entite.id }}"><input type="hidden" name="action" value="rattacher">
+      <strong>Rattacher à {{ rattacher.entite.nom }}</strong>
+      <div class="row" style="gap:8px;align-items:flex-end">
+        <div class="field" style="margin:0"><label for="r-poste">Poste dans {{ rattacher.entite.nom }}</label>
+          <select class="select select--sm" id="r-poste" name="poste" data-autre="#r-poste-nouveau">
+            <option value="">Même poste qu'à l'origine ({{ e.poste or "—" }})</option>
+            {% for p in rattacher.postes %}<option>{{ p }}</option>{% endfor %}
+            <option value="__nouveau__">＋ Nouveau poste…</option>
+          </select></div>
+        <div class="field" style="margin:0" id="r-poste-nouveau" hidden><label for="r-pn">Nouveau poste</label>
+          <input class="input input--sm" id="r-pn" name="poste_nouveau" maxlength="120"></div>
+        <div class="field" style="margin:0"><label for="r-dep">Département</label>
+          <select class="select select--sm" id="r-dep" name="departement_id"><option value="">—</option>
+            {% for d in rattacher.departements %}<option value="{{ d.id }}">{{ d.nom }}</option>{% endfor %}</select></div>
+        <div class="field" style="margin:0"><label for="r-proj">Projet</label>
+          <select class="select select--sm" id="r-proj" name="projet_id"><option value="">—</option>
+            {% for p in rattacher.projets %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}</select></div>
+        <div class="field" style="margin:0"><label for="r-n1">N+1 sur le projet</label>
+          <select class="select select--sm" id="r-n1" name="evaluateur_id">{% with choisi=None, exclure=e.id %}{% include "personnel/_options_n1.html" %}{% endwith %}</select></div>
+      </div>
+      <p class="small muted" style="margin:0">Dans un département, le N+1 est le responsable du département. Pour qu'il note dans {{ rattacher.entite.nom }}, nommez-le responsable d'un département de cette entité.</p>
+      <div class="row" style="gap:8px"><a class="btn btn--ghost btn--sm" href="{{ url_for('personnel.fiche', employe_id=e.id) }}#entites">Annuler</a>
+        <button class="btn btn--primary btn--sm" type="submit">Rattacher</button></div>
+    </form>
+    {% elif entites_disponibles %}
+    <form method="get" action="{{ url_for('personnel.fiche', employe_id=e.id) }}" class="row" style="gap:8px">
+      <label class="small" for="r-ent"><strong>Rattacher aussi à une autre entité :</strong></label>
+      <select class="select select--sm" id="r-ent" name="entite" style="width:auto">{% for x in entites_disponibles %}<option value="{{ x.id }}">{{ x.nom }}</option>{% endfor %}</select>
+      <button class="btn btn--secondary btn--sm" type="submit">Continuer</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
 
 <section class="card" style="margin-bottom:16px">
   <div class="card__head"><div><h2>Affectations</h2><p>Département : noté par le responsable du département. Projet : noté par le N+1 désigné par la RH.</p></div></div>

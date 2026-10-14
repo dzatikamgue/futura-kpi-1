@@ -117,7 +117,9 @@ def _criteres_pour(ev, aff):
     from ..services.grilles import CritereGrille, grille_pour
     if ev and ev.est_soumise:
         return [CritereGrille(n.critere, n.poids) for n in ev.notes]
-    actifs, _ = grille_pour(entite_affectation(aff), aff.employe.poste)
+    from ..services.multi_entites import poste_dans_entite
+    eid = entite_affectation(aff)
+    actifs, _ = grille_pour(eid, poste_dans_entite(aff.employe, eid))
     ids = {c.id for c in actifs}
     # Brouillon commencé avec un critère qui n'est plus dans la grille : conservé
     extra = [CritereGrille(n.critere, n.poids) for n in (ev.notes if ev else []) if n.critere_id not in ids]
@@ -127,7 +129,9 @@ def _criteres_pour(ev, aff):
 def _grille_propre(aff) -> bool:
     from ..services.entites import entite_affectation
     from ..services.grilles import grille_du_poste
-    return grille_du_poste(entite_affectation(aff), aff.employe.poste) is not None
+    from ..services.multi_entites import poste_dans_entite
+    eid = entite_affectation(aff)
+    return grille_du_poste(eid, poste_dans_entite(aff.employe, eid)) is not None
 
 
 @bp.route("/noter/<int:affectation_id>", methods=["GET", "POST"])

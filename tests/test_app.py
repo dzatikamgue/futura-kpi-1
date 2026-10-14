@@ -28,7 +28,7 @@ def app():
     # comme le ferait un vrai serveur.
     def _isoler_requete():
         from flask import g
-        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep", "_reglages_grilles"):
+        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep", "_reglages_grilles", "_postes_entites"):
             g.pop(k, None)
     # Doit passer avant les autres before_request de l'application
     app.before_request_funcs.setdefault(None, []).insert(0, _isoler_requete)
@@ -1357,3 +1357,39 @@ def test_sans_chef_le_chef_du_departement_mere_note(app):
                                              "responsable_id": str(fotso.id), "parent_id": str(tech.id)})
     db.session.refresh(a)
     assert a.evaluateur_id == fotso.id
+
+
+def test_rattacher_a_une_autre_entite_avec_poste_et_notation(app):
+    from app.models import Departement
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    c.get(f"/entite/{ent.id}")
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))   # FUTURA, Conducteur de travaux
+    # Responsable possible dans STE même s'il vient de FUTURA
+    page = c.get("/parametres/departements").get_data(as_text=True)
+    assert f'value="{essomba.id}"' in page
+    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers", "responsable_id": str(essomba.id)})
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
+    c.post("/personnel/nouveau", data={"nom": "ONANA", "departement_id": str(dep.id)})
+    onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))
+    assert onana.affectations[0].evaluateur_id == essomba.id          # il note dans STE
+    # Rattachement de ESSOMBA à STE avec un poste propre
+    fiche = c.get(f"/personnel/{essomba.id}?entite={ent.id}").get_data(as_text=True)
+    assert "Rattacher à Société Test" in fiche
+    r = c.post(f"/personnel/{essomba.id}/entites", data={"entite_id": ent.id, "action": "rattacher",
+                                                        "poste": "__nouveau__", "poste_nouveau": "Chef de chantier",
+                                                        "departement_id": str(dep.id)})
+    assert r.status_code == 302
+    liste = c.get("/personnel/").get_data(as_text=True)                # entité active : STE
+    ligne = liste[liste.index("<strong>ESSOMBA"):][:2500]
+    assert "Chef de chantier" in ligne
+    fiche = c.get(f"/personnel/{essomba.id}").get_data(as_text=True)
+    assert "Société Test" in fiche and "Origine" in fiche
+    # Dans FUTURA, son poste reste celui de sa fiche
+    principale = db.session.scalar(select(db.text("id FROM entites WHERE principale")))
+    c.get(f"/entite/{principale}")
+    liste = c.get("/personnel/").get_data(as_text=True)
+    assert "Conducteur de travaux" in liste[liste.index("<strong>ESSOMBA"):][:2500]

@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    url_for)
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -321,7 +321,86 @@ def fiche(employe_id):
         trimestres=trimestres, annuel=annuel, niveau_annuel=niveau(annuel),
         affectations=affs_visibles,
         contextes=contextes_groupe() if per.user.est_rh else [],
-        groupes_evaluateurs=evaluateurs_groupe(e.id) if per.user.est_rh else [])
+        groupes_evaluateurs=evaluateurs_groupe(e.id) if per.user.est_rh else [],
+        **_donnees_entites(e, per))
+
+
+def _donnees_entites(e, per):
+    """Carte « Entités » de la fiche : entités où le salarié travaille, poste dans chacune."""
+    from ..models import Entite
+    from ..services.entites import entite_affectation
+    from ..services.multi_entites import entites_du_salarie, poste_dans_entite, poste_propre
+    ids = entites_du_salarie(e)
+    entites = {x.id: x for x in db.session.scalars(select(Entite).where(Entite.actif.is_(True)))}
+    lignes = []
+    for i, eid in enumerate(ids):
+        if eid not in entites:
+            continue
+        lignes.append({"entite": entites[eid], "origine": i == 0, "poste": poste_dans_entite(e, eid),
+                       "poste_propre": poste_propre(e.id, eid),
+                       "affectations": [a for a in e.affectations if a.actif and entite_affectation(a) == eid
+                                        and (per.voit_tout or per.voit_affectation(a) or a.employe_id == per.employe_id)],
+                       "postes": postes_actifs(eid) if per.user.est_rh and i else []})
+        if i and not per.voit_tout and not lignes[-1]["affectations"]:
+            lignes.pop()          # hors périmètre : on n'affiche pas cette entité
+    cible = request.args.get("entite", type=int) if per.user.est_rh else None
+    rattacher = None
+    if cible and cible in entites and cible not in ids:
+        deps, projs = _contextes(cible)
+        rattacher = {"entite": entites[cible], "postes": postes_actifs(cible), "departements": deps, "projets": projs}
+    autres = [x for k, x in sorted(entites.items(), key=lambda kv: kv[1].nom) if k not in ids]
+    return {"entites_salarie": lignes, "entites_disponibles": autres, "rattacher": rattacher}
+
+
+@bp.post("/<int:employe_id>/entites")
+@login_required
+@rh_requis
+def entites_salarie(employe_id):
+    """Rattacher le salarié à une autre entité (poste, département / projet) ou changer son poste dans une entité."""
+    from ..models import Entite
+    from ..services.multi_entites import definir_poste
+    e = db.session.get(Employe, employe_id) or abort(404)
+    ent = db.session.get(Entite, request.form.get("entite_id", type=int) or -1) or abort(404)
+    retour = redirect(url_for("personnel.fiche", employe_id=e.id) + "#entites")
+    if id_effectif(e.entite_id) == ent.id:
+        flash("C'est l'entité d'origine : modifiez le poste sur la fiche.", "info")
+        return retour
+    poste = (request.form.get("poste") or "").strip()
+    if poste == "__nouveau__":
+        poste = poste_canonique(request.form.get("poste_nouveau") or "", True, ent.id) or ""
+    elif poste:
+        poste = poste_canonique(poste, False, ent.id) or poste
+    action = request.form.get("action")
+    if action == "poste":
+        definir_poste(e.id, ent.id, poste or None, current_user.id)
+        journaliser("poste_entite", e.nom_complet, f"{ent.nom} : {poste or 'poste d’origine'}")
+        db.session.commit()
+        flash(f"Poste de {e.nom_complet} dans {ent.nom} : {poste or e.poste or '—'}.", "succes")
+        return retour
+    # Rattachement à une autre entité
+    dep = db.session.get(Departement, request.form.get("departement_id", type=int) or -1)
+    proj = db.session.get(Projet, request.form.get("projet_id", type=int) or -1)
+    dep = dep if dep and id_effectif(dep.entite_id) == ent.id else None
+    proj = proj if proj and id_effectif(proj.entite_id) == ent.id else None
+    if not dep and not proj:
+        flash(f"Choisissez un département ou un projet de {ent.nom} : c'est ce qui fait apparaître le salarié dans cette entité.",
+              "erreur")
+        return redirect(url_for("personnel.fiche", employe_id=e.id, entite=ent.id) + "#entites")
+    n1 = request.form.get("evaluateur_id", type=int)
+    if proj and n1 == e.id:
+        n1 = None
+    libelles = []
+    if dep:
+        libelles.append(affecter(e, departement=dep).contexte_libelle)
+    if proj:
+        libelles.append(affecter(e, projet=proj, evaluateur_id=n1).contexte_libelle)
+    definir_poste(e.id, ent.id, poste or None, current_user.id)
+    journaliser("rattachement_entite", e.nom_complet, f"{ent.nom} : {', '.join(libelles)} ; poste {poste or '—'}")
+    synchroniser_comptes([n1])
+    db.session.commit()
+    flash(f"{e.nom_complet} travaille aussi pour {ent.nom} ({', '.join(libelles)}). "
+          "Il apparaît dans le personnel de cette entité.", "succes")
+    return retour
 
 
 @bp.post("/<int:employe_id>/affectations")

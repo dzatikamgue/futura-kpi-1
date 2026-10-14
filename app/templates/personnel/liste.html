@@ -75,7 +75,7 @@
         <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ e.initiales }}</div>
           <div><strong>{{ e.nom_complet }}</strong>{% if ailleurs %}<span> {% if e.id in ids_groupe %}<span class="badge badge--groupe" title="Direction / RH du groupe">Groupe, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% else %}<span class="badge badge--groupe" title="Travaille aussi pour cette entité">Multi-entités, rattaché à {{ e.entite.nom if e.entite else nom_principale }}</span>{% endif %}</span>{% endif %}</div></div></td>
         <td class="hide-mobile num" style="text-align:left">{{ e.matricule }}</td>
-        <td class="col-poste">{% if e.poste %}<a class="lien-discret" href="{{ url_for('personnel.liste', poste=e.poste) }}" title="Voir tous les « {{ e.poste }} »">{{ e.poste }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="col-poste">{% set pe = poste_de(e) %}{% if pe %}<a class="lien-discret" href="{{ url_for('personnel.liste', poste=pe) }}" title="Voir tous les « {{ pe }} »">{{ pe }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% for a in e.affectations_actives %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="badge badge--warn">Aucune</span>{% endfor %}
             {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</td>
         <td class="hide-mobile ink-2">{{ e.affectations_actives|map(attribute='evaluateur')|select|map(attribute='nom_complet')|unique|join(', ') or "—" }}</td>
