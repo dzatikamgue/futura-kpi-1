@@ -74,8 +74,20 @@ class Perimetre:
             # … et les projets rattachés à ces départements
             from .services.projets import carte
             self.projet_ids |= {p for p, d in carte().items() if d in self.dept_ids}
+            # Départements dont l'utilisateur est membre : il voit la liste de ses collègues
+            self.membre_dept_ids = set(db.session.scalars(
+                select(Affectation.departement_id).where(Affectation.employe_id == self.employe_id,
+                                                         Affectation.actif.is_(True),
+                                                         Affectation.departement_id.isnot(None))))
         else:
-            self.dept_ids, self.projet_ids = set(), set()
+            self.dept_ids, self.projet_ids, self.membre_dept_ids = set(), set(), set()
+
+    # -- Membres de départements -----------------------------------------------
+    def _membres(self, dept_ids):
+        """Sous-requête : salariés ayant une affectation active dans ces départements (entité active)."""
+        return select(Affectation.employe_id).where(
+            Affectation.actif.is_(True), Affectation.departement_id.in_(dept_ids or {-1}),
+            cond_affectation_entite(self.entite_id))
 
     # -- Entité ----------------------------------------------------------------
     def employes_de_l_entite(self):
@@ -130,7 +142,8 @@ class Perimetre:
             return False
         return (affectation.evaluateur_id == self.employe_id
                 or affectation.departement_id in self.dept_ids
-                or affectation.projet_id in self.projet_ids)
+                or affectation.projet_id in self.projet_ids
+                or self._est_membre(affectation.employe, self.dept_ids))
 
     # -- Évaluations visibles ----------------------------------------------
     def filtre_evaluations(self):
@@ -149,6 +162,9 @@ class Perimetre:
         ]
         if self.dept_ids:
             conds.append(Evaluation.departement_id.in_(self.dept_ids))
+            # tant que c'est son département : toutes les notes de ses membres, même s'il n'est pas le N+1
+            conds.append(and_(Evaluation.employe_id.in_(self._membres(self.dept_ids)),
+                              Evaluation.employe_id != self.employe_id))
         if self.projet_ids:
             conds.append(Evaluation.projet_id.in_(self.projet_ids))
         return and_(dans_entite, or_(*conds))
@@ -163,7 +179,11 @@ class Perimetre:
         return (ev.evaluateur_id == self.employe_id
                 or (ev.affectation and ev.affectation.evaluateur_id == self.employe_id)
                 or (ev.departement_id is not None and ev.departement_id in self.dept_ids)
-                or (ev.projet_id is not None and ev.projet_id in self.projet_ids))
+                or (ev.projet_id is not None and ev.projet_id in self.projet_ids)
+                or self._est_membre(ev.employe, self.dept_ids))
+
+    def _est_membre(self, employe, dept_ids) -> bool:
+        return bool(dept_ids) and any(a.actif and a.departement_id in dept_ids for a in employe.affectations)
 
     # -- Salariés visibles ---------------------------------------------------
     def filtre_employes(self):
@@ -184,6 +204,10 @@ class Perimetre:
             return or_(*conds)
         ids_affectations = select(Affectation.employe_id).where(self.filtre_affectations_visibles())
         conds = [Employe.id.in_(ids_affectations)]
+        if self.dept_ids:          # chef : tous les membres de ses départements et sous-départements
+            conds.append(Employe.id.in_(self._membres(self.dept_ids)))
+        if self.membre_dept_ids:   # membre : la liste des collègues de son (ses) département(s)
+            conds.append(Employe.id.in_(self._membres(self.membre_dept_ids)))
         if self.employe_id:
             conds.append(and_(dans_entite, Employe.id == self.employe_id))
         return or_(*conds)
@@ -194,7 +218,17 @@ class Perimetre:
         from .services.transverses import ids_personnel_groupe
         if self.voit_tout and employe.id in ids_personnel_groupe():
             return True
+        if self._est_membre(employe, self.dept_ids) or self._est_membre(employe, self.membre_dept_ids):
+            return True
         return any(self.voit_affectation(a) for a in employe.affectations)
+
+    @property
+    def voit_collegues(self) -> bool:
+        """Membre d'au moins un département de l'entité active (accès à la liste de ses collègues)."""
+        if not self.membre_dept_ids:
+            return False
+        return db.session.scalar(select(Departement.id).where(
+            Departement.id.in_(self.membre_dept_ids), cond_entite(Departement.entite_id, self.entite_id)).limit(1)) is not None
 
     # -- Listes de filtres proposées dans l'interface ------------------------
     def departements_visibles(self):

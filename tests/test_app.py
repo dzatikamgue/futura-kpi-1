@@ -1596,3 +1596,77 @@ def test_copier_postes_et_kpi_vers_une_autre_entite(app):
     # Pas de copie vers soi-même
     r = c.post("/parametres/copier-entite", data={"source_id": ent.id, "postes": "1", "retour": "/parametres/postes"})
     assert "Choisissez" in c.get("/parametres/postes").get_data(as_text=True)
+
+
+def _compte(nom, email):
+    e = db.session.scalar(select(Employe).where(Employe.nom == nom))
+    if not e.compte:
+        u = Utilisateur(email=email, role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=e.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    return e
+
+
+def test_membre_voit_ses_collegues_sans_leurs_notes(app):
+    ndjock = _compte("NDJOCK", "ndjock.v@x.cm")              # membre du département DAF
+    moukoko = db.session.scalar(select(Employe).where(Employe.nom == "MOUKOKO"))   # même département
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))   # autre département
+    c = app.test_client()
+    login(c, ndjock.compte.email)
+    liste = c.get("/personnel/").get_data(as_text=True)
+    assert "MOUKOKO" in liste and "ESSOMBA" not in liste
+    assert c.get(f"/personnel/{moukoko.id}").status_code == 200
+    assert c.get(f"/personnel/{essomba.id}").status_code == 403
+    ev = db.session.scalar(select(Evaluation).where(Evaluation.employe_id == moukoko.id))
+    assert ev is not None
+    if ev:
+        assert c.get(f"/evaluations/{ev.id}").status_code == 403          # pas les notes des collègues
+
+
+def test_chef_voit_toute_sa_branche_et_les_notes(app):
+    from app.models import Departement
+    tchoua = _compte("TCHOUA", "tchoua.v@x.cm")              # chef de la Direction technique
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))   # membre TECH, noté sur BALI
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    c.post("/parametres/departements", data={"code": "METH", "nom": "Méthodes", "parent_id": str(tech.id)})
+    meth = db.session.scalar(select(Departement).where(Departement.code == "METH"))
+    c.post("/personnel/nouveau", data={"nom": "BIYONG", "departement_id": str(meth.id)})
+    c2 = app.test_client()
+    login(c2, tchoua.compte.email)
+    liste = c2.get("/personnel/").get_data(as_text=True)
+    assert "BIYONG" in liste and "ESSOMBA" in liste                # sous-département compris
+    ev = db.session.scalar(select(Evaluation).where(Evaluation.employe_id == essomba.id,
+                                                    Evaluation.evaluateur_id != tchoua.id))
+    assert ev is not None
+    if ev:                                                         # noté par un autre N+1 sur un projet
+        assert c2.get(f"/evaluations/{ev.id}").status_code == 200
+
+
+def test_collaborateur_chef_dans_deux_entites(app):
+    from app.models import Departement
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    essomba = _compte("ESSOMBA", "essomba.v@x.cm")
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    c.post("/parametres/departements", data={"id": daf.id, "code": daf.code, "nom": daf.nom,
+                                             "responsable_id": str(essomba.id)})
+    ent = _creer_entite(c)
+    c.get(f"/entite/{ent.id}")
+    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers", "responsable_id": str(essomba.id)})
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
+    c.post("/personnel/nouveau", data={"nom": "ONANA", "departement_id": str(dep.id)})
+    c2 = app.test_client()
+    login(c2, essomba.compte.email)
+    accueil = c2.get("/").get_data(as_text=True)
+    assert "Société Test" in accueil                                   # onglet de la 2e entité
+    camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
+    assert "NDJOCK" in camp                                            # il note la DAF dans FUTURA
+    c2.get(f"/entite/{ent.id}")
+    camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
+    assert "ONANA" in camp                                             # et les Chantiers de STE
+    assert "ONANA" in c2.get("/personnel/").get_data(as_text=True)

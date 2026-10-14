@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (60 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (63 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -166,6 +166,11 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Grille KPI : bouton « Supprimer » par critère, cases à cocher + « Supprimer les critères cochés », et « Tout supprimer (grille vide) ».
 - Un critère jamais noté est effacé ; un critère déjà utilisé dans des évaluations est retiré des grilles mais reste visible dans l'historique des notes (aucune évaluation n'est modifiée). Le recréer sous le même libellé le fait revenir.
 - La grille par défaut n'est plus recréée au redémarrage une fois la grille vidée. Tant que la grille est vide, la notation est bloquée avec un message clair.
+
+## Qui voit quoi
+- **Membre d'un département** : voit la liste des employés de son (ses) département(s), sans leurs notes ; il ne voit que ses propres notes soumises.
+- **Chef de département** : voit tous les employés de son département et des sous-départements, et toutes leurs notes, même quand il n'est pas leur N+1 direct (projets compris).
+- **Multi-entités** : un collaborateur peut être membre, N+1 ou chef de département dans plusieurs entités ; il obtient l'onglet de chacune et y apparaît.
 
 ## Qui note qui
 - **Département** : le N+1 est automatiquement le **responsable du département** (pour tous ses membres). Sans responsable (ou pour le responsable lui-même), c'est le responsable du département parent qui note, puis le grand-parent, etc. ; si personne n'est trouvé jusqu'en haut, le N+1 reste vide.

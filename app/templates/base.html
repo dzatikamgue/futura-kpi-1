@@ -34,7 +34,7 @@
       <a href="{{ url_for('evaluations.campagne') }}" {% if nav == 'evaluations' %}aria-current="page"{% endif %}>{{ icon('star') }} Évaluations du mois</a>
       {% endif %}
       <a href="{{ url_for('suivi.index') }}" {% if nav == 'suivi' %}aria-current="page"{% endif %}>{{ icon('chart') }} Suivi trimestriel &amp; annuel</a>
-      <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur or per.est_responsable else "Ma fiche" }}</a>
+      <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur or per.est_responsable or per.voit_collegues else "Ma fiche" }}</a>
       {% if per.voit_tout %}
       <a href="{{ url_for('parametres.organigramme') }}" {% if nav == 'organigramme' %}aria-current="page"{% endif %}>{{ icon('building') }} Organigramme</a>
       {% endif %}

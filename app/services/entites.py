@@ -61,6 +61,10 @@ def roles_par_entite(user) -> dict[int, str]:
         for a in db.session.scalars(select(Affectation).where(
                 Affectation.evaluateur_id == emp.id, Affectation.actif.is_(True))):
             roles.setdefault(entite_affectation(a), RoleEntite.COLLABORATEUR)
+        # Membre d'un département / projet d'une autre entité : il y voit ses collègues et sa fiche
+        for a in db.session.scalars(select(Affectation).where(
+                Affectation.employe_id == emp.id, Affectation.actif.is_(True))):
+            roles.setdefault(entite_affectation(a), RoleEntite.COLLABORATEUR)
         # Responsable d'un département / projet : consultation de son périmètre
         for model in (Departement, Projet):
             for (eid,) in db.session.execute(select(model.entite_id).where(model.responsable_id == emp.id).distinct()):
