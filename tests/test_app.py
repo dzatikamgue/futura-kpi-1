@@ -1174,7 +1174,9 @@ def test_grille_kpi_par_poste(app):
     assert "propre (3 critères)" in page
     # Le critère spécifique n'entre pas dans la grille commune
     page = c.get("/parametres/criteres").get_data(as_text=True)
-    assert "Spécifique : Topographe" in page and "Grilles par poste" in page
+    assert "Précision des relevés" not in page and "Grilles par poste" in page   # grille commune seulement
+    page = c.get("/parametres/criteres?vue=tous").get_data(as_text=True)
+    assert "Spécifique : Topographe" in page
     # MANGA (Topographe) est noté avec la grille du poste
     manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
     aff = next(a for a in manga.affectations_actives if a.evaluateur_id)
@@ -1532,3 +1534,27 @@ def test_coefficients_decimaux(app):
     assert "×0,75" in c.get("/parametres/criteres").get_data(as_text=True)
     r = c.post("/parametres/criteres", data={"libelle": "Autre", "poids": "abc", "ordre": "31"})
     assert r.status_code == 200 and "Coefficient invalide" in r.get_data(as_text=True)
+
+
+
+def test_page_poste_affiche_seulement_ses_kpi(app):
+    from app.models import Critere
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    crits = db.session.scalars(select(Critere).where(Critere.actif.is_(True)).order_by(Critere.ordre)).all()
+    url = "/parametres/postes/grille?libelle=Topographe"
+    # Sans grille propre : aucun KPI coché, la bibliothèque est repliée en dessous
+    page = c.get(url).get_data(as_text=True)
+    assert "Aucun KPI propre à ce poste" in page and "Ajouter des KPI existants" in page
+    assert page.count("checked data-inclus") == 0
+    c.post(url, data={"libelle": "Topographe", "action": "enregistrer", "inclus": [str(crits[0].id)],
+                      f"poids_{crits[0].id}": "2"})
+    page = c.get(url).get_data(as_text=True)
+    principal = page[page.index("KPI du poste"):page.index("Ajouter des KPI existants")]
+    assert crits[0].libelle in principal and crits[1].libelle not in principal
+    # Partir de la grille commune
+    c.post("/parametres/postes/grille?libelle=Maçon", data={"libelle": "Maçon", "action": "copier_commune"})
+    from app.services.grilles import grille_pour
+    from app.services.entites import principale
+    lignes, propre = grille_pour(principale().id, "Maçon")
+    assert propre and len(lignes) == len(crits)

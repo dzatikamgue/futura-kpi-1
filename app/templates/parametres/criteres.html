@@ -43,6 +43,10 @@
 
 <div class="grid grid-main">
   <section class="card">
+    <div class="card__head"><div><h2>{{ "Tous les KPI de l'entité" if vue_tous else "Grille commune" }}</h2>
+      <p>{% if vue_tous %}Grille commune et KPI propres aux postes.{% else %}KPI utilisés pour les postes sans grille propre.{% if nb_specifiques %} Les {{ nb_specifiques }} KPI propres à des postes s'affichent sur la page de chaque poste.{% endif %}{% endif %}</p></div>
+      {% if nb_specifiques %}<a class="btn btn--ghost btn--sm" href="{{ url_for('parametres.criteres', vue=None if vue_tous else 'tous') }}">{{ "Grille commune seulement" if vue_tous else "Voir tous les KPI (" ~ (elements|length + nb_specifiques) ~ ")" }}</a>{% endif %}
+    </div>
     {% if elements %}
     <div class="table-wrap"><table class="table">
       <thead><tr><th class="col-case"><label class="sr-only" for="cr-tout">Tout cocher</label><input type="checkbox" id="cr-tout" class="case" data-check-all=".case-critere"></th><th class="num">Ordre</th><th>Critère</th><th class="num">Coef.</th><th class="num">Poids réel</th><th>Statut</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>

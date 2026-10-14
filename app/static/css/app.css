@@ -688,3 +688,6 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
   .org-zone { overflow: visible; border: 0; box-shadow: none; }
 }
 .input--coef { width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+.bibliotheque { border-top: 1px solid var(--line); }
+.bibliotheque > summary { cursor: pointer; padding: var(--s3) var(--s5); font-weight: 500; color: var(--brand); }
+.bibliotheque[open] > summary { border-bottom: 1px solid var(--line); }

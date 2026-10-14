@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (58 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (59 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -142,6 +142,7 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Mémorisé dans la table de réglages (clé `departements_parents`) : aucune table ni colonne ajoutée.
 
 ## Grille KPI par poste
+- La page d'un poste n'affiche que les KPI de ce poste ; les autres KPI de l'entité sont dans « Ajouter des KPI existants » (replié). « Partir de la grille commune » copie la grille commune comme point de départ. La page Grille KPI n'affiche que la grille commune (« Voir tous les KPI » pour tout afficher).
 - Administration → Postes → lien « Grille KPI » sous chaque poste (ou Grille KPI → « Définir sa grille »).
 - Cochez les critères qui s'appliquent au poste, réglez leur coefficient (poids réel affiché en direct), ou créez un critère propre au poste ; on peut aussi copier la grille d'un autre poste.
 - Un salarié est noté avec la grille de son poste ; un poste sans grille propre utilise la grille commune (page Grille KPI). Les critères créés pour un poste n'entrent pas dans la grille commune.

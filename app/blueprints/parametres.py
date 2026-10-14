@@ -367,6 +367,11 @@ def criteres():
     utilises = set(db.session.scalars(select(EvaluationNote.critere_id).distinct()))
     from ..services import grilles as G
     spe = G.specifiques(_eid())
+    # Par défaut : uniquement la grille commune ; les KPI propres à un poste sont sur la page du poste
+    vue_tous = request.args.get("vue") == "tous"
+    nb_specifiques = sum(1 for c in elements if c.id in spe)
+    if not vue_tous:
+        elements = [c for c in elements if c.id not in spe]
     coefs = {c.id: G.coefficient(c) for c in elements}
     total_poids = sum(coefs[c.id] for c in elements if c.actif and c.id not in spe)
     gr = G.grilles(_eid())
@@ -375,7 +380,8 @@ def criteres():
     return render_template("parametres/criteres.html", elements=elements, edition=edition, donnees=donnees,
                            erreurs=erreurs, utilises=utilises, total_poids=total_poids, specifiques=spe, coefs=coefs,
                            utilisations={c.id: G.postes_utilisant(_eid(), c.id) for c in elements},
-                           grilles_postes=grilles_postes, postes=postes_actifs(_eid()))
+                           grilles_postes=grilles_postes, postes=postes_actifs(_eid()),
+                           vue_tous=vue_tous, nb_specifiques=nb_specifiques)
 
 
 # --- Extraction de KPI par l'IA (document / image) --------------------------
@@ -709,6 +715,16 @@ def grille_poste():
             db.session.commit()
             flash(f"« {poste} » utilise de nouveau la grille commune.", "succes")
             return redirect(url_retour)
+        if action == "copier_commune":
+            commune = G.grille_commune(eid)
+            if not commune:
+                flash("La grille commune est vide.", "erreur")
+                return redirect(url_retour)
+            G.definir_grille(eid, poste, {x.id: x.poids for x in commune}, current_user.id)
+            journaliser("grille_poste", poste, "copiée de la grille commune")
+            db.session.commit()
+            flash(f"Grille commune copiée sur « {poste} » : ajustez-la.", "succes")
+            return redirect(url_retour)
         if action == "copier":
             source = (request.form.get("source") or "").strip()
             defn = G.grilles(eid).get(cle_texte(source))
@@ -746,8 +762,8 @@ def grille_poste():
                     db.session.add(c)
                 db.session.flush()
                 G.marquer_specifique(eid, c.id, True, current_user.id)
-                # Le poste démarre de sa grille actuelle (ou de la commune) + ce nouveau critère
-                actuelle, _ = G.grille_pour(eid, poste)
+                # Le poste garde ses KPI propres et reçoit ce nouveau critère
+                actuelle = G.grille_du_poste(eid, poste) or []
                 G.definir_grille(eid, poste, {**{x.id: x.poids for x in actuelle}, c.id: poids}, current_user.id)
                 journaliser("critere_cree", lib, f"spécifique au poste {poste}")
                 db.session.commit()
@@ -773,7 +789,7 @@ def grille_poste():
                   "succes")
             return redirect(url_retour)
     propre = G.grille_du_poste(eid, poste)
-    selection = {x.id: x.poids for x in (propre or G.grille_commune(eid))}
+    selection = {x.id: x.poids for x in (propre or [])}
     coefs = {c.id: G.coefficient(c) for c in db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, eid)))}
     spe = G.specifiques(eid)
     bibliotheque = db.session.scalars(select(Critere).where(Critere.actif.is_(True), cond_entite(Critere.entite_id, eid))
@@ -782,7 +798,10 @@ def grille_poste():
                              if k != cle_texte(poste) and v["criteres"]), key=cle_texte)
     nb_salaries = sum(1 for p_ in db.session.scalars(select(Employe.poste).where(
         Employe.actif.is_(True), Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid))) if cle_texte(p_) == cle_texte(poste))
+    kpi_poste = [c for c in bibliotheque if c.id in selection]
+    autres_kpi = [c for c in bibliotheque if c.id not in selection]
     return render_template("parametres/grille_poste.html", poste=poste, propre=propre is not None,
+                           kpi_poste=kpi_poste, autres_kpi=autres_kpi,
                            selection=selection, bibliotheque=bibliotheque, specifiques=spe, coefs=coefs,
                            utilisations={c.id: G.postes_utilisant(eid, c.id) for c in bibliotheque if c.id in spe},
                            autres_grilles=autres_grilles, nb_salaries=nb_salaries, erreurs=erreurs, donnees=donnees)
