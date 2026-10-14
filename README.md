@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (59 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (60 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -148,6 +148,10 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Un salarié est noté avec la grille de son poste ; un poste sans grille propre utilise la grille commune (page Grille KPI). Les critères créés pour un poste n'entrent pas dans la grille commune.
 - Le formulaire de notation indique la grille utilisée. Les évaluations déjà soumises gardent leurs critères et coefficients d'origine.
 - Mémorisé dans la table de réglages (clés `grilles_postes`, `criteres_specifiques`) ; les nouveaux critères vont dans la table existante des critères. Aucune table ni colonne ajoutée.
+
+## Copier postes et KPI d'une entité à une autre
+- Postes ou Grille KPI → carte « Copier depuis une autre entité » : choisir l'entité source et cocher Postes / Grille commune / Grilles KPI des postes.
+- Seul ce qui manque est ajouté (postes et KPI rapprochés par libellé, coefficients conservés). Une grille de poste déjà définie est gardée, sauf si « Remplacer » est coché. Aucune fiche ni évaluation n'est modifiée.
 
 ## Coefficients des critères
 - Coefficient libre de 0,01 à 100, décimales possibles (1,5 · 2,25), virgule ou point (grille commune, grille d'un poste, import IA) ; des pourcentages (30, 25…) conviennent aussi. Le poids réel (%) est affiché.

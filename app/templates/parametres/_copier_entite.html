@@ -1,0 +1,21 @@
+{# Carte « Copier depuis une autre entité ». Variables : autres_entites, coche_postes, coche_kpi #}
+{% if autres_entites %}
+<section class="card" id="copier-entite">
+  <div class="card__head"><div><h2>Copier depuis une autre entité</h2>
+    <p>Ajoute ici les postes et / ou les grilles KPI d'une autre entité. Ce qui existe déjà est conservé et réutilisé.</p></div></div>
+  <form class="card__body stack" method="post" action="{{ url_for('parametres.copier_entite') }}" style="gap:10px"
+        data-confirm="Copier les éléments cochés dans {{ entite.nom if entite else 'cette entité' }} ?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="retour" value="{{ request.full_path }}">
+    <div class="field" style="margin:0"><label for="cp-source">Entité source</label>
+      <select class="select" id="cp-source" name="source_id" required>
+        {% for x in autres_entites %}<option value="{{ x.id }}">{{ x.nom }}</option>{% endfor %}
+      </select></div>
+    <label class="row small" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" name="postes" value="1" {% if coche_postes %}checked{% endif %}> Postes</label>
+    <label class="row small" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" name="commune" value="1" {% if coche_kpi %}checked{% endif %}> Grille commune (KPI)</label>
+    <label class="row small" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" name="grilles_postes" value="1" {% if coche_kpi %}checked{% endif %}> Grilles KPI des postes (crée les postes manquants)</label>
+    <label class="row small muted" style="gap:8px;flex-wrap:nowrap;padding-left:24px"><input type="checkbox" name="ecraser" value="1"> Remplacer les grilles de poste déjà définies ici</label>
+    <div class="form-actions"><button class="btn btn--secondary" type="submit">Copier</button></div>
+  </form>
+</section>
+{% endif %}

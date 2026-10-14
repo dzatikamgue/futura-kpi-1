@@ -63,6 +63,7 @@
     {% endif %}
   </section>
 
+  <div class="stack-lg">
   <section class="card" id="formulaire">
     <div class="card__head"><h2>{{ "Renommer « " ~ edition ~ " »" if edition else "Nouveau poste" }}</h2>
       {% if edition %}<a class="btn btn--ghost btn--sm" href="{{ request.path }}">Annuler</a>{% endif %}</div>
@@ -90,5 +91,7 @@
       <div class="form-actions"><button class="btn btn--secondary" type="submit">{{ icon('upload') }} Importer</button></div>
     </form>
   </section>
+  {% with coche_postes=true, coche_kpi=false %}{% include "parametres/_copier_entite.html" %}{% endwith %}
+  </div>
 </div>
 {% endblock %}

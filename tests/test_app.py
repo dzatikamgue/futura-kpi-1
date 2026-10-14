@@ -1558,3 +1558,41 @@ def test_page_poste_affiche_seulement_ses_kpi(app):
     from app.services.entites import principale
     lignes, propre = grille_pour(principale().id, "Maçon")
     assert propre and len(lignes) == len(crits)
+
+
+def test_copier_postes_et_kpi_vers_une_autre_entite(app):
+    from app.models import Critere
+    from app.services.grilles import grille_pour, specifiques
+    from app.services.organisation import postes_actifs
+    from app.services.entites import principale
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    fut = principale().id
+    # Dans FUTURA : grille propre au poste Topographe avec un KPI spécifique décimal
+    crits = db.session.scalars(select(Critere).where(Critere.actif.is_(True)).order_by(Critere.ordre)).all()
+    url = "/parametres/postes/grille?libelle=Topographe"
+    c.post(url, data={"libelle": "Topographe", "action": "enregistrer", "inclus": [str(crits[0].id)],
+                      f"poids_{crits[0].id}": "2,5"})
+    c.post(url, data={"libelle": "Topographe", "action": "ajouter_critere", "libelle_critere": "Précision des relevés",
+                      "poids": "3"})
+    ent = _creer_entite(c)            # STE démarre avec la grille par défaut
+    c.get(f"/entite/{ent.id}")
+    page = c.get("/parametres/postes").get_data(as_text=True)
+    assert "Copier depuis une autre entité" in page
+    r = c.post("/parametres/copier-entite", data={"source_id": fut, "postes": "1", "commune": "1",
+                                                   "grilles_postes": "1", "retour": "/parametres/postes"})
+    assert r.status_code == 302
+    assert "Topographe" in postes_actifs(ent.id)
+    lignes, propre = grille_pour(ent.id, "Topographe")
+    assert propre and sorted((x.libelle, x.poids) for x in lignes) == sorted(
+        [(crits[0].libelle, 2.5), ("Précision des relevés", 3)])
+    spe = db.session.scalar(select(Critere).where(Critere.entite_id == ent.id, Critere.libelle == "Précision des relevés"))
+    assert spe and spe.id in specifiques(ent.id)
+    # Les critères de STE restent ceux de STE (pas de partage de lignes entre entités)
+    assert all(x.critere.entite_id == ent.id for x in lignes)
+    # Recopier sans « remplacer » : la grille déjà définie est conservée
+    r = c.post("/parametres/copier-entite", data={"source_id": fut, "grilles_postes": "1", "retour": "/parametres/postes"})
+    assert "conservée" in c.get("/parametres/postes").get_data(as_text=True)
+    # Pas de copie vers soi-même
+    r = c.post("/parametres/copier-entite", data={"source_id": ent.id, "postes": "1", "retour": "/parametres/postes"})
+    assert "Choisissez" in c.get("/parametres/postes").get_data(as_text=True)

@@ -44,6 +44,12 @@ def _employes_actifs():
     return sorted(tous, key=lambda e: id_effectif(e.entite_id) != eid)
 
 
+def _autres_entites():
+    from ..models import Entite
+    return db.session.scalars(select(Entite).where(Entite.actif.is_(True), Entite.id != _eid())
+                              .order_by(Entite.principale.desc(), Entite.nom)).all()
+
+
 # --- Départements & projets -------------------------------------------------
 def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
     erreurs, donnees = {}, {}
@@ -381,7 +387,7 @@ def criteres():
                            erreurs=erreurs, utilises=utilises, total_poids=total_poids, specifiques=spe, coefs=coefs,
                            utilisations={c.id: G.postes_utilisant(_eid(), c.id) for c in elements},
                            grilles_postes=grilles_postes, postes=postes_actifs(_eid()),
-                           vue_tous=vue_tous, nb_specifiques=nb_specifiques)
+                           vue_tous=vue_tous, nb_specifiques=nb_specifiques, autres_entites=_autres_entites())
 
 
 # --- Extraction de KPI par l'IA (document / image) --------------------------
@@ -672,7 +678,7 @@ def postes():
                [{"libelle": x, "actif": False, "effectif": effectifs.get(x, 0), "groupe": False,
                  "fiches": fiches.get(cle_texte(x), 0)} for x in archives]
     return render_template("parametres/postes.html", elements=elements, edition=edition,
-                           donnees=donnees, erreurs=erreurs, actifs=actifs)
+                           donnees=donnees, erreurs=erreurs, actifs=actifs, autres_entites=_autres_entites())
 
 
 def _supprimer_poste(eid: int, lib: str, remplacement: str) -> int:
@@ -805,6 +811,42 @@ def grille_poste():
                            selection=selection, bibliotheque=bibliotheque, specifiques=spe, coefs=coefs,
                            utilisations={c.id: G.postes_utilisant(eid, c.id) for c in bibliotheque if c.id in spe},
                            autres_grilles=autres_grilles, nb_salaries=nb_salaries, erreurs=erreurs, donnees=donnees)
+
+
+@bp.post("/copier-entite")
+@login_required
+@rh_requis
+def copier_entite():
+    """Copie les postes et / ou les grilles KPI d'une autre entité vers l'entité active."""
+    from ..models import Entite
+    from ..services.copie_entites import copier
+    eid = _eid()
+    source = db.session.get(Entite, request.form.get("source_id", type=int) or -1)
+    retour = request.form.get("retour") or url_for("parametres.postes")
+    if not retour.startswith("/"):
+        retour = url_for("parametres.postes")
+    if source is None or not source.actif or source.id == eid:
+        flash("Choisissez l'entité à copier.", "erreur")
+        return redirect(retour)
+    choix = {k: request.form.get(k) == "1" for k in ("postes", "commune", "grilles_postes", "ecraser")}
+    if not (choix["postes"] or choix["commune"] or choix["grilles_postes"]):
+        flash("Cochez ce qu'il faut copier.", "erreur")
+        return redirect(retour)
+    bilan = copier(source.id, eid, utilisateur_id=current_user.id, **choix)
+    journaliser("copie_entite", source.nom, str(bilan))
+    db.session.commit()
+    morceaux = []
+    if choix["postes"]:
+        morceaux.append(f"{bilan['postes']} poste(s) ajouté(s)")
+    if choix["commune"]:
+        morceaux.append(f"grille commune : {bilan['commune']} KPI")
+    if choix["grilles_postes"]:
+        morceaux.append(f"{bilan['grilles']} grille(s) de poste copiée(s)")
+    msg = f"Copié depuis {source.nom} : " + ", ".join(morceaux) + f" ({bilan['criteres']} nouveau(x) KPI)."
+    if bilan["grilles_ignorees"]:
+        msg += f" {bilan['grilles_ignorees']} grille(s) déjà définie(s) ici conservée(s)."
+    flash(msg, "succes")
+    return redirect(retour)
 
 
 @bp.post("/postes/importer")
