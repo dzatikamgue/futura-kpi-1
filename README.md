@@ -19,7 +19,7 @@ Application RH de FUTURA : chaque N+1 note ses N-1 chaque mois (critères de 0 �
 | **Sécurité** | Mots de passe hachés (jamais relisibles), attribués par le superadmin uniquement et non modifiables par les utilisateurs ; bouton pour afficher le mot de passe saisi ; CSRF, blocage après 5 échecs, en-têtes CSP/HSTS, journal des actions. |
 | **Terrain** | Responsive (téléphone de chantier) ; la saisie est sauvegardée sur l'appareil en cas de coupure réseau ; polices et graphiques servis localement (aucun CDN). |
 
-**Barème** (note globale et critères, sur 100) : Excellent ≥ 80 · Très bien ≥ 70 · Bien ≥ 60 · Passable ≥ 50 · Insuffisant < 50. Un critère noté sous 40 doit être justifié par un commentaire.
+**Barème** (note globale et critères, sur 100) : Excellent ≥ 90 · Très bien ≥ 70 · Bien ≥ 60 · Passable ≥ 50 · Insuffisant < 50. Un critère noté sous 40 doit être justifié par un commentaire.
 
 **Calendrier** : le mois en cours est ouvert à la saisie, ainsi que le mois précédent jusqu'au 10 (`SAISIE_JOUR_LIMITE`). Au-delà, seule la RH peut rouvrir une évaluation, avec un motif journalisé.
 
@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (55 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (56 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 

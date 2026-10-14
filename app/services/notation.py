@@ -12,11 +12,11 @@ MOIS_COURTS = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.",
                "Août", "Sept.", "Oct.", "Nov.", "Déc."]
 
 NOTE_MIN, NOTE_MAX = 0, 100
-SEUIL_JUSTIFICATION = 40  # une note de critère < 40 doit être commentée
+SEUIL_JUSTIFICATION = 60  # une note de critère < 60 doit être commentée
 
 # Seuils sur 100 → (code, libellé) ; utilisés pour les critères ET la note globale
 NIVEAUX = [
-    (80, "excellent", "Excellent"),
+    (90, "excellent", "Excellent"),
     (70, "tres-bien", "Très bien"),
     (60, "bien", "Bien"),
     (50, "passable", "Passable"),
@@ -25,7 +25,7 @@ NIVEAUX = [
 
 # Légende affichée aux évaluateurs (borne basse, libellé, description)
 ECHELLE = [
-    (80, "Excellent", "Performance exceptionnelle, exemplaire"),
+    (90, "Excellent", "Performance exceptionnelle, exemplaire"),
     (70, "Très bien", "Dépasse régulièrement les attentes"),
     (60, "Bien", "Répond pleinement aux attentes du poste"),
     (50, "Passable", "Partiellement conforme, progrès attendus"),

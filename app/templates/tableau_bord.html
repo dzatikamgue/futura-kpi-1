@@ -69,7 +69,7 @@
       {% set total_rep = repartition.values()|sum %}
       {% if total_rep %}
       <div class="bars">
-        {% for code, lib in [("excellent","Excellent ≥80"),("tres-bien","Très bien ≥70"),("bien","Bien ≥60"),("passable","Passable ≥50"),("insuffisant","Insuffisant <50")] %}
+        {% for code, lib in [("excellent","Excellent ≥90"),("tres-bien","Très bien ≥70"),("bien","Bien ≥60"),("passable","Passable ≥50"),("insuffisant","Insuffisant <50")] %}
         <div class="bars__row">
           <span>{{ lib }}</span>
           <div class="bars__track"><div class="bars__fill fill--{{ code }}" style="width:{{ (100 * repartition[code] / total_rep)|round(1) }}%"></div></div>

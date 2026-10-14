@@ -12,7 +12,7 @@
   // Seuils sur 100 (identiques à app/services/notation.py)
   function niveau(n) {
     if (n == null || isNaN(n)) return ["aucun", "—"];
-    return n >= 80 ? ["excellent", "Excellent"] : n >= 70 ? ["tres-bien", "Très bien"]
+    return n >= 90 ? ["excellent", "Excellent"] : n >= 70 ? ["tres-bien", "Très bien"]
       : n >= 60 ? ["bien", "Bien"] : n >= 50 ? ["passable", "Passable"] : ["insuffisant", "Insuffisant"];
   }
 
@@ -258,7 +258,7 @@
 
   function initEvaluation(form) {
     var cle = form.getAttribute("data-autosave-key");
-    var seuil = parseInt(form.getAttribute("data-seuil") || "40", 10);
+    var seuil = parseInt(form.getAttribute("data-seuil") || "60", 10);
     var serveurTs = parseInt(form.getAttribute("data-server-ts") || "0", 10);
     var etat = $("[data-save-state]");
     var sale = false, envoi = false;

@@ -63,7 +63,8 @@ def test_calcul_note_globale():
     assert calculer_note_globale([(40, 3), (80, 1)]) == 50.0  # (120+80)/4
     assert calculer_note_globale([(0, 2)]) == 0.0
     assert calculer_note_globale([]) is None
-    assert niveau(80)[0] == "excellent" and niveau(49.99)[0] == "insuffisant" and niveau(0)[0] == "insuffisant"
+    assert niveau(90)[0] == "excellent" and niveau(89.99)[0] == "tres-bien"
+    assert niveau(49.99)[0] == "insuffisant" and niveau(0)[0] == "insuffisant"
 
 
 # ---------------------------------------------------------------- pages
@@ -1189,6 +1190,7 @@ def test_grille_kpi_par_poste(app):
     assert "Poste : Topographe" in page and "Précision des relevés" in page
     assert criteres[2].libelle not in page
     form = {"action": "soumettre", f"note_{criteres[0].id}": "100", f"note_{criteres[1].id}": "50",
+            f"commentaire_{criteres[1].id}": "Doit progresser",
             f"note_{spe.id}": "80"}
     r = c2.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
     assert r.status_code == 302
@@ -1437,3 +1439,28 @@ def test_extraction_kpi_par_ia(app, monkeypatch):
     assert db.session.scalar(select(db.func.count(Critere.id)).where(Critere.libelle == "Respect des délais")) == 1
     commune, _ = grille_pour(eid, "Maçon")
     assert "Précision des relevés" not in {x.libelle for x in commune}
+
+
+
+def test_commentaire_obligatoire_sous_60(app):
+    from app.models import Critere
+    from app.services.notation import periode_courante
+    an, mo = periode_courante()
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
+    aff = next(a for a in manga.affectations_actives if a.evaluateur_id)
+    n1 = aff.evaluateur
+    if not n1.compte:
+        u = Utilisateur(email="n1.seuil@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=n1.id)
+        u.set_password(MDP)
+        db.session.add(u)
+        db.session.commit()
+    c = app.test_client()
+    login(c, n1.compte.email)
+    crits = db.session.scalars(select(Critere).where(Critere.actif.is_(True))).all()
+    form = {"action": "soumettre", **{f"note_{x.id}": "80" for x in crits}}
+    form[f"note_{crits[0].id}"] = "59"
+    r = c.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
+    assert r.status_code == 200 and "Justifiez une note inférieure à 60" in r.get_data(as_text=True)
+    form[f"commentaire_{crits[0].id}"] = "Retards répétés"
+    r = c.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
+    assert r.status_code == 302
