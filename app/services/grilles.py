@@ -85,7 +85,7 @@ def _criteres_actifs(entite_id: int) -> list[Critere]:
 
 def grille_commune(entite_id: int) -> list[CritereGrille]:
     spe = specifiques(entite_id)
-    return [CritereGrille(c, c.poids) for c in _criteres_actifs(entite_id) if c.id not in spe]
+    return [CritereGrille(c, coefficient(c)) for c in _criteres_actifs(entite_id) if c.id not in spe]
 
 
 def grille_du_poste(entite_id: int, poste: str | None) -> list[CritereGrille] | None:
@@ -221,3 +221,34 @@ def sans_defaut(entite_id: int | None) -> bool:
     except ValueError:
         cles = set()
     return ("principale" if entite_id is None else str(entite_id)) in cles
+
+
+# --- Coefficients libres (1 à 100) ------------------------------------------------
+# La table des critères limite le poids à 1–5 ; pour permettre des coefficients libres
+# (ex. pourcentages 30, 25, 20…), le coefficient réel est mémorisé dans Parametre
+# (clé « coefficients », {critere_id: coefficient}). Les grilles de poste stockent déjà le leur.
+CLE_COEFFS = "coefficients"
+COEF_MIN, COEF_MAX = 1, 100
+
+
+def lire_coefficient(valeur, defaut: int = 1) -> int | None:
+    """Coefficient saisi → entier 1–100, ou None si invalide."""
+    try:
+        n = int(str(valeur).strip() or defaut)
+    except (TypeError, ValueError):
+        return None
+    return n if COEF_MIN <= n <= COEF_MAX else None
+
+
+def coefficient(c: Critere) -> int:
+    return int(_lire(CLE_COEFFS).get(str(c.id), c.poids))
+
+
+def definir_coefficient(c: Critere, n: int, utilisateur_id: int | None) -> None:
+    c.poids = min(max(n, 1), 5)          # valeur compatible avec la contrainte de la table
+    tout = dict(_lire(CLE_COEFFS))
+    if n == c.poids:
+        tout.pop(str(c.id), None)
+    else:
+        tout[str(c.id)] = n
+    _ecrire(CLE_COEFFS, tout, utilisateur_id)

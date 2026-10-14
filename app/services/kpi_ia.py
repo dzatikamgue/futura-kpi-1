@@ -23,8 +23,8 @@ OUTIL_KPI = {
                         "libelle": {"type": "string", "description": "Intitulé court du critère (moins de 120 caractères)"},
                         "description": {"type": "string",
                                         "description": "Ce qui est évalué, indicateurs, objectifs chiffrés (moins de 400 caractères)"},
-                        "poids": {"type": "integer", "minimum": 1, "maximum": 5,
-                                  "description": "Coefficient 1 à 5 selon l'importance relative (pondération du document ramenée sur 1–5)"},
+                        "poids": {"type": "integer", "minimum": 1, "maximum": 100,
+                                  "description": "Coefficient : la pondération du document telle quelle (ex. 30 pour 30 %), sinon 1 à 5 selon l'importance"},
                         "ponderation_document": {"type": "string",
                                                  "description": "Pondération telle qu'écrite dans le document (ex. « 20 % »), sinon vide"},
                         "poste": {"type": "string",
@@ -47,8 +47,8 @@ CONSIGNE_KPI = (
     "enregistrer_kpi. Règles :\n"
     "- Un critère = une compétence ou un résultat évaluable chaque mois (ex. « Respect des délais »).\n"
     "- Libellé court et clair en français ; mets les détails, indicateurs et objectifs chiffrés dans la description.\n"
-    "- Pondération : si le document donne des pourcentages ou des points, convertis-les en coefficient 1 à 5 "
-    "proportionnel (le plus important = 5) et recopie la pondération d'origine ; sinon 1 par défaut, "
+    "- Pondération : si le document donne des pourcentages ou des points, utilise-les tels quels comme "
+    "coefficient (30 % → 30) et recopie la pondération d'origine ; sinon 1 par défaut, "
     "3 pour un critère présenté comme essentiel.\n"
     "- Si le document attribue des KPI à des postes / fonctions précis, indique le poste pour chacun ; "
     "un même KPI valable pour plusieurs postes peut être répété avec chaque poste.\n"
@@ -67,7 +67,7 @@ def extraire_kpi(nom_fichier: str, type_mime: str, contenu: bytes | None, texte:
         if not lib:
             continue
         try:
-            poids = max(1, min(5, int(k.get("poids") or 1)))
+            poids = max(1, min(100, int(k.get("poids") or 1)))
         except (TypeError, ValueError):
             poids = 1
         kpis.append({"libelle": lib, "description": " ".join(str(k.get("description") or "").split())[:400],

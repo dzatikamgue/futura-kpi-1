@@ -39,9 +39,7 @@
           </div>
         </td>
         <td class="num"><label class="sr-only" for="k{{ i }}p">Coefficient</label>
-          <select class="select select--sm" id="k{{ i }}p" name="k{{ i }}_poids" style="width:auto">
-            {% for v in range(1, 6) %}<option value="{{ v }}" {% if k.poids == v %}selected{% endif %}>×{{ v }}</option>{% endfor %}
-          </select></td>
+          <input class="input input--sm input--coef" type="number" min="1" max="100" step="1" id="k{{ i }}p" name="k{{ i }}_poids" value="{{ k.poids }}"></td>
         <td><label class="sr-only" for="k{{ i }}g">Grille</label>
           <select class="select select--sm" id="k{{ i }}g" name="k{{ i }}_destination" data-destination style="max-width:260px">
             <option value="" {% if not k.destination %}selected{% endif %}>Grille commune</option>

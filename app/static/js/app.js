@@ -555,6 +555,7 @@
       $("[data-nb-criteres]", grille).textContent = nb;
     }
     grille.addEventListener("change", majGrille);
+    grille.addEventListener("input", majGrille);
     // Les coefficients des lignes décochées ne sont pas envoyés : réactivés juste avant l'envoi
     $("form", grille).addEventListener("submit", function () { $$("[data-poids]", grille).forEach(function (s) { s.disabled = false; }); });
     majGrille();

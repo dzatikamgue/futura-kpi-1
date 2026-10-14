@@ -55,8 +55,8 @@
             {% if c.id in specifiques %} <span class="badge badge--info" title="Hors grille commune">Spécifique{% if utilisations.get(c.id) %} : {{ utilisations[c.id]|join(", ") }}{% endif %}</span>
             {% elif utilisations.get(c.id) %} <span class="small muted">· aussi dans : {{ utilisations[c.id]|join(", ") }}</span>{% endif %}
             <div class="small muted">{{ c.description or "" }}</div></td>
-          <td class="num">×{{ c.poids }}</td>
-          <td class="num">{% if c.actif and total_poids and c.id not in specifiques %}{{ (100 * c.poids / total_poids)|round(0)|int }} %{% else %}—{% endif %}</td>
+          <td class="num">×{{ coefs[c.id] }}</td>
+          <td class="num">{% if c.actif and total_poids and c.id not in specifiques %}{{ (100 * coefs[c.id] / total_poids)|round(0)|int }} %{% else %}—{% endif %}</td>
           <td>{% if c.actif %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge badge--plain">Inactif</span>{% endif %}</td>
           <td class="actions">
             <a class="btn btn--ghost btn--sm" href="?modifier={{ c.id }}">Modifier</a>
@@ -98,7 +98,7 @@
       <div class="field"><label for="f-desc">Description (aide pour l'évaluateur)</label>
         <textarea class="textarea" id="f-desc" name="description" maxlength="400" rows="3">{{ donnees.get('description', '') }}</textarea></div>
       <div class="grid grid-2" style="gap:12px">
-        {{ champ("poids", "Coefficient (1–5)", donnees.get('poids', '1'), erreurs, "number", True, attrs='min="1" max="5" step="1"') }}
+        {{ champ("poids", "Coefficient (1–100)", donnees.get('poids', '1'), erreurs, "number", True, aide="Libre : 1 à 5, ou directement un pourcentage (ex. 30).", attrs='min="1" max="100" step="1"') }}
         {{ champ("ordre", "Ordre d'affichage", donnees.get('ordre', (elements|length + 1)|string), erreurs, "number", attrs='min="0" step="1"') }}
       </div>
       <div class="form-actions" style="padding-top:8px"><button class="btn btn--primary" type="submit">Enregistrer</button></div>

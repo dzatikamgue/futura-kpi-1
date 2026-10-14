@@ -1464,3 +1464,28 @@ def test_commentaire_obligatoire_sous_60(app):
     form[f"commentaire_{crits[0].id}"] = "Retards répétés"
     r = c.post(f"/evaluations/noter/{aff.id}?annee={an}&mois={mo}", data=form)
     assert r.status_code == 302
+
+
+def test_coefficients_libres(app):
+    from app.models import Critere
+    from app.services.grilles import grille_pour
+    from app.services.entites import principale
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    eid = principale().id
+    # Grille commune : coefficient 30 (pourcentage)
+    r = c.post("/parametres/criteres", data={"libelle": "Rendement", "poids": "30", "ordre": "20"})
+    assert r.status_code == 302
+    crit = db.session.scalar(select(Critere).where(Critere.libelle == "Rendement"))
+    lignes, _ = grille_pour(eid, "Maçon")
+    assert next(x.poids for x in lignes if x.id == crit.id) == 30
+    assert "×30" in c.get("/parametres/criteres").get_data(as_text=True)
+    # Hors limites refusé
+    r = c.post("/parametres/criteres", data={"libelle": "Autre", "poids": "150", "ordre": "21"})
+    assert r.status_code == 200 and "1 à 100" in r.get_data(as_text=True)
+    # Grille d'un poste : coefficients libres
+    url = "/parametres/postes/grille?libelle=Topographe"
+    c.post(url, data={"libelle": "Topographe", "action": "enregistrer", "inclus": [str(crit.id)],
+                      f"poids_{crit.id}": "45"})
+    lignes, propre = grille_pour(eid, "Topographe")
+    assert propre and lignes[0].poids == 45

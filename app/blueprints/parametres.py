@@ -273,6 +273,11 @@ def projets():
 
 
 # --- Grille KPI --------------------------------------------------------------
+def __coef(c):
+    from ..services.grilles import coefficient
+    return coefficient(c)
+
+
 @bp.route("/criteres", methods=["GET", "POST"])
 @login_required
 @rh_requis
@@ -321,12 +326,10 @@ def criteres():
             c = homonyme
         elif homonyme:
             erreurs["libelle"] = "Ce critère existe déjà."
-        try:
-            poids = int(donnees["poids"] or 1)
-            if not 1 <= poids <= 5:
-                raise ValueError
-        except ValueError:
-            erreurs["poids"] = "Le poids doit être un entier de 1 à 5."
+        from ..services.grilles import definir_coefficient, lire_coefficient
+        poids = lire_coefficient(donnees["poids"])
+        if poids is None:
+            erreurs["poids"] = "Le coefficient doit être un entier de 1 à 100."
             poids = 1
         try:
             ordre = int(donnees["ordre"] or 0)
@@ -336,9 +339,11 @@ def criteres():
         if not erreurs:
             nouveau = c is None
             c = c or Critere(entite_id=_eid())
-            c.libelle, c.description, c.poids, c.ordre = donnees["libelle"], donnees["description"] or None, poids, ordre
+            c.libelle, c.description, c.ordre = donnees["libelle"], donnees["description"] or None, ordre
             if nouveau:
                 db.session.add(c)
+            db.session.flush()
+            definir_coefficient(c, poids, current_user.id)
             journaliser("critere_" + ("cree" if nouveau else "modifie"), c.libelle, f"poids={poids}")
             db.session.commit()
             flash("Critère enregistré. Le nouveau poids s'applique aux évaluations à venir.", "succes")
@@ -347,7 +352,7 @@ def criteres():
     elif request.args.get("modifier", type=int):
         edition = _dans_entite(db.session.get(Critere, request.args.get("modifier", type=int)) or abort(404))
         donnees = {"libelle": edition.libelle, "description": edition.description or "",
-                   "poids": str(edition.poids), "ordre": str(edition.ordre)}
+                   "poids": str(__coef(edition)), "ordre": str(edition.ordre)}
     from ..services.grilles import masques as _masques
     caches = _masques(_eid())
     elements = [x for x in db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, _eid()))
@@ -356,12 +361,13 @@ def criteres():
     utilises = set(db.session.scalars(select(EvaluationNote.critere_id).distinct()))
     from ..services import grilles as G
     spe = G.specifiques(_eid())
-    total_poids = sum(c.poids for c in elements if c.actif and c.id not in spe)
+    coefs = {c.id: G.coefficient(c) for c in elements}
+    total_poids = sum(coefs[c.id] for c in elements if c.actif and c.id not in spe)
     gr = G.grilles(_eid())
     grilles_postes = sorted(((v["libelle"], len(v["criteres"])) for v in gr.values() if v["criteres"]),
                             key=lambda x: cle_texte(x[0]))
     return render_template("parametres/criteres.html", elements=elements, edition=edition, donnees=donnees,
-                           erreurs=erreurs, utilises=utilises, total_poids=total_poids, specifiques=spe,
+                           erreurs=erreurs, utilises=utilises, total_poids=total_poids, specifiques=spe, coefs=coefs,
                            utilisations={c.id: G.postes_utilisant(_eid(), c.id) for c in elements},
                            grilles_postes=grilles_postes, postes=postes_actifs(_eid()))
 
@@ -446,10 +452,7 @@ def verifier_kpi(brouillon_id):
             if not lib:
                 continue
             desc = " ".join((request.form.get(f"k{i}_description") or "").split())[:400] or None
-            try:
-                poids = max(1, min(5, int(request.form.get(f"k{i}_poids") or 1)))
-            except ValueError:
-                poids = 1
+            poids = G.lire_coefficient(request.form.get(f"k{i}_poids")) or 1
             dest = request.form.get(f"k{i}_destination") or ""
             poste = None
             if dest.startswith("poste:"):
@@ -461,22 +464,25 @@ def verifier_kpi(brouillon_id):
             c = existants.get(cle_texte(lib))
             if c is None:
                 ordre += 1
-                c = Critere(entite_id=eid, libelle=lib, description=desc, poids=poids, ordre=ordre)
+                c = Critere(entite_id=eid, libelle=lib, description=desc, poids=min(poids, 5), ordre=ordre)
                 db.session.add(c)
                 db.session.flush()
+                G.definir_coefficient(c, poids, current_user.id)
                 existants[cle_texte(lib)] = c
                 crees += 1
                 if poste:
                     G.marquer_specifique(eid, c.id, True, current_user.id)
             elif c.id in caches:           # critère supprimé auparavant : il revient
                 G.reprendre_masque(eid, c, current_user.id)
-                c.description, c.poids = desc, poids
+                c.description = desc
+                G.definir_coefficient(c, poids, current_user.id)
                 if poste:
                     G.marquer_specifique(eid, c.id, True, current_user.id)
                 repris += 1
             elif not poste:
                 c.actif = True
                 G.marquer_specifique(eid, c.id, False, current_user.id)   # entre dans la grille commune
+                G.definir_coefficient(c, poids, current_user.id)
             if poste:
                 if poste not in grilles_maj:
                     actuelle = G.grilles(eid).get(cle_texte(poste))
@@ -717,12 +723,9 @@ def grille_poste():
                 erreurs["libelle_critere"] = "Le libellé est obligatoire."
             elif homonyme and homonyme.id not in G.masques(eid):
                 erreurs["libelle_critere"] = "Ce critère existe déjà dans la bibliothèque : cochez-le dans la liste."
-            try:
-                poids = int(donnees["poids"] or 1)
-                if not 1 <= poids <= 5:
-                    raise ValueError
-            except ValueError:
-                erreurs["poids"] = "Coefficient de 1 à 5."
+            poids = G.lire_coefficient(donnees["poids"])
+            if poids is None:
+                erreurs["poids"] = "Coefficient : entier de 1 à 100."
                 poids = 1
             if not erreurs:
                 ordre = (db.session.scalar(select(func.max(Critere.ordre)).where(
@@ -730,10 +733,10 @@ def grille_poste():
                 if homonyme:            # recréé après suppression : même ligne, historique intact
                     G.reprendre_masque(eid, homonyme, current_user.id)
                     c = homonyme
-                    c.description, c.poids, c.ordre = donnees["description"][:400] or None, poids, ordre
+                    c.description, c.poids, c.ordre = donnees["description"][:400] or None, min(poids, 5), ordre
                 else:
                     c = Critere(entite_id=eid, libelle=lib, description=donnees["description"][:400] or None,
-                                poids=poids, ordre=ordre)
+                                poids=min(poids, 5), ordre=ordre)
                     db.session.add(c)
                 db.session.flush()
                 G.marquer_specifique(eid, c.id, True, current_user.id)
@@ -749,10 +752,7 @@ def grille_poste():
             for cid in request.form.getlist("inclus"):
                 if not cid.isdigit():
                     continue
-                try:
-                    p_ = max(1, min(5, int(request.form.get(f"poids_{cid}") or 1)))
-                except ValueError:
-                    p_ = 1
+                p_ = G.lire_coefficient(request.form.get(f"poids_{cid}")) or 1
                 choix[int(cid)] = p_
             valides = {c.id for c in db.session.scalars(select(Critere).where(
                 Critere.id.in_(choix or {-1}), Critere.actif.is_(True), cond_entite(Critere.entite_id, eid)))}
@@ -768,6 +768,7 @@ def grille_poste():
             return redirect(url_retour)
     propre = G.grille_du_poste(eid, poste)
     selection = {x.id: x.poids for x in (propre or G.grille_commune(eid))}
+    coefs = {c.id: G.coefficient(c) for c in db.session.scalars(select(Critere).where(cond_entite(Critere.entite_id, eid)))}
     spe = G.specifiques(eid)
     bibliotheque = db.session.scalars(select(Critere).where(Critere.actif.is_(True), cond_entite(Critere.entite_id, eid))
                                       .order_by(Critere.ordre, Critere.id)).all()
@@ -776,7 +777,7 @@ def grille_poste():
     nb_salaries = sum(1 for p_ in db.session.scalars(select(Employe.poste).where(
         Employe.actif.is_(True), Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid))) if cle_texte(p_) == cle_texte(poste))
     return render_template("parametres/grille_poste.html", poste=poste, propre=propre is not None,
-                           selection=selection, bibliotheque=bibliotheque, specifiques=spe,
+                           selection=selection, bibliotheque=bibliotheque, specifiques=spe, coefs=coefs,
                            utilisations={c.id: G.postes_utilisant(eid, c.id) for c in bibliotheque if c.id in spe},
                            autres_grilles=autres_grilles, nb_salaries=nb_salaries, erreurs=erreurs, donnees=donnees)
 

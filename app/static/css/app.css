@@ -687,3 +687,4 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
   .sidebar, .topbar, .no-print, .breadcrumb { display: none !important; }
   .org-zone { overflow: visible; border: 0; box-shadow: none; }
 }
+.input--coef { width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
