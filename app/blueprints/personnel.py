@@ -403,6 +403,38 @@ def entites_salarie(employe_id):
     return retour
 
 
+@bp.route("/<int:employe_id>/entites/<int:entite_id>/retirer", methods=["GET", "POST"])
+@login_required
+@rh_requis
+def retirer_entite(employe_id, entite_id):
+    """Supprimer le rattachement du salarié à une autre entité (confirmation, puis retrait)."""
+    from ..models import Entite
+    from ..services.multi_entites import entites_du_salarie, impacts_retrait, retirer_de_entite
+    e = db.session.get(Employe, employe_id) or abort(404)
+    ent = db.session.get(Entite, entite_id) or abort(404)
+    retour = redirect(url_for("personnel.fiche", employe_id=e.id) + "#entites")
+    if id_effectif(e.entite_id) == ent.id:
+        flash("C'est l'entité d'origine du salarié : elle ne peut pas être retirée. "
+              "Pour qu'il quitte l'entreprise, archivez sa fiche.", "erreur")
+        return retour
+    if ent.id not in entites_du_salarie(e):
+        flash(f"{e.nom_complet} n'est pas rattaché à {ent.nom}.", "info")
+        return retour
+    if request.method == "GET":
+        return render_template("personnel/retirer_entite.html", e=e, ent=ent, imp=impacts_retrait(e, ent.id))
+    imp = retirer_de_entite(e, ent.id, current_user.id)
+    details = [a.contexte_libelle for a in imp["affectations"]]
+    roles = [f"chef de {x.nom}" for x in imp["departements"] + imp["projets"]]
+    journaliser("retrait_entite", e.nom_complet,
+                f"{ent.nom} : {', '.join(details) or '—'}" + (f" ; rôles retirés : {', '.join(roles)}" if roles else ""))
+    db.session.commit()
+    msg = f"{e.nom_complet} ne fait plus partie de {ent.nom}. L'historique de ses notes est conservé."
+    if roles or imp["n1_projets"]:
+        msg += f" Rôles retirés : {len(roles)} responsabilité(s), {len(imp['n1_projets'])} N+1 sur projet à redésigner."
+    flash(msg, "succes")
+    return retour
+
+
 @bp.post("/<int:employe_id>/affectations")
 @login_required
 @rh_requis

@@ -59,6 +59,45 @@ def definir_poste(employe_id: int, entite_id: int, poste: str | None, utilisateu
     g._postes_entites = carte
 
 
+def impacts_retrait(employe, entite_id: int) -> dict:
+    """Ce que retire le détachement du salarié d'une entité (autre que son entité d'origine)."""
+    from sqlalchemy import select
+    from ..models import Affectation, Departement, Projet
+    from .entites import cond_entite, entite_affectation
+    affs = [a for a in employe.affectations if a.actif and entite_affectation(a) == entite_id]
+    deps = db.session.scalars(select(Departement).where(
+        Departement.responsable_id == employe.id, cond_entite(Departement.entite_id, entite_id))).all()
+    projs = db.session.scalars(select(Projet).where(
+        Projet.responsable_id == employe.id, cond_entite(Projet.entite_id, entite_id))).all()
+    notes = [a for a in db.session.scalars(select(Affectation).where(
+        Affectation.actif.is_(True), Affectation.evaluateur_id == employe.id,
+        Affectation.projet_id.isnot(None))) if entite_affectation(a) == entite_id]
+    return {"affectations": affs, "departements": deps, "projets": projs, "n1_projets": notes}
+
+
+def retirer_de_entite(employe, entite_id: int, utilisateur_id: int | None) -> dict:
+    """Détache le salarié d'une autre entité.
+
+    Ses affectations dans l'entité sont clôturées (rien n'est supprimé : l'historique des notes
+    reste consultable), son poste propre à l'entité est oublié, et il perd ses rôles dans
+    l'entité (chef de département / de projet, N+1 désigné sur un projet). Les N+1 des
+    départements sont ensuite recalculés (le chef du département parent prend le relais).
+    """
+    from .organisation import synchroniser_n1_departements
+    imp = impacts_retrait(employe, entite_id)
+    for a in imp["affectations"]:
+        a.actif = False
+    for x in imp["departements"] + imp["projets"]:
+        x.responsable_id = None
+    for a in imp["n1_projets"]:
+        a.evaluateur_id = None
+    if poste_propre(employe.id, entite_id):
+        definir_poste(employe.id, entite_id, None, utilisateur_id)
+    db.session.flush()
+    synchroniser_n1_departements()
+    return imp
+
+
 def entites_du_salarie(employe) -> list[int]:
     """Entités où le salarié travaille : son entité d'origine + celles de ses affectations actives."""
     from .entites import entite_affectation

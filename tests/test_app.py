@@ -1398,6 +1398,29 @@ def test_rattacher_a_une_autre_entite_avec_poste_et_notation(app):
     liste = c.get("/personnel/").get_data(as_text=True)
     assert "Conducteur de travaux" in liste[liste.index("<strong>ESSOMBA"):][:2500]
 
+    # Suppression du rattachement à STE : confirmation, puis retrait
+    from app.services.multi_entites import entites_du_salarie, poste_propre
+    assert f"/personnel/{essomba.id}/entites/{ent.id}/retirer" in c.get(f"/personnel/{essomba.id}").get_data(as_text=True)
+    assert c.get(f"/personnel/{essomba.id}/entites/{principale}/retirer").status_code == 302   # origine : refusé
+    conf = c.get(f"/personnel/{essomba.id}/entites/{ent.id}/retirer").get_data(as_text=True)
+    assert "Chef du département Chantiers" in conf and "Chantiers" in conf
+    assert c.post(f"/personnel/{essomba.id}/entites/{ent.id}/retirer").status_code == 302
+    db.session.expire_all()
+    from app.models import Affectation
+    from flask import g
+    for k in ("_postes_entites",):
+        g.pop(k, None)
+    assert entites_du_salarie(essomba) == [principale]
+    assert poste_propre(essomba.id, ent.id) is None
+    dep = db.session.get(Departement, dep.id)
+    assert dep.responsable_id is None
+    onana = db.session.get(Employe, onana.id)
+    assert onana.affectations[0].evaluateur_id is None                # plus de chef : N+1 vide
+    assert db.session.scalar(select(db.func.count(Affectation.id)).where(Affectation.employe_id == essomba.id,
+                                                                         Affectation.departement_id == dep.id)) == 1  # historique conservé
+    c.get(f"/entite/{ent.id}")
+    assert "<strong>ESSOMBA" not in c.get("/personnel/").get_data(as_text=True)
+
 
 def test_extraction_kpi_par_ia(app, monkeypatch):
     import io as _io

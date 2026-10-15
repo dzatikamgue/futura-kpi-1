@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "personnel" %}
+{% block title %}Retirer de {{ ent.nom }}{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a class="crumb-mid" href="{{ url_for('personnel.liste') }}">Personnel</a><span class="sep crumb-mid">/</span><a class="crumb-mid" href="{{ url_for('personnel.fiche', employe_id=e.id) }}#entites">{{ e.nom_complet }}</a><span class="sep">/</span><span aria-current="page">Retirer de {{ ent.nom }}</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Retirer {{ e.nom_complet }} de {{ ent.nom }}</h1>
+  <p>Le salarié n'apparaîtra plus dans le personnel de {{ ent.nom }}. Sa fiche et son entité d'origine ne changent pas ; les notes déjà données restent dans l'historique.</p>
+</div></div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card__head"><h2>Ce qui sera retiré dans {{ ent.nom }}</h2></div>
+    <div class="card__body stack">
+      <div><strong>Affectations clôturées ({{ imp.affectations|length }})</strong>
+        <div style="margin-top:6px">{% for a in imp.affectations %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="muted small">Aucune</span>{% endfor %}</div></div>
+      {% if imp.departements or imp.projets %}
+      <div><strong>Responsabilités retirées ({{ (imp.departements + imp.projets)|length }})</strong>
+        <div style="margin-top:6px">{% for x in imp.departements %}<span class="badge badge--warn" style="margin:2px 4px 2px 0">Chef du département {{ x.nom }}</span>{% endfor %}
+          {% for x in imp.projets %}<span class="badge badge--warn" style="margin:2px 4px 2px 0">Chef du projet {{ x.nom }}</span>{% endfor %}</div>
+        <p class="hint" style="margin-top:6px">Les membres de ces départements seront notés par le chef du département parent, s'il y en a un. Vous pourrez désigner un nouveau chef dans Administration.</p></div>
+      {% endif %}
+      {% if imp.n1_projets %}
+      <div><strong>N+1 sur projet à redésigner ({{ imp.n1_projets|length }})</strong>
+        <div style="margin-top:6px">{% for a in imp.n1_projets %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.employe.nom_complet }} — {{ a.contexte_libelle }}</span>{% endfor %}</div></div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card carte-danger">
+    <div class="card__head"><h2>Confirmer le retrait</h2></div>
+    <form method="post" class="card__body stack" data-confirm="Retirer {{ e.nom_complet }} de {{ ent.nom }} ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <p class="small">Vous pourrez le rattacher de nouveau plus tard depuis sa fiche.</p>
+      <div class="form-actions">
+        <a class="btn btn--ghost" href="{{ url_for('personnel.fiche', employe_id=e.id) }}#entites">Annuler</a>
+        <button class="btn btn--danger" type="submit">{{ icon('alert') }} Retirer de {{ ent.nom }}</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

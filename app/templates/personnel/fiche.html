@@ -103,7 +103,7 @@
   <div class="card__head"><div><h2>Entités</h2>
     <p>{% if entites_salarie|length > 1 %}Ce salarié travaille pour {{ entites_salarie|length }} entités : il apparaît dans le personnel de chacune, avec le poste indiqué.{% else %}Ce salarié travaille pour une seule entité.{% endif %}</p></div></div>
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Entité</th><th>Poste dans l'entité</th><th>Rattachements</th></tr></thead>
+    <thead><tr><th>Entité</th><th>Poste dans l'entité</th><th>Rattachements</th>{% if current_user.est_rh %}<th class="actions"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>
     {% for l in entites_salarie %}
       <tr>
@@ -119,6 +119,7 @@
             </select>
           </form>{% endif %}</td>
         <td class="small">{% for a in l.affectations %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+        {% if current_user.est_rh %}<td class="actions">{% if not l.origine %}<a class="btn btn--ghost btn--sm" style="color:var(--danger)" href="{{ url_for('personnel.retirer_entite', employe_id=e.id, entite_id=l.entite.id) }}">Retirer</a>{% endif %}</td>{% endif %}
       </tr>
     {% endfor %}
     </tbody>
