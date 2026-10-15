@@ -80,7 +80,8 @@
             {% if not e.actif %}<span class="badge badge--danger">Inactif</span>{% endif %}</td>
         <td class="hide-mobile ink-2">{{ e.affectations_actives|map(attribute='evaluateur')|select|map(attribute='nom_complet')|unique|join(', ') or "—" }}</td>
         <td class="hide-mobile">{{ e.date_embauche|date_fr }}</td>
-        <td class="actions"><a class="btn btn--secondary btn--sm" href="{{ url_for('personnel.fiche', employe_id=e.id) }}">Fiche</a></td>
+        <td class="actions nowrap"><a class="btn btn--secondary btn--sm" href="{{ url_for('personnel.fiche', employe_id=e.id) }}">Fiche</a>
+          {% if rh and ailleurs and e.id not in ids_groupe %}<a class="btn btn--ghost btn--sm" style="color:var(--danger)" href="{{ url_for('personnel.retirer_entite', employe_id=e.id, entite_id=entite.id) }}" title="Supprimer son rattachement à {{ entite.nom }}">Retirer</a>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

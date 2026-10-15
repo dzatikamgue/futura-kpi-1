@@ -340,15 +340,22 @@ def _donnees_entites(e, per):
                        "poste_propre": poste_propre(e.id, eid),
                        "affectations": [a for a in e.affectations if a.actif and entite_affectation(a) == eid
                                         and (per.voit_tout or per.voit_affectation(a) or a.employe_id == per.employe_id)],
-                       "postes": postes_actifs(eid) if per.user.est_rh and i else []})
+                       "postes": postes_actifs(eid) if per.user.est_rh and i else [],
+                       "chefs": [x.nom for m in (Departement, Projet) for x in db.session.scalars(
+                           select(m).where(m.responsable_id == e.id, m.actif.is_(True),
+                                           cond_entite(m.entite_id, eid)))]})
         if i and not per.voit_tout and not lignes[-1]["affectations"]:
             lignes.pop()          # hors périmètre : on n'affiche pas cette entité
+    # On peut rattacher (poste + affectation) à toute entité où il n'a pas encore d'affectation,
+    # y compris une entité où il est seulement chef de département / projet.
+    from ..services.entites import entite_affectation as _ea
+    avec_aff = {id_effectif(e.entite_id)} | {_ea(a) for a in e.affectations if a.actif}
     cible = request.args.get("entite", type=int) if per.user.est_rh else None
     rattacher = None
-    if cible and cible in entites and cible not in ids:
+    if cible and cible in entites and cible not in avec_aff:
         deps, projs = _contextes(cible)
         rattacher = {"entite": entites[cible], "postes": postes_actifs(cible), "departements": deps, "projets": projs}
-    autres = [x for k, x in sorted(entites.items(), key=lambda kv: kv[1].nom) if k not in ids]
+    autres = [x for k, x in sorted(entites.items(), key=lambda kv: kv[1].nom) if k not in avec_aff]
     return {"entites_salarie": lignes, "entites_disponibles": autres, "rattacher": rattacher}
 
 

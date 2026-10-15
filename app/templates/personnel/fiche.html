@@ -118,7 +118,9 @@
               {% for p in l.postes %}<option {% if l.poste_propre == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
             </select>
           </form>{% endif %}</td>
-        <td class="small">{% for a in l.affectations %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+        <td class="small">{% for a in l.affectations %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.contexte_libelle }}</span>{% endfor %}
+          {% for c in l.chefs %}<span class="badge badge--warn" style="margin:2px 4px 2px 0">Chef : {{ c }}</span>{% endfor %}
+          {% if not l.affectations and not l.chefs %}<span class="muted">—</span>{% endif %}</td>
         {% if current_user.est_rh %}<td class="actions">{% if not l.origine %}<a class="btn btn--ghost btn--sm" style="color:var(--danger)" href="{{ url_for('personnel.retirer_entite', employe_id=e.id, entite_id=l.entite.id) }}">Retirer</a>{% endif %}</td>{% endif %}
       </tr>
     {% endfor %}

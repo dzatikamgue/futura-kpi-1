@@ -99,12 +99,17 @@ def retirer_de_entite(employe, entite_id: int, utilisateur_id: int | None) -> di
 
 
 def entites_du_salarie(employe) -> list[int]:
-    """Entités où le salarié travaille : son entité d'origine + celles de ses affectations actives."""
+    """Entités où le salarié travaille : son entité d'origine, celles de ses affectations actives
+    et celles où il est chef d'un département ou d'un projet actif."""
+    from sqlalchemy import select
+    from ..models import Departement, Projet
     from .entites import entite_affectation
     ids = [id_effectif(employe.entite_id)]
-    for a in employe.affectations:
-        if a.actif:
-            eid = entite_affectation(a)
-            if eid not in ids:
-                ids.append(eid)
+    autres = [entite_affectation(a) for a in employe.affectations if a.actif]
+    for modele in (Departement, Projet):
+        autres += [id_effectif(x) for x in db.session.scalars(select(modele.entite_id).where(
+            modele.responsable_id == employe.id, modele.actif.is_(True)))]
+    for eid in autres:
+        if eid not in ids:
+            ids.append(eid)
     return ids

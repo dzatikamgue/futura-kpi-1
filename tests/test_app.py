@@ -1380,6 +1380,11 @@ def test_rattacher_a_une_autre_entite_avec_poste_et_notation(app):
     c.post("/personnel/nouveau", data={"nom": "ONANA", "departement_id": str(dep.id)})
     onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))
     assert onana.affectations[0].evaluateur_id == essomba.id          # il note dans STE
+    # Chef seulement (sans affectation) : STE apparaît sur sa fiche, avec le bouton Retirer
+    fiche = c.get(f"/personnel/{essomba.id}").get_data(as_text=True)
+    assert "Chef : Chantiers" in fiche and f"/personnel/{essomba.id}/entites/{ent.id}/retirer" in fiche
+    liste = c.get("/personnel/").get_data(as_text=True)                 # entité active : STE
+    assert f"/personnel/{essomba.id}/entites/{ent.id}/retirer" in liste
     # Rattachement de ESSOMBA à STE avec un poste propre
     fiche = c.get(f"/personnel/{essomba.id}?entite={ent.id}").get_data(as_text=True)
     assert "Rattacher à Société Test" in fiche
