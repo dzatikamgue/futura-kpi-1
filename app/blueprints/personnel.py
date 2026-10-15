@@ -315,6 +315,16 @@ def fiche(employe_id):
     annuel = moyenne(mensuel.values())
 
     affs_visibles = [a for a in e.affectations if per.voit_tout or per.voit_affectation(a) or a.employe_id == per.employe_id]
+    # Département d'une autre entité : la RH choisit le N+1 (personnel de l'entité ou groupe)
+    from ..services.entites import entite_affectation
+    from ..services.organisation import evaluateurs_entite, hors_entite_origine, n1_designes
+    n1_libre, evaluateurs_par_entite = {}, {}
+    for a in affs_visibles:
+        if a.actif and a.departement_id and hors_entite_origine(a):
+            eid = entite_affectation(a)
+            n1_libre[a.id] = eid
+            if per.user.est_rh and eid not in evaluateurs_par_entite:
+                evaluateurs_par_entite[eid] = evaluateurs_entite(eid, e.id)
     return render_template(
         "personnel/fiche.html", e=e, annee=annee, annees=annees or [annee], evals=evals,
         serie=[mensuel.get(m) for m in range(1, 13)], mois_courts=MOIS_COURTS,
@@ -322,6 +332,7 @@ def fiche(employe_id):
         affectations=affs_visibles,
         contextes=contextes_groupe() if per.user.est_rh else [],
         groupes_evaluateurs=evaluateurs_groupe(e.id) if per.user.est_rh else [],
+        n1_libre=n1_libre, evaluateurs_par_entite=evaluateurs_par_entite, n1_designes=n1_designes(),
         **_donnees_entites(e, per))
 
 
@@ -354,7 +365,9 @@ def _donnees_entites(e, per):
     rattacher = None
     if cible and cible in entites and cible not in avec_aff:
         deps, projs = _contextes(cible)
-        rattacher = {"entite": entites[cible], "postes": postes_actifs(cible), "departements": deps, "projets": projs}
+        from ..services.organisation import evaluateurs_entite
+        rattacher = {"entite": entites[cible], "postes": postes_actifs(cible), "departements": deps, "projets": projs,
+                     "evaluateurs": evaluateurs_entite(cible, e.id)}
     autres = [x for k, x in sorted(entites.items(), key=lambda kv: kv[1].nom) if k not in avec_aff]
     return {"entites_salarie": lignes, "entites_disponibles": autres, "rattacher": rattacher}
 
@@ -394,11 +407,15 @@ def entites_salarie(employe_id):
               "erreur")
         return redirect(url_for("personnel.fiche", employe_id=e.id, entite=ent.id) + "#entites")
     n1 = request.form.get("evaluateur_id", type=int)
-    if proj and n1 == e.id:
+    if n1 == e.id:
         n1 = None
     libelles = []
     if dep:
-        libelles.append(affecter(e, departement=dep).contexte_libelle)
+        from ..services.organisation import designer_n1
+        a_dep = affecter(e, departement=dep)
+        if n1:
+            designer_n1(a_dep, n1, current_user.id)
+        libelles.append(a_dep.contexte_libelle)
     if proj:
         libelles.append(affecter(e, projet=proj, evaluateur_id=n1).contexte_libelle)
     definir_poste(e.id, ent.id, poste or None, current_user.id)
@@ -437,7 +454,7 @@ def retirer_entite(employe_id, entite_id):
     db.session.commit()
     msg = f"{e.nom_complet} ne fait plus partie de {ent.nom}. L'historique de ses notes est conservé."
     if roles or imp["n1_projets"]:
-        msg += f" Rôles retirés : {len(roles)} responsabilité(s), {len(imp['n1_projets'])} N+1 sur projet à redésigner."
+        msg += f" Rôles retirés : {len(roles)} responsabilité(s), {len(imp['n1_projets'])} N+1 désignés à remplacer."
     flash(msg, "succes")
     return retour
 
@@ -495,8 +512,20 @@ def maj_affectation(affectation_id):
         journaliser("affectation_retiree", a.employe.nom_complet, a.contexte_libelle)
         flash("Affectation clôturée. L'historique des notes est conservé.", "succes")
     elif action == "evaluateur" and a.departement_id:
-        flash("Dans un département, le N+1 est automatiquement le responsable du département. "
-              "Changez le responsable dans Administration → Départements.", "info")
+        from ..services.organisation import designer_n1, hors_entite_origine
+        nouvel = request.form.get("evaluateur_id", type=int)
+        if not hors_entite_origine(a):
+            flash("Dans un département de son entité d'origine, le N+1 est automatiquement le responsable "
+                  "du département. Changez le responsable dans Administration → Départements.", "info")
+        elif nouvel == a.employe_id:
+            flash("Un salarié ne peut pas être son propre N+1.", "erreur")
+        else:
+            designer_n1(a, nouvel, current_user.id)
+            journaliser("affectation_n1_modifie", a.employe.nom_complet, a.contexte_libelle)
+            synchroniser_comptes([a.evaluateur_id])
+            n1_obj = db.session.get(Employe, a.evaluateur_id) if a.evaluateur_id else None
+            flash(f"N+1 mis à jour : {n1_obj.nom_complet if n1_obj else 'aucun'}"
+                  + ("" if nouvel else " (responsable du département, automatique)") + ".", "succes")
     elif action == "evaluateur":
         nouvel = request.form.get("evaluateur_id", type=int)
         if nouvel == a.employe_id:

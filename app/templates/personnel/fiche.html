@@ -147,10 +147,13 @@
         <div class="field" style="margin:0"><label for="r-proj">Projet</label>
           <select class="select select--sm" id="r-proj" name="projet_id"><option value="">—</option>
             {% for p in rattacher.projets %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}</select></div>
-        <div class="field" style="margin:0"><label for="r-n1">N+1 sur le projet</label>
-          <select class="select select--sm" id="r-n1" name="evaluateur_id">{% with choisi=None, exclure=e.id %}{% include "personnel/_options_n1.html" %}{% endwith %}</select></div>
+        <div class="field" style="margin:0"><label for="r-n1">N+1 (évaluateur) dans {{ rattacher.entite.nom }}</label>
+          <select class="select select--sm" id="r-n1" name="evaluateur_id">
+            <option value="">Responsable du département (automatique)</option>
+            {% for ent, membres in rattacher.evaluateurs %}<optgroup label="{{ ent.nom }}">{% for x in membres %}<option value="{{ x.id }}">{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}</optgroup>{% endfor %}
+          </select></div>
       </div>
-      <p class="small muted" style="margin:0">Dans un département, le N+1 est le responsable du département. Pour qu'il note dans {{ rattacher.entite.nom }}, nommez-le responsable d'un département de cette entité.</p>
+      <p class="small muted" style="margin:0">Le N+1 peut être n'importe qui de {{ rattacher.entite.nom }} ou du personnel groupe. Laissé sur « automatique » : le responsable du département note (pour un projet, choisissez un N+1).</p>
       <div class="row" style="gap:8px"><a class="btn btn--ghost btn--sm" href="{{ url_for('personnel.fiche', employe_id=e.id) }}#entites">Annuler</a>
         <button class="btn btn--primary btn--sm" type="submit">Rattacher</button></div>
     </form>
@@ -166,7 +169,7 @@
 </section>
 
 <section class="card" style="margin-bottom:16px">
-  <div class="card__head"><div><h2>Affectations</h2><p>Département : noté par le responsable du département. Projet : noté par le N+1 désigné par la RH.</p></div></div>
+  <div class="card__head"><div><h2>Affectations</h2><p>Département de l'entité d'origine : noté par le responsable du département. Département d'une autre entité et projet : N+1 désigné par la RH.</p></div></div>
   {% if affectations %}
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Contexte</th><th>N+1 (évaluateur)</th><th>Statut</th>{% if current_user.est_rh %}<th class="actions"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
@@ -177,7 +180,19 @@
         {% set non_notee = a.actif and not a.projet_id and projet_actif %}
         {% set ctx_ent = (a.departement or a.projet).entite if (a.departement or a.projet) else none %}
         <td><strong>{{ a.contexte_libelle }}</strong>{% if ctx_ent and (ctx_ent.id != e.entite_id) and not (ctx_ent.principale and e.entite_id is none) %} <span class="badge badge--groupe">{{ ctx_ent.nom }}</span>{% endif %}{% if non_notee %}<br><span class="small muted">Non notée : le salarié est noté dans son projet ({{ projet_actif.contexte_libelle }}).</span>{% endif %}</td>
-        <td>{% if a.departement_id %}{% if a.evaluateur %}{{ a.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Aucun responsable</span>{% endif %}
+        <td>{% if a.departement_id and a.id in n1_libre %}
+          {% if current_user.est_rh %}
+          <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="evaluateur">
+            <label class="sr-only" for="n1-{{ a.id }}">N+1</label>
+            <select class="select select--sm" id="n1-{{ a.id }}" name="evaluateur_id" data-autosubmit style="max-width:260px">
+              <option value="">Automatique : responsable du département{{ " (" ~ a.evaluateur.nom_complet ~ ")" if a.evaluateur and a.id not in n1_designes }}</option>
+              {% for ent, membres in evaluateurs_par_entite.get(n1_libre[a.id], []) %}<optgroup label="{{ ent.nom }}">{% for x in membres %}<option value="{{ x.id }}" {% if a.id in n1_designes and x.id == a.evaluateur_id %}selected{% endif %}>{{ x.nom_complet }}{{ " — " ~ x.poste if x.poste }}</option>{% endfor %}</optgroup>{% endfor %}
+            </select>
+          </form>
+          {% else %}{{ a.evaluateur.nom_complet if a.evaluateur else "—" }}{% endif %}
+          <div class="small muted">{{ "Désigné par la RH (autre entité)" if a.id in n1_designes else ("Responsable du département (automatique)" if a.evaluateur else "Aucun N+1 : choisissez-en un") }}</div>
+          {% elif a.departement_id %}{% if a.evaluateur %}{{ a.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Aucun responsable</span>{% endif %}
           <div class="small muted">{{ "Responsable du département" if a.evaluateur and a.departement.responsable_id == a.evaluateur_id else ("Responsable d'un département parent" if a.evaluateur else "Aucun responsable dans ce département ni au-dessus") }}</div>
           {% elif current_user.est_rh and a.actif %}
           <form method="post" action="{{ url_for('personnel.maj_affectation', affectation_id=a.id) }}" class="row">

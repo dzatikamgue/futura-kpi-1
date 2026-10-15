@@ -22,7 +22,7 @@
         <p class="hint" style="margin-top:6px">Les membres de ces départements seront notés par le chef du département parent, s'il y en a un. Vous pourrez désigner un nouveau chef dans Administration.</p></div>
       {% endif %}
       {% if imp.n1_projets %}
-      <div><strong>N+1 sur projet à redésigner ({{ imp.n1_projets|length }})</strong>
+      <div><strong>N+1 désignés à remplacer ({{ imp.n1_projets|length }})</strong>
         <div style="margin-top:6px">{% for a in imp.n1_projets %}<span class="badge badge--plain" style="margin:2px 4px 2px 0">{{ a.employe.nom_complet }} — {{ a.contexte_libelle }}</span>{% endfor %}</div></div>
       {% endif %}
     </div>

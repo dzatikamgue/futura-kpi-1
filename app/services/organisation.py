@@ -150,14 +150,92 @@ def n1_departement(departement: Departement | None, employe_id: int) -> int | No
     return None
 
 
+# ---------------------------------------------------------------------------
+# N+1 désigné par la RH pour une affectation « département » dans une AUTRE entité
+# que l'entité d'origine du salarié (n'importe qui de l'entité, ou du personnel groupe).
+# Sans désignation : le responsable du département (règle automatique).
+# Mémorisé dans la table de réglages existante : clé « n1_designes », JSON [affectation_id, ...]
+# (le N+1 lui-même reste dans Affectation.evaluateur_id).
+# ---------------------------------------------------------------------------
+CLE_N1_DESIGNES = "n1_designes"
+
+
+def n1_designes() -> set[int]:
+    import json
+    from ..models import Parametre
+    p = db.session.get(Parametre, CLE_N1_DESIGNES)
+    try:
+        return {int(i) for i in (json.loads(p.valeur) if p else [])}
+    except (ValueError, TypeError):
+        return set()
+
+
+def _ecrire_n1_designes(ids: set[int], utilisateur_id: int | None) -> None:
+    import json
+    from ..models import Parametre
+    valeur = json.dumps(sorted(ids))
+    p = db.session.get(Parametre, CLE_N1_DESIGNES)
+    if p:
+        p.valeur, p.updated_by_id = valeur, utilisateur_id
+    else:
+        db.session.add(Parametre(cle=CLE_N1_DESIGNES, valeur=valeur, updated_by_id=utilisateur_id))
+
+
+def hors_entite_origine(a: Affectation) -> bool:
+    """L'affectation est dans une autre entité que l'entité d'origine du salarié."""
+    from .entites import entite_affectation
+    return entite_affectation(a) != id_effectif(a.employe.entite_id)
+
+
+def designer_n1(a: Affectation, evaluateur_id: int | None, utilisateur_id: int | None) -> None:
+    """Département d'une autre entité : N+1 choisi par la RH (None = retour au responsable)."""
+    ids = n1_designes()
+    if evaluateur_id and evaluateur_id != a.employe_id:
+        a.evaluateur_id = evaluateur_id
+        ids.add(a.id)
+    else:
+        ids.discard(a.id)
+        a.evaluateur_id = n1_departement(a.departement, a.employe_id)
+    _ecrire_n1_designes(ids, utilisateur_id)
+
+
+def evaluateurs_entite(entite_id: int, exclure_id: int | None = None):
+    """N+1 possibles dans une entité : son personnel (y compris multi-entités), puis le personnel groupe.
+
+    Même forme que evaluateurs_groupe() : [(objet avec .nom, [Employe])].
+    """
+    from types import SimpleNamespace
+    from .entites import cond_entite, ids_employes_affectes
+    from .transverses import ids_personnel_groupe
+    ent = db.session.get(Entite, entite_id)
+    from sqlalchemy import or_
+    q = (select(Employe).where(Employe.actif.is_(True),
+                               or_(cond_entite(Employe.entite_id, entite_id), Employe.id.in_(ids_employes_affectes(entite_id))))
+         .order_by(Employe.nom, Employe.prenom))
+    membres = [x for x in db.session.scalars(q) if x.id != exclure_id]
+    vus = {x.id for x in membres}
+    groupe_ids = ids_personnel_groupe() - vus - {exclure_id}
+    groupe = db.session.scalars(select(Employe).where(Employe.id.in_(groupe_ids))
+                                .order_by(Employe.nom, Employe.prenom)).all() if groupe_ids else []
+    res = [(SimpleNamespace(nom=ent.nom if ent else "Entité"), membres)] if membres else []
+    if groupe:
+        res.append((SimpleNamespace(nom="Personnel groupe (direction, RH)"), groupe))
+    return res
+
+
 def synchroniser_n1_departements() -> set[int]:
     """Aligne le N+1 de toutes les affectations « département » actives sur le responsable.
 
+    Les N+1 désignés par la RH (département d'une autre entité) sont conservés.
     Idempotent. Renvoie les identifiants des responsables concernés (pour leurs comptes).
     """
     responsables = set()
+    designes = n1_designes()
     for a in db.session.scalars(select(Affectation).where(Affectation.actif.is_(True),
                                                           Affectation.departement_id.isnot(None))):
+        if a.id in designes and a.evaluateur_id:
+            responsables.add(a.evaluateur_id)
+            continue
         attendu = n1_departement(a.departement, a.employe_id)
         if a.evaluateur_id != attendu:
             a.evaluateur_id = attendu
@@ -179,7 +257,9 @@ def affecter(e: Employe, departement: Departement | None = None, projet: Projet 
     if evaluateur_id == e.id:
         evaluateur_id = None
     a = db.session.scalar(select(Affectation).where(Affectation.employe_id == e.id, col == ctx.id))
-    if a:
+    if a and departement is not None and a.id in n1_designes() and a.evaluateur_id:
+        a.actif = True                     # N+1 désigné par la RH : conservé
+    elif a:
         a.actif = True
         if evaluateur_id or departement is not None:
             a.evaluateur_id = evaluateur_id

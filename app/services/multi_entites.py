@@ -69,9 +69,12 @@ def impacts_retrait(employe, entite_id: int) -> dict:
         Departement.responsable_id == employe.id, cond_entite(Departement.entite_id, entite_id))).all()
     projs = db.session.scalars(select(Projet).where(
         Projet.responsable_id == employe.id, cond_entite(Projet.entite_id, entite_id))).all()
+    from .organisation import n1_designes
+    designes = n1_designes()
+    # N+1 choisis par la RH dans l'entité : projets, et départements « autre entité » désignés
     notes = [a for a in db.session.scalars(select(Affectation).where(
-        Affectation.actif.is_(True), Affectation.evaluateur_id == employe.id,
-        Affectation.projet_id.isnot(None))) if entite_affectation(a) == entite_id]
+        Affectation.actif.is_(True), Affectation.evaluateur_id == employe.id))
+        if (a.projet_id or a.id in designes) and entite_affectation(a) == entite_id]
     return {"affectations": affs, "departements": deps, "projets": projs, "n1_projets": notes}
 
 
@@ -83,14 +86,18 @@ def retirer_de_entite(employe, entite_id: int, utilisateur_id: int | None) -> di
     l'entité (chef de département / de projet, N+1 désigné sur un projet). Les N+1 des
     départements sont ensuite recalculés (le chef du département parent prend le relais).
     """
-    from .organisation import synchroniser_n1_departements
+    from .organisation import designer_n1, synchroniser_n1_departements
     imp = impacts_retrait(employe, entite_id)
     for a in imp["affectations"]:
         a.actif = False
     for x in imp["departements"] + imp["projets"]:
         x.responsable_id = None
+    db.session.flush()
     for a in imp["n1_projets"]:
-        a.evaluateur_id = None
+        if a.departement_id:
+            designer_n1(a, None, utilisateur_id)      # retour au responsable du département
+        else:
+            a.evaluateur_id = None
     if poste_propre(employe.id, entite_id):
         definir_poste(employe.id, entite_id, None, utilisateur_id)
     db.session.flush()

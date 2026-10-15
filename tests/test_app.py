@@ -1746,3 +1746,43 @@ def test_clic_departement_liste_toute_la_branche(app):
     page = c.get(f"/personnel/equipe/departement/{compta.id}").get_data(as_text=True)
     membres = page[:page.index("Ajouter des salariés")]
     assert "ABEGA" in membres and "BELINGA" in membres and "NDJOCK" not in membres
+
+
+def test_n1_designe_dans_une_autre_entite(app):
+    """Département d'une autre entité : la RH choisit le N+1 (personnel de l'entité ou groupe)."""
+    from flask import g
+    from app.models import Affectation, Departement
+    from app.services.organisation import n1_designes, synchroniser_n1_departements
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ent = _creer_entite(c)
+    c.get(f"/entite/{ent.id}")
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))
+    c.post("/parametres/departements", data={"code": "CHT", "nom": "Chantiers", "responsable_id": str(essomba.id)})
+    dep = db.session.scalar(select(Departement).where(Departement.entite_id == ent.id))
+    c.post("/personnel/nouveau", data={"nom": "ONANA", "departement_id": str(dep.id)})
+    onana = db.session.scalar(select(Employe).where(Employe.nom == "ONANA"))     # personnel de STE
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))     # FUTURA
+    # Le formulaire de rattachement propose le personnel de STE (ONANA) comme N+1
+    fiche = c.get(f"/personnel/{manga.id}?entite={ent.id}").get_data(as_text=True)
+    assert "N+1 (évaluateur) dans Société Test" in fiche and f'value="{onana.id}"' in fiche
+    r = c.post(f"/personnel/{manga.id}/entites", data={"entite_id": ent.id, "action": "rattacher",
+                                                      "departement_id": str(dep.id), "evaluateur_id": str(onana.id)})
+    assert r.status_code == 302
+    a = db.session.scalar(select(Affectation).where(Affectation.employe_id == manga.id, Affectation.departement_id == dep.id))
+    assert a.evaluateur_id == onana.id and a.id in n1_designes()          # pas le chef ESSOMBA
+    # Conservé par la resynchronisation automatique des N+1
+    synchroniser_n1_departements()
+    db.session.commit()
+    assert db.session.get(Affectation, a.id).evaluateur_id == onana.id
+    fiche = c.get(f"/personnel/{manga.id}").get_data(as_text=True)
+    assert "Désigné par la RH (autre entité)" in fiche
+    # Retour à l'automatique : le responsable du département
+    c.post(f"/personnel/affectations/{a.id}", data={"action": "evaluateur", "evaluateur_id": ""})
+    db.session.expire_all()
+    assert db.session.get(Affectation, a.id).evaluateur_id == essomba.id and a.id not in n1_designes()
+    # Dans l'entité d'origine, le N+1 d'un département reste le responsable (non modifiable)
+    a_orig = db.session.scalar(select(Affectation).where(Affectation.employe_id == onana.id))   # ONANA : origine STE
+    c.post(f"/personnel/affectations/{a_orig.id}", data={"action": "evaluateur", "evaluateur_id": str(manga.id)})
+    db.session.expire_all()
+    assert db.session.get(Affectation, a_orig.id).evaluateur_id == essomba.id
