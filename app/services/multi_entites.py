@@ -71,7 +71,7 @@ def impacts_retrait(employe, entite_id: int) -> dict:
         Projet.responsable_id == employe.id, cond_entite(Projet.entite_id, entite_id))).all()
     from .organisation import n1_designes
     designes = n1_designes()
-    # N+1 choisis par la RH dans l'entité : projets, et départements « autre entité » désignés
+    # N+1 choisis par la RH dans l'entité : projets, et départements où il a été désigné
     notes = [a for a in db.session.scalars(select(Affectation).where(
         Affectation.actif.is_(True), Affectation.evaluateur_id == employe.id))
         if (a.projet_id or a.id in designes) and entite_affectation(a) == entite_id]

@@ -1325,10 +1325,14 @@ def test_responsable_de_departement_note_ses_membres(app):
     membres = db.session.scalars(select(Affectation).where(Affectation.departement_id == daf.id,
                                                            Affectation.actif.is_(True))).all()
     assert membres and all(a.evaluateur_id == fotso.id for a in membres if a.employe_id != fotso.id)
-    # Le N+1 d'une affectation département ne se modifie pas à la main
+    # La RH peut confier la notation à quelqu'un d'autre que le chef de département
     a = next(x for x in membres if x.employe_id != fotso.id)
     tchoua = db.session.scalar(select(Employe.id).where(Employe.nom == "TCHOUA"))
     c.post(f"/personnel/affectations/{a.id}", data={"action": "evaluateur", "evaluateur_id": str(tchoua)})
+    db.session.refresh(a)
+    assert a.evaluateur_id == tchoua
+    # … puis revenir au chef (automatique)
+    c.post(f"/personnel/affectations/{a.id}", data={"action": "evaluateur", "evaluateur_id": ""})
     db.session.refresh(a)
     assert a.evaluateur_id == fotso.id
     # Pas de responsable : N+1 vide
@@ -1776,13 +1780,23 @@ def test_n1_designe_dans_une_autre_entite(app):
     db.session.commit()
     assert db.session.get(Affectation, a.id).evaluateur_id == onana.id
     fiche = c.get(f"/personnel/{manga.id}").get_data(as_text=True)
-    assert "Désigné par la RH (autre entité)" in fiche
+    assert "Désigné par la RH" in fiche
     # Retour à l'automatique : le responsable du département
     c.post(f"/personnel/affectations/{a.id}", data={"action": "evaluateur", "evaluateur_id": ""})
     db.session.expire_all()
     assert db.session.get(Affectation, a.id).evaluateur_id == essomba.id and a.id not in n1_designes()
-    # Dans l'entité d'origine, le N+1 d'un département reste le responsable (non modifiable)
+    # Dans l'entité d'origine aussi, la RH peut remplacer le chef de département comme N+1
     a_orig = db.session.scalar(select(Affectation).where(Affectation.employe_id == onana.id))   # ONANA : origine STE
     c.post(f"/personnel/affectations/{a_orig.id}", data={"action": "evaluateur", "evaluateur_id": str(manga.id)})
     db.session.expire_all()
-    assert db.session.get(Affectation, a_orig.id).evaluateur_id == essomba.id
+    assert db.session.get(Affectation, a_orig.id).evaluateur_id == manga.id
+    synchroniser_n1_departements(); db.session.commit()
+    assert db.session.get(Affectation, a_orig.id).evaluateur_id == manga.id      # conservé
+    # Un collaborateur (non RH) ne peut pas changer le N+1
+    from app.models import Utilisateur, Role
+    if not essomba.compte:
+        u = Utilisateur(email="essomba.n1@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=essomba.id)
+        u.set_password(MDP); db.session.add(u); db.session.commit()
+    c2 = app.test_client()
+    login(c2, essomba.compte.email if essomba.compte else "essomba.n1@x.cm")
+    assert c2.post(f"/personnel/affectations/{a_orig.id}", data={"action": "evaluateur", "evaluateur_id": ""}).status_code == 403

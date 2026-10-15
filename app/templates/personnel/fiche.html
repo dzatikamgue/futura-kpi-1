@@ -169,7 +169,7 @@
 </section>
 
 <section class="card" style="margin-bottom:16px">
-  <div class="card__head"><div><h2>Affectations</h2><p>Département de l'entité d'origine : noté par le responsable du département. Département d'une autre entité et projet : N+1 désigné par la RH.</p></div></div>
+  <div class="card__head"><div><h2>Affectations</h2><p>Département : noté par le responsable du département, sauf si la RH désigne un autre N+1. Projet : N+1 désigné par la RH.</p></div></div>
   {% if affectations %}
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Contexte</th><th>N+1 (évaluateur)</th><th>Statut</th>{% if current_user.est_rh %}<th class="actions"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
@@ -191,7 +191,7 @@
             </select>
           </form>
           {% else %}{{ a.evaluateur.nom_complet if a.evaluateur else "—" }}{% endif %}
-          <div class="small muted">{{ "Désigné par la RH (autre entité)" if a.id in n1_designes else ("Responsable du département (automatique)" if a.evaluateur else "Aucun N+1 : choisissez-en un") }}</div>
+          <div class="small muted">{{ "Désigné par la RH" if a.id in n1_designes else ("Responsable du département (automatique)" if a.evaluateur else "Aucun N+1 : choisissez-en un") }}</div>
           {% elif a.departement_id %}{% if a.evaluateur %}{{ a.evaluateur.nom_complet }}{% else %}<span class="badge badge--warn">Aucun responsable</span>{% endif %}
           <div class="small muted">{{ "Responsable du département" if a.evaluateur and a.departement.responsable_id == a.evaluateur_id else ("Responsable d'un département parent" if a.evaluateur else "Aucun responsable dans ce département ni au-dessus") }}</div>
           {% elif current_user.est_rh and a.actif %}

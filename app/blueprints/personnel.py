@@ -315,12 +315,12 @@ def fiche(employe_id):
     annuel = moyenne(mensuel.values())
 
     affs_visibles = [a for a in e.affectations if per.voit_tout or per.voit_affectation(a) or a.employe_id == per.employe_id]
-    # Département d'une autre entité : la RH choisit le N+1 (personnel de l'entité ou groupe)
+    # Département : le chef note par défaut ; la RH / l'admin peut désigner un autre N+1
     from ..services.entites import entite_affectation
-    from ..services.organisation import evaluateurs_entite, hors_entite_origine, n1_designes
+    from ..services.organisation import evaluateurs_entite, n1_designes
     n1_libre, evaluateurs_par_entite = {}, {}
     for a in affs_visibles:
-        if a.actif and a.departement_id and hors_entite_origine(a):
+        if a.actif and a.departement_id:
             eid = entite_affectation(a)
             n1_libre[a.id] = eid
             if per.user.est_rh and eid not in evaluateurs_par_entite:
@@ -512,12 +512,9 @@ def maj_affectation(affectation_id):
         journaliser("affectation_retiree", a.employe.nom_complet, a.contexte_libelle)
         flash("Affectation clôturée. L'historique des notes est conservé.", "succes")
     elif action == "evaluateur" and a.departement_id:
-        from ..services.organisation import designer_n1, hors_entite_origine
+        from ..services.organisation import designer_n1
         nouvel = request.form.get("evaluateur_id", type=int)
-        if not hors_entite_origine(a):
-            flash("Dans un département de son entité d'origine, le N+1 est automatiquement le responsable "
-                  "du département. Changez le responsable dans Administration → Départements.", "info")
-        elif nouvel == a.employe_id:
+        if nouvel == a.employe_id:
             flash("Un salarié ne peut pas être son propre N+1.", "erreur")
         else:
             designer_n1(a, nouvel, current_user.id)

@@ -151,9 +151,9 @@ def n1_departement(departement: Departement | None, employe_id: int) -> int | No
 
 
 # ---------------------------------------------------------------------------
-# N+1 désigné par la RH pour une affectation « département » dans une AUTRE entité
-# que l'entité d'origine du salarié (n'importe qui de l'entité, ou du personnel groupe).
-# Sans désignation : le responsable du département (règle automatique).
+# N+1 d'une affectation « département » : par défaut le responsable du département
+# (règle automatique) ; la RH ou l'admin peut désigner quelqu'un d'autre (n'importe qui
+# de l'entité, ou du personnel groupe).
 # Mémorisé dans la table de réglages existante : clé « n1_designes », JSON [affectation_id, ...]
 # (le N+1 lui-même reste dans Affectation.evaluateur_id).
 # ---------------------------------------------------------------------------
@@ -188,7 +188,7 @@ def hors_entite_origine(a: Affectation) -> bool:
 
 
 def designer_n1(a: Affectation, evaluateur_id: int | None, utilisateur_id: int | None) -> None:
-    """Département d'une autre entité : N+1 choisi par la RH (None = retour au responsable)."""
+    """Département : N+1 choisi par la RH / l'admin (None = retour au responsable du département)."""
     ids = n1_designes()
     if evaluateur_id and evaluateur_id != a.employe_id:
         a.evaluateur_id = evaluateur_id
@@ -226,7 +226,7 @@ def evaluateurs_entite(entite_id: int, exclure_id: int | None = None):
 def synchroniser_n1_departements() -> set[int]:
     """Aligne le N+1 de toutes les affectations « département » actives sur le responsable.
 
-    Les N+1 désignés par la RH (département d'une autre entité) sont conservés.
+    Les N+1 désignés par la RH / l'admin sont conservés.
     Idempotent. Renvoie les identifiants des responsables concernés (pour leurs comptes).
     """
     responsables = set()
