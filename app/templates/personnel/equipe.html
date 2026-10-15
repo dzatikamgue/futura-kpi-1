@@ -14,8 +14,8 @@
 <div class="stack-lg">
 {# ---------- Membres actuels ---------- #}
 <section class="card">
-  <div class="card__head"><div><h2>Membres actuels <span class="muted">({{ membres|length }})</span></h2>
-    <p>Retirer clôture l'affectation : l'historique des notes est conservé.</p></div></div>
+  <div class="card__head"><div><h2>{% if type_ctx == "departement" and branche_membres %}Membres directs{% else %}Membres actuels{% endif %} <span class="muted">({{ membres|length }})</span></h2>
+    <p>{% if type_ctx == "departement" and branche_membres %}Effectif total du département : <strong>{{ total_membres }}</strong> (sous-départements et projets rattachés compris, liste ci-dessous). {% endif %}Retirer clôture l'affectation : l'historique des notes est conservé.</p></div></div>
   {% if membres %}
   <form method="post" action="{{ url_for('personnel.equipe_membres', type_ctx=type_ctx, ctx_id=ctx.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -48,6 +48,23 @@
   <div class="card__body"><p class="muted">Personne n'est encore affecté à ce {{ libelle_type }}. Cochez des salariés ci-dessous.</p></div>
   {% endif %}
 </section>
+
+{% if branche_membres %}
+{# ---------- Membres des sous-départements et projets rattachés ---------- #}
+<section class="card">
+  <div class="card__head"><div><h2>Sous-départements et projets rattachés <span class="muted">({{ branche_membres|length }})</span></h2>
+    <p>Personnes rattachées aux sous-départements (tous niveaux) et aux projets de « {{ ctx.nom }} ». Pour les gérer, ouvrez l'équipe concernée.</p></div></div>
+  <div class="table-wrap" style="max-height:480px;overflow:auto"><table class="table table--compact">
+    <thead><tr><th>Salarié</th><th class="hide-mobile">Poste</th><th>Rattachement</th><th class="hide-mobile">N+1</th></tr></thead>
+    <tbody>{% for l in branche_membres %}<tr>
+      <td><div class="cell-main"><div class="avatar" aria-hidden="true">{{ l.employe.initiales }}</div><div><a href="{{ url_for('personnel.fiche', employe_id=l.employe.id) }}"><strong>{{ l.employe.nom_complet }}</strong></a><span>{{ l.employe.matricule }}</span></div></div></td>
+      <td class="hide-mobile">{{ poste_de(l.employe) or "—" }}</td>
+      <td>{% for nom, t, i in l.rattachements %}<a class="badge {{ 'badge--plain' if t == 'departement' else 'badge--info' }} badge-bouton" href="{{ url_for('personnel.equipe', type_ctx=t, ctx_id=i) }}" style="margin:2px 4px 2px 0">{{ "Projet " if t == "projet" }}{{ nom }}</a>{% endfor %}</td>
+      <td class="hide-mobile">{{ l.evaluateur.nom_complet if l.evaluateur else "—" }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
 
 {# ---------- Ajouter des salariés ---------- #}
 <section class="card" data-equipe>

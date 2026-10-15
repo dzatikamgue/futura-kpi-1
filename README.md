@@ -37,7 +37,7 @@ flask run                  # http://127.0.0.1:5000
 
 Comptes de démonstration : `christine.mballa@futura-demo.cm` (RH), `paul.nguema@futura-demo.cm` (Direction), `jean-marc.fotso@futura-demo.cm` (chef de projet BALI).
 
-Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (64 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
+Tests : `pytest -q` (sur PostgreSQL comme en production : `TEST_DATABASE_URL=postgresql+psycopg://… pytest -q`) (65 tests : périmètres d'accès, flux de notation, import, comptes, clé API, multi-entités, sécurité, exports).
 
 ## Déployer : GitHub → Railway
 
@@ -137,6 +137,7 @@ Pour modifier le schéma : changez `models.py`, puis lancez `flask db migrate -m
 - Option « Ne garder que les postes de cette liste » : les autres sont supprimés, sauf ceux portés par des salariés. Aucune fiche salarié n'est modifiée.
 
 ## Sous-départements
+- Cliquer sur un département (nom ou effectif) ouvre son équipe : membres directs, puis tous les membres des sous-départements (tous niveaux) et des projets rattachés, avec leur rattachement.
 - Effectif d'un département = membres distincts du département, de tous ses sous-départements et des projets rattachés (« dont n directs » affiché). Les listes et l'organigramme sont classés par effectif décroissant, à chaque niveau.
 - Administration → Départements → champ « Département parent » : le département devient un sous-département (plusieurs niveaux possibles, sans boucle). La liste s'affiche en arbre.
 - Le chef d'un département voit aussi ses sous-départements et leurs projets ; les filtres « département » (personnel, campagne, suivi) et les moyennes du parent incluent les sous-départements.

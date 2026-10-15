@@ -19,7 +19,7 @@
         <tr {% if not x.actif %}style="opacity:.6"{% endif %}>
           {% set niv = niveaux.get(x.id, 0) if not avec_projet else 0 %}
           {% if not avec_projet %}<td class="col-case"><input type="checkbox" class="case case-dep" name="ids" value="{{ x.id }}" form="form-deps-masse" aria-label="Cocher {{ x.nom }}"></td>{% endif %}
-          <td>{% if niv %}<span class="arbre" style="padding-left:{{ (niv - 1) * 18 }}px" aria-hidden="true">└</span> {% endif %}<strong>{{ x.nom }}</strong> <span class="code">{{ x.code }}</span>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}{% if niv %}<span class="sr-only"> (sous-département)</span>{% endif %}
+          <td>{% if niv %}<span class="arbre" style="padding-left:{{ (niv - 1) * 18 }}px" aria-hidden="true">└</span> {% endif %}<a class="lien-discret" href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}"><strong>{{ x.nom }}</strong></a> <span class="code">{{ x.code }}</span>{% if not x.actif %} <span class="badge badge--plain">Archivé</span>{% endif %}{% if niv %}<span class="sr-only"> (sous-département)</span>{% endif %}
             {% if not avec_projet and projets_par_dep.get(x.id) %}<br><span class="small muted" style="padding-left:{{ niv * 18 }}px">Projets : {{ projets_par_dep[x.id]|join(", ") }}</span>{% endif %}</td>
           <td>{{ x.responsable.nom_complet if x.responsable else "—" }}</td>
           {% if avec_projet %}<td>{% if rattachements.get(x.id) %}{{ rattachements[x.id] }}{% else %}<span class="badge badge--warn">À rattacher</span>{% endif %}</td>

@@ -492,6 +492,7 @@ def equipe(type_ctx, ctx_id):
         .where(col == ctx.id, Affectation.actif.is_(True), Employe.actif.is_(True))
         .order_by(Employe.nom, Employe.prenom)).all()
     deja = {a.employe_id for a in membres}
+    branche_membres = _membres_branche(ctx, deja) if type_ctx == "departement" else []
     from ..models import Entite
     candidats = [e for e in db.session.scalars(
         select(Employe).options(selectinload(Employe.affectations))
@@ -504,7 +505,37 @@ def equipe(type_ctx, ctx_id):
         entites=entites, entite_ctx=id_effectif(ctx.entite_id), id_principale=principale().id,
         postes=sorted({e.poste for e in candidats if e.poste}, key=str.lower),
         notee={a.id: affectation_notee(a) for a in membres},
+        branche_membres=branche_membres,
+        total_membres=len(deja | {r["employe"].id for r in branche_membres}),
         groupes_evaluateurs=evaluateurs_groupe())
+
+
+def _membres_branche(dep, deja: set[int]) -> list[dict]:
+    """Membres des sous-départements (tous niveaux) et des projets rattachés à la branche,
+    hors membres directs : [{employe, rattachements: [(libellé, type, id)], evaluateur}]."""
+    from ..services.hierarchie import branche, supprimes
+    from ..services.projets import projets_du_departement
+    deps = (branche(dep.id) - {dep.id}) - supprimes()
+    projs = set().union(*(projets_du_departement(d) for d in deps | {dep.id}))
+    if not deps and not projs:
+        return []
+    affs = db.session.scalars(
+        select(Affectation).join(Employe, Employe.id == Affectation.employe_id)
+        .options(selectinload(Affectation.employe), selectinload(Affectation.evaluateur),
+                 selectinload(Affectation.departement), selectinload(Affectation.projet))
+        .where(Affectation.actif.is_(True), Employe.actif.is_(True),
+               or_(Affectation.departement_id.in_(deps or {-1}), Affectation.projet_id.in_(projs or {-1})))
+        .order_by(Employe.nom, Employe.prenom)).all()
+    lignes: dict[int, dict] = {}
+    for a in affs:
+        if a.employe_id in deja:
+            continue
+        l = lignes.setdefault(a.employe_id, {"employe": a.employe, "rattachements": [], "evaluateur": a.evaluateur})
+        ctx = a.departement or a.projet
+        l["rattachements"].append((ctx.nom, "departement" if a.departement_id else "projet", ctx.id))
+        if a.departement_id and a.evaluateur:
+            l["evaluateur"] = a.evaluateur
+    return list(lignes.values())
 
 
 @bp.post("/equipe/<type_ctx>/<int:ctx_id>/ajouter")

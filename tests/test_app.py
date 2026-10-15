@@ -1696,3 +1696,25 @@ def test_effectif_departement_inclut_sous_departements_ordre_decroissant(app):
     from markupsafe import escape
     positions = [tableau.index(f">{escape(d.nom)}<") for d in principaux]
     assert positions == sorted(positions)
+
+
+def test_clic_departement_liste_toute_la_branche(app):
+    from app.models import Departement
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    c.post("/parametres/departements", data={"code": "COMPTA", "nom": "Comptabilité", "parent_id": str(daf.id)})
+    compta = db.session.scalar(select(Departement).where(Departement.code == "COMPTA"))
+    c.post("/parametres/departements", data={"code": "PAIE", "nom": "Paie", "parent_id": str(compta.id)})
+    paie = db.session.scalar(select(Departement).where(Departement.code == "PAIE"))
+    c.post("/personnel/nouveau", data={"nom": "ABEGA", "departement_id": str(compta.id)})
+    c.post("/personnel/nouveau", data={"nom": "BELINGA", "departement_id": str(paie.id)})
+    liste = c.get("/parametres/departements").get_data(as_text=True)
+    assert f'/personnel/equipe/departement/{daf.id}"><strong>' in liste       # le nom est cliquable
+    page = c.get(f"/personnel/equipe/departement/{daf.id}").get_data(as_text=True)
+    assert "NDJOCK" in page and "ABEGA" in page and "BELINGA" in page          # direct + sous-dépts (2 niveaux)
+    assert "Sous-départements et projets rattachés" in page and "Comptabilité" in page and "Paie" in page
+    # Le sous-département ne montre que sa propre branche
+    page = c.get(f"/personnel/equipe/departement/{compta.id}").get_data(as_text=True)
+    membres = page[:page.index("Ajouter des salariés")]
+    assert "ABEGA" in membres and "BELINGA" in membres and "NDJOCK" not in membres
