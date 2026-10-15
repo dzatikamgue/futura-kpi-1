@@ -83,13 +83,19 @@ def definir_parent(departement_id: int, parent_id: int | None, utilisateur_id: i
     g._parents_dep = c
 
 
-def ordonner(departements) -> list[tuple[object, int]]:
-    """Liste en arbre : [(département, profondeur)], parents suivis de leurs sous-départements."""
+def ordonner(departements, cle=None) -> list[tuple[object, int]]:
+    """Liste en arbre : [(département, profondeur)], parents suivis de leurs sous-départements.
+
+    cle : fonction de tri des départements frères (ex. effectif décroissant).
+    """
     par_id = {d.id: d for d in departements}
     enfants: dict[int | None, list] = {}
     for d in departements:
         p = parent_de(d.id)
         enfants.setdefault(p if p in par_id else None, []).append(d)
+    if cle is not None:
+        for liste in enfants.values():
+            liste.sort(key=cle)
     res, vus = [], set()
 
     def visiter(d, niveau):
@@ -185,3 +191,34 @@ def supprimer_departements(departements, utilisateur_id: int | None) -> tuple[in
             effaces += 1
     _ecrire_supprimes(caches, utilisateur_id)
     return effaces, gardes
+
+
+
+def effectifs_branche(departement_ids) -> dict[int, dict[str, int]]:
+    """Effectifs par département : {"direct": membres du département, "total": membres distincts
+    du département, de tous ses sous-départements et des projets qui leur sont rattachés}."""
+    from ..models import Affectation
+    from .projets import carte
+    ids = set(departement_ids)
+    membres_dep: dict[int, set[int]] = {}
+    for dep, emp in db.session.execute(select(Affectation.departement_id, Affectation.employe_id).where(
+            Affectation.actif.is_(True), Affectation.departement_id.in_(ids or {-1}))):
+        membres_dep.setdefault(dep, set()).add(emp)
+    projets_par_dep: dict[int, set[int]] = {}
+    for p, d in carte().items():
+        projets_par_dep.setdefault(d, set()).add(p)
+    tous_projets = set().union(*projets_par_dep.values()) if projets_par_dep else set()
+    membres_proj: dict[int, set[int]] = {}
+    for proj, emp in db.session.execute(select(Affectation.projet_id, Affectation.employe_id).where(
+            Affectation.actif.is_(True), Affectation.projet_id.in_(tous_projets or {-1}))):
+        membres_proj.setdefault(proj, set()).add(emp)
+    res = {}
+    for d in ids:
+        branche_d = branche(d) & ids | {d}
+        tous: set[int] = set()
+        for x in branche_d:
+            tous |= membres_dep.get(x, set())
+            for p in projets_par_dep.get(x, ()):
+                tous |= membres_proj.get(p, set())
+        res[d] = {"direct": len(membres_dep.get(d, set())), "total": len(tous)}
+    return res

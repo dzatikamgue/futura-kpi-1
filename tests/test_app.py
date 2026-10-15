@@ -1670,3 +1670,29 @@ def test_collaborateur_chef_dans_deux_entites(app):
     camp = c2.get(f"/evaluations/?annee={an}&mois={mo}").get_data(as_text=True)
     assert "ONANA" in camp                                             # et les Chantiers de STE
     assert "ONANA" in c2.get("/personnel/").get_data(as_text=True)
+
+
+def test_effectif_departement_inclut_sous_departements_ordre_decroissant(app):
+    from app.models import Departement
+    from app.services.hierarchie import effectifs_branche
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    c.post("/parametres/departements", data={"code": "COMPTA", "nom": "Comptabilité", "parent_id": str(daf.id)})
+    compta = db.session.scalar(select(Departement).where(Departement.code == "COMPTA"))
+    for nom in ("ABEGA", "BELINGA", "CHOUPO"):
+        c.post("/personnel/nouveau", data={"nom": nom, "departement_id": str(compta.id)})
+    eff = effectifs_branche([daf.id, compta.id])
+    assert eff[compta.id] == {"direct": 3, "total": 3}
+    assert eff[daf.id]["total"] == eff[daf.id]["direct"] + 3        # le parent compte son sous-département
+    page = c.get("/parametres/departements").get_data(as_text=True)
+    assert "dont " + str(eff[daf.id]["direct"]) + " direct" in page
+    # Ordre décroissant des départements principaux selon leur effectif total
+    tableau = page[page.index("<tbody>"):page.index("</tbody>")]
+    racines = db.session.scalars(select(Departement).where(Departement.actif.is_(True))).all()
+    from app.services.hierarchie import parent_de
+    tot = effectifs_branche([d.id for d in racines])
+    principaux = sorted([d for d in racines if parent_de(d.id) is None], key=lambda d: (-tot[d.id]["total"], d.nom.lower()))
+    from markupsafe import escape
+    positions = [tableau.index(f">{escape(d.nom)}<") for d in principaux]
+    assert positions == sorted(positions)

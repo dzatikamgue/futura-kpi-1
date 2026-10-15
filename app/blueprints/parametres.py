@@ -157,6 +157,8 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
         from ..services.hierarchie import supprimes as _deps_supprimes
         caches = _deps_supprimes()
         elements = [x for x in elements if x.id not in caches]
+    if model is Projet:
+        elements = sorted(elements, key=lambda x: (not x.actif, -effectifs.get(x.id, 0), x.nom.lower()))
     departements = rattachements = projets_par_dep = None
     if avec_projet:
         from ..services.hierarchie import ordonner
@@ -165,10 +167,14 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
         noms = dict(db.session.execute(select(Departement.id, Departement.nom)
                                        .where(cond_entite(Departement.entite_id, _eid()))).all())
         rattachements = {p: noms.get(d) for p, d in carte().items()}
-        niveaux, parents_possibles, noms_dep = {}, [], {}
+        niveaux, parents_possibles, noms_dep, effectifs_directs = {}, [], {}, {}
     else:
-        from ..services.hierarchie import ordonner, sous_departements
-        arbre = ordonner(elements)
+        from ..services.hierarchie import effectifs_branche, ordonner, sous_departements
+        eff = effectifs_branche([d.id for d in elements])
+        effectifs = {i: v["total"] for i, v in eff.items()}
+        effectifs_directs = {i: v["direct"] for i, v in eff.items()}
+        # Arbre trié par effectif décroissant (à chaque niveau), archivés en dernier
+        arbre = ordonner(elements, cle=lambda d: (not d.actif, -effectifs.get(d.id, 0), d.nom.lower()))
         elements = [d for d, _ in arbre]
         niveaux = {d.id: n for d, n in arbre}
         noms_dep = {d.id: d.nom for d in elements}
@@ -185,6 +191,7 @@ def _gerer_contexte(model, modele_tpl, titre, avec_projet=False):
                            titre=titre, avec_projet=avec_projet, departements=departements,
                            rattachements=rattachements, projets_par_dep=projets_par_dep,
                            niveaux=niveaux, parents_possibles=parents_possibles, noms_dep=noms_dep,
+                           effectifs_directs=effectifs_directs,
                            parent_de=parent_de)
 
 
@@ -222,11 +229,16 @@ def organigramme():
         par = parent_de(d.id)
         (noeuds[par]["enfants"] if par in ids else racines).append(noeuds[d.id])
 
-    def total(n):  # effectif de la branche (sous-départements et projets compris)
-        n["total"] = n["effectif"] + sum(eff_proj.get(p.id, 0) for p in n["projets"]) + sum(total(e) for e in n["enfants"])
-        return n["total"]
-    for r in racines:
-        total(r)
+    from ..services.hierarchie import effectifs_branche
+    eff = effectifs_branche(ids)
+
+    def trier(liste):        # effectif de la branche décroissant, à chaque niveau
+        for n in liste:
+            n["total"] = eff.get(n["dep"].id, {}).get("total", 0)
+            n["effectif"] = eff.get(n["dep"].id, {}).get("direct", 0)
+            trier(n["enfants"])
+        liste.sort(key=lambda n: (-n["total"], n["dep"].nom.lower()))
+    trier(racines)
     sans_dep = [p for p in projets if c.get(p.id) not in ids]
     return render_template("parametres/organigramme.html", racines=racines, sans_dep=sans_dep,
                            eff_proj=eff_proj, nb_deps=len(deps), nb_projets=len(projets))

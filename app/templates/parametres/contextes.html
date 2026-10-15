@@ -25,7 +25,7 @@
           {% if avec_projet %}<td>{% if rattachements.get(x.id) %}{{ rattachements[x.id] }}{% else %}<span class="badge badge--warn">À rattacher</span>{% endif %}</td>
           {% else %}<td class="hide-mobile small">{{ noms_dep.get(parent_de(x.id)) or "—" }}</td>{% endif %}
           {% if avec_projet %}<td class="hide-mobile">{{ x.localisation or "—" }}</td><td class="hide-mobile nowrap">{{ x.date_debut|date_fr }} → {{ x.date_fin|date_fr }}</td>{% endif %}
-          <td class="num"><a href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}" title="Voir et gérer l'équipe">{{ effectifs.get(x.id, 0) }}</a></td>
+          <td class="num"><a href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}" title="Voir et gérer l'équipe">{{ effectifs.get(x.id, 0) }}</a>{% if not avec_projet and effectifs_directs.get(x.id, 0) != effectifs.get(x.id, 0) %}<div class="small muted nowrap" title="Membres affectés directement à ce département">dont {{ effectifs_directs.get(x.id, 0) }} direct{{ "s" if effectifs_directs.get(x.id, 0) > 1 }}</div>{% endif %}</td>
           <td class="actions">
             {% if x.actif %}<a class="btn btn--secondary btn--sm" href="{{ url_for('personnel.equipe', type_ctx='projet' if avec_projet else 'departement', ctx_id=x.id) }}">{{ icon('users') }} Équipe</a>{% endif %}
             <a class="btn btn--ghost btn--sm" href="?modifier={{ x.id }}">Modifier</a>
