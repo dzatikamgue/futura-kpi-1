@@ -204,6 +204,12 @@ def effectifs_branche(departement_ids) -> dict[int, dict[str, int]]:
     for dep, emp in db.session.execute(select(Affectation.departement_id, Affectation.employe_id).where(
             Affectation.actif.is_(True), Affectation.departement_id.in_(ids or {-1}))):
         membres_dep.setdefault(dep, set()).add(emp)
+    # Le chef de département est membre d'office
+    from ..models import Departement, Employe
+    for dep, emp in db.session.execute(select(Departement.id, Departement.responsable_id)
+                                       .join(Employe, Employe.id == Departement.responsable_id)
+                                       .where(Departement.id.in_(ids or {-1}), Employe.actif.is_(True))):
+        membres_dep.setdefault(dep, set()).add(emp)
     projets_par_dep: dict[int, set[int]] = {}
     for p, d in carte().items():
         projets_par_dep.setdefault(d, set()).add(p)

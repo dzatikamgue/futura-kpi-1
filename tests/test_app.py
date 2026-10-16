@@ -1850,3 +1850,29 @@ def test_portee_groupe_entites_choisies_et_main_mise(app):
     # Un salarié non groupe n'a pas la carte
     manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
     assert "Portée groupe" not in c.get(f"/personnel/{manga.id}").get_data(as_text=True)
+
+
+def test_chef_de_departement_membre_d_office(app):
+    """Le chef d'un département en est membre d'office : page équipe, branche, effectif, filtre Personnel."""
+    from app.models import Departement
+    from app.services.hierarchie import effectifs_branche
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    c.post("/parametres/departements", data={"code": "QUAL", "nom": "Qualité", "responsable_id": str(essomba.id)})
+    qual = db.session.scalar(select(Departement).where(Departement.code == "QUAL"))
+    c.post("/parametres/departements", data={"code": "LABO", "nom": "Laboratoire", "parent_id": str(qual.id),
+                                             "responsable_id": str(tchoua.id)})
+    labo = db.session.scalar(select(Departement).where(Departement.code == "LABO"))
+    # Aucune affectation créée en base pour le chef
+    assert not any(a.departement_id == qual.id for a in essomba.affectations)
+    page = c.get(f"/personnel/equipe/departement/{qual.id}").get_data(as_text=True)
+    directs = page[:page.index("Sous-départements et projets rattachés")]
+    assert "ESSOMBA" in directs and "Chef de département" in directs and "Membre d'office" in directs
+    branche_html = page[page.index("Sous-départements et projets rattachés"):page.index("Ajouter des salariés")]
+    assert "TCHOUA" in branche_html and "Chef : Laboratoire" in branche_html
+    eff = effectifs_branche([qual.id, labo.id])
+    assert eff[qual.id] == {"direct": 1, "total": 2} and eff[labo.id] == {"direct": 1, "total": 1}
+    liste = c.get(f"/personnel/?departement={qual.id}").get_data(as_text=True)
+    assert "<strong>ESSOMBA" in liste and "<strong>TCHOUA" in liste

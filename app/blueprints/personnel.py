@@ -44,8 +44,11 @@ def _requete_liste(per, args=None):
         q = q.where(Employe.poste == poste)
     if dep := args.get("departement", type=int):
         from ..services.hierarchie import branche
-        q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id.in_(branche(dep)),
-                                   Affectation.actif.is_(True)))
+        deps_b = branche(dep)
+        q = q.where(or_(exists().where(Affectation.employe_id == Employe.id, Affectation.departement_id.in_(deps_b),
+                                       Affectation.actif.is_(True)),
+                        Employe.id.in_(select(Departement.responsable_id).where(   # chef : membre d'office
+                            Departement.id.in_(deps_b), Departement.actif.is_(True)))))
     if proj := args.get("projet", type=int):
         q = q.where(exists().where(Affectation.employe_id == Employe.id, Affectation.projet_id == proj,
                                    Affectation.actif.is_(True)))
@@ -597,7 +600,16 @@ def equipe(type_ctx, ctx_id):
         .where(col == ctx.id, Affectation.actif.is_(True), Employe.actif.is_(True))
         .order_by(Employe.nom, Employe.prenom)).all()
     deja = {a.employe_id for a in membres}
-    branche_membres = _membres_branche(ctx, deja) if type_ctx == "departement" else []
+    # Le chef de département est membre d'office (affiché même sans affectation, rien n'est écrit en base)
+    chef = ctx.responsable if type_ctx == "departement" and ctx.responsable and ctx.responsable.actif else None
+    chef_n1 = None
+    if chef is not None and chef.id not in deja:
+        from ..services.organisation import n1_departement
+        n1_id = n1_departement(ctx, chef.id)
+        chef_n1 = db.session.get(Employe, n1_id) if n1_id else None
+    chef_seul = chef is not None and chef.id not in deja
+    deja_avec_chef = deja | ({chef.id} if chef else set())
+    branche_membres = _membres_branche(ctx, deja_avec_chef) if type_ctx == "departement" else []
     from ..models import Entite
     candidats = [e for e in db.session.scalars(
         select(Employe).options(selectinload(Employe.affectations))
@@ -610,8 +622,9 @@ def equipe(type_ctx, ctx_id):
         entites=entites, entite_ctx=id_effectif(ctx.entite_id), id_principale=principale().id,
         postes=sorted({e.poste for e in candidats if e.poste}, key=str.lower),
         notee={a.id: affectation_notee(a) for a in membres},
-        branche_membres=branche_membres,
-        total_membres=len(deja | {r["employe"].id for r in branche_membres}),
+        branche_membres=branche_membres, chef=chef, chef_seul=chef_seul, chef_n1=chef_n1,
+        nb_directs=len(deja_avec_chef),
+        total_membres=len(deja_avec_chef | {r["employe"].id for r in branche_membres}),
         groupes_evaluateurs=evaluateurs_groupe())
 
 
@@ -632,15 +645,29 @@ def _membres_branche(dep, deja: set[int]) -> list[dict]:
                or_(Affectation.departement_id.in_(deps or {-1}), Affectation.projet_id.in_(projs or {-1})))
         .order_by(Employe.nom, Employe.prenom)).all()
     lignes: dict[int, dict] = {}
+    for d in db.session.scalars(select(Departement).options(selectinload(Departement.responsable))
+                                .where(Departement.id.in_(deps or {-1}), Departement.actif.is_(True),
+                                       Departement.responsable_id.isnot(None))):
+        r = d.responsable
+        if r and r.actif and r.id not in deja:
+            l = lignes.setdefault(r.id, {"employe": r, "rattachements": [], "evaluateur": None, "chef_de": []})
+            l["chef_de"].append(d.nom)
+            l["rattachements"].append((d.nom, "departement", d.id))
+            if l["evaluateur"] is None:
+                from ..services.organisation import n1_departement
+                n1 = n1_departement(d, r.id)
+                l["evaluateur"] = db.session.get(Employe, n1) if n1 else None
     for a in affs:
         if a.employe_id in deja:
             continue
-        l = lignes.setdefault(a.employe_id, {"employe": a.employe, "rattachements": [], "evaluateur": a.evaluateur})
+        l = lignes.setdefault(a.employe_id, {"employe": a.employe, "rattachements": [], "evaluateur": a.evaluateur, "chef_de": []})
         ctx = a.departement or a.projet
-        l["rattachements"].append((ctx.nom, "departement" if a.departement_id else "projet", ctx.id))
+        r = (ctx.nom, "departement" if a.departement_id else "projet", ctx.id)
+        if r not in l["rattachements"]:
+            l["rattachements"].append(r)
         if a.departement_id and a.evaluateur:
             l["evaluateur"] = a.evaluateur
-    return list(lignes.values())
+    return sorted(lignes.values(), key=lambda l: (l["employe"].nom or "", l["employe"].prenom or ""))
 
 
 @bp.post("/equipe/<type_ctx>/<int:ctx_id>/ajouter")
