@@ -190,8 +190,8 @@ class Perimetre:
         dans_entite = cond_entite(Employe.entite_id, self.entite_id)
         if self.voit_tout:
             # Direction et RH du groupe apparaissent dans le personnel de toutes les entités
-            from .services.transverses import ids_personnel_groupe
-            groupe = ids_personnel_groupe()
+            from .services.transverses import ids_groupe_dans
+            groupe = ids_groupe_dans(id_effectif(self.entite_id))
             # + salariés d'une autre entité qui travaillent aussi pour celle-ci
             conds = [dans_entite, Employe.id.in_(ids_employes_affectes(self.entite_id)),
                      # responsables d'un département / projet de l'entité (même venant d'une autre entité)
@@ -215,8 +215,8 @@ class Perimetre:
     def peut_voir_employe(self, employe: Employe) -> bool:
         if employe.id == self.employe_id or self.voit_tout_dans(employe.entite_id):
             return True
-        from .services.transverses import ids_personnel_groupe
-        if self.voit_tout and employe.id in ids_personnel_groupe():
+        from .services.transverses import ids_groupe_dans
+        if self.voit_tout and employe.id in ids_groupe_dans(id_effectif(self.entite_id)):
             return True
         if self._est_membre(employe, self.dept_ids) or self._est_membre(employe, self.membre_dept_ids):
             return True

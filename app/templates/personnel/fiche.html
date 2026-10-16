@@ -168,6 +168,30 @@
   {% endif %}
 </section>
 
+{% if groupe %}
+<section class="card" id="groupe" style="margin-bottom:16px">
+  <div class="card__head"><div><h2>Portée groupe</h2>
+    <p>{{ e.nom_complet }} est du personnel « Groupe ». Choisissez les entités du groupe concernées et son niveau de pouvoir.</p></div></div>
+  <form method="post" action="{{ url_for('personnel.portee_groupe', employe_id=e.id) }}" class="card__body stack" style="gap:14px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="stack" style="gap:6px;border:0;padding:0;margin:0"><legend class="small"><strong>Entités</strong></legend>
+      <label class="row" style="gap:8px"><input type="radio" name="etendue" value="tous" {% if groupe.portee.entites is none %}checked{% endif %}> Tout le groupe</label>
+      <label class="row" style="gap:8px"><input type="radio" name="etendue" value="choix" {% if groupe.portee.entites is not none %}checked{% endif %}> Seulement les entités cochées :</label>
+      <div class="row" style="gap:6px 16px;flex-wrap:wrap;padding-left:26px">
+        {% for x in groupe.entites %}<label class="row small" style="gap:6px"><input type="checkbox" name="entites" value="{{ x.id }}"
+          {% if x.id == groupe.origine %}checked disabled title="Entité d'origine, toujours incluse"{% elif groupe.portee.entites is not none and x.id in groupe.portee.entites %}checked{% endif %}> {{ x.nom }}{% if x.id == groupe.origine %} <span class="muted">(origine)</span>{% endif %}</label>{% endfor %}
+      </div>
+    </fieldset>
+    <fieldset class="stack" style="gap:6px;border:0;padding:0;margin:0"><legend class="small"><strong>Pouvoir dans ces entités</strong></legend>
+      <label class="row" style="gap:8px"><input type="radio" name="main" value="0" {% if not groupe.portee.main %}checked{% endif %}> Visible seulement <span class="small muted">— apparaît dans le personnel et peut être choisi comme N+1</span></label>
+      <label class="row" style="gap:8px"><input type="radio" name="main" value="1" {% if groupe.portee.main %}checked{% endif %}> Main mise <span class="small muted">— droits Direction : voit tout le personnel et toutes les notes, note ses N-1</span></label>
+    </fieldset>
+    {% if groupe.portee.main and not e.compte %}<p class="small" style="color:var(--warning, #b45309);margin:0">Ce salarié n'a pas encore de compte : la main mise prendra effet quand ses accès seront créés.</p>{% endif %}
+    <div><button class="btn btn--primary btn--sm" type="submit">Enregistrer la portée</button></div>
+  </form>
+</section>
+{% endif %}
+
 <section class="card" style="margin-bottom:16px">
   <div class="card__head"><div><h2>Affectations</h2><p>Département : noté par le responsable du département, sauf si la RH désigne un autre N+1. Projet : N+1 désigné par la RH.</p></div></div>
   {% if affectations %}

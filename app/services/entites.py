@@ -69,6 +69,10 @@ def roles_par_entite(user) -> dict[int, str]:
         for model in (Departement, Projet):
             for (eid,) in db.session.execute(select(model.entite_id).where(model.responsable_id == emp.id).distinct()):
                 roles.setdefault(id_effectif(eid), RoleEntite.COLLABORATEUR)
+        # Personnel groupe avec « main mise » : droits Direction dans les entités de sa portée
+        from .transverses import entites_main_mise
+        for eid in entites_main_mise(emp.id, actives):
+            roles[eid] = RoleEntite.DIRECTION
     elif not roles:
         # Compte antérieur non lié à une fiche : entité principale avec son rôle d'origine
         roles[principale().id] = user.role

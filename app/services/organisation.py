@@ -206,7 +206,7 @@ def evaluateurs_entite(entite_id: int, exclure_id: int | None = None):
     """
     from types import SimpleNamespace
     from .entites import cond_entite, ids_employes_affectes
-    from .transverses import ids_personnel_groupe
+    from .transverses import ids_groupe_dans
     ent = db.session.get(Entite, entite_id)
     from sqlalchemy import or_
     q = (select(Employe).where(Employe.actif.is_(True),
@@ -214,7 +214,7 @@ def evaluateurs_entite(entite_id: int, exclure_id: int | None = None):
          .order_by(Employe.nom, Employe.prenom))
     membres = [x for x in db.session.scalars(q) if x.id != exclure_id]
     vus = {x.id for x in membres}
-    groupe_ids = ids_personnel_groupe() - vus - {exclure_id}
+    groupe_ids = ids_groupe_dans(entite_id) - vus - {exclure_id}
     groupe = db.session.scalars(select(Employe).where(Employe.id.in_(groupe_ids))
                                 .order_by(Employe.nom, Employe.prenom)).all() if groupe_ids else []
     res = [(SimpleNamespace(nom=ent.nom if ent else "Entité"), membres)] if membres else []

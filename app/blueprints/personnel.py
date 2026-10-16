@@ -333,7 +333,47 @@ def fiche(employe_id):
         contextes=contextes_groupe() if per.user.est_rh else [],
         groupes_evaluateurs=evaluateurs_groupe(e.id) if per.user.est_rh else [],
         n1_libre=n1_libre, evaluateurs_par_entite=evaluateurs_par_entite, n1_designes=n1_designes(),
+        groupe=_donnees_groupe(e) if per.user.est_rh else None,
         **_donnees_entites(e, per))
+
+
+def _donnees_groupe(e):
+    """Carte « Portée groupe » (RH) : seulement pour le personnel groupe."""
+    from ..models import Entite
+    from ..services.transverses import ids_personnel_groupe, portee
+    if e.id not in ids_personnel_groupe():
+        return None
+    entites = db.session.scalars(select(Entite).where(Entite.actif.is_(True))
+                                 .order_by(Entite.principale.desc(), Entite.nom)).all()
+    return {"portee": portee(e.id), "entites": entites, "origine": id_effectif(e.entite_id)}
+
+
+@bp.post("/<int:employe_id>/portee-groupe")
+@login_required
+@rh_requis
+def portee_groupe(employe_id):
+    """Personnel groupe : tout le groupe ou entités choisies ; visible seulement ou main mise."""
+    from ..models import Entite
+    from ..services.transverses import definir_portee, ids_personnel_groupe
+    e = db.session.get(Employe, employe_id) or abort(404)
+    retour = redirect(url_for("personnel.fiche", employe_id=e.id) + "#groupe")
+    if e.id not in ids_personnel_groupe():
+        flash("Ce salarié n'est pas « Groupe » : son poste n'est pas un poste groupe (Administration → Postes).", "erreur")
+        return retour
+    actives = {x.id: x for x in db.session.scalars(select(Entite).where(Entite.actif.is_(True)))}
+    main = request.form.get("main") == "1"
+    if request.form.get("etendue") == "choix":
+        choisies = {i for i in request.form.getlist("entites", type=int) if i in actives}
+        choisies.add(id_effectif(e.entite_id))          # son entité d'origine est toujours incluse
+        entites = choisies
+    else:
+        entites = None
+    definir_portee(e.id, entites, main, current_user.id)
+    noms = "tout le groupe" if entites is None else ", ".join(sorted(actives[i].nom for i in entites if i in actives))
+    journaliser("portee_groupe", e.nom_complet, f"{noms} ; {'main mise' if main else 'visible seulement'}")
+    db.session.commit()
+    flash(f"{e.nom_complet} : {noms} — {'main mise (droits Direction)' if main else 'visible seulement'}.", "succes")
+    return retour
 
 
 def _donnees_entites(e, per):

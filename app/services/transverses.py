@@ -85,3 +85,65 @@ def ids_personnel_groupe() -> set[int]:
         .where(Utilisateur.role == Role.RH, Utilisateur.actif.is_(True), Employe.actif.is_(True))))
     g._ids_groupe = ids
     return ids
+
+
+# ---------------------------------------------------------------------------
+# Portée d'une personne « groupe » : tout le groupe ou certaines entités, et
+# « main mise » (droits Direction dans ces entités) ou simple visibilité.
+# Table de réglages existante, clé « portee_groupe » :
+#   {employe_id: {"entites": "tous" | [entite_id, ...], "main": bool}}
+# Sans réglage : tout le groupe, visible seulement (comportement d'origine).
+# ---------------------------------------------------------------------------
+CLE_PORTEE = "portee_groupe"
+
+
+def _portees() -> dict:
+    if getattr(g, "_portees_groupe", None) is None:
+        p = db.session.get(Parametre, CLE_PORTEE)
+        try:
+            g._portees_groupe = json.loads(p.valeur) if p else {}
+        except ValueError:
+            g._portees_groupe = {}
+    return g._portees_groupe
+
+
+def portee(employe_id: int) -> dict:
+    """{"entites": None (tout le groupe) | set(ids), "main": bool}."""
+    brut = _portees().get(str(employe_id)) or {}
+    ents = brut.get("entites", "tous")
+    return {"entites": None if ents == "tous" else {int(i) for i in ents}, "main": bool(brut.get("main"))}
+
+
+def definir_portee(employe_id: int, entites: set[int] | None, main: bool, utilisateur_id: int | None) -> None:
+    carte = dict(_portees())
+    if entites is None and not main:
+        carte.pop(str(employe_id), None)              # valeur par défaut : rien à mémoriser
+    else:
+        carte[str(employe_id)] = {"entites": "tous" if entites is None else sorted(entites), "main": main}
+    valeur = json.dumps(carte)
+    p = db.session.get(Parametre, CLE_PORTEE)
+    if p:
+        p.valeur, p.updated_by_id = valeur, utilisateur_id
+    else:
+        db.session.add(Parametre(cle=CLE_PORTEE, valeur=valeur, updated_by_id=utilisateur_id))
+    g._portees_groupe = carte
+
+
+def couvre(employe_id: int, entite_id: int) -> bool:
+    ents = portee(employe_id)["entites"]
+    return ents is None or entite_id in ents
+
+
+def ids_groupe_dans(entite_id: int) -> set[int]:
+    """Personnel groupe dont la portée couvre cette entité."""
+    return {i for i in ids_personnel_groupe() if couvre(i, entite_id)}
+
+
+def entites_main_mise(employe_id: int, actives) -> set[int]:
+    """Entités où la personne groupe a la main (droits Direction)."""
+    if employe_id not in ids_personnel_groupe():
+        return set()
+    p = portee(employe_id)
+    if not p["main"]:
+        return set()
+    return set(actives) if p["entites"] is None else p["entites"] & set(actives)

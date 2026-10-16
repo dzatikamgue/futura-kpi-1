@@ -28,7 +28,7 @@ def app():
     # comme le ferait un vrai serveur.
     def _isoler_requete():
         from flask import g
-        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep", "_reglages_grilles", "_postes_entites"):
+        for k in ("_login_user", "_perimetre", "_entite_courante", "_entite_principale", "_carte_projets", "_ids_groupe", "_parents_dep", "_reglages_grilles", "_postes_entites", "_portees_groupe"):
             g.pop(k, None)
     # Doit passer avant les autres before_request de l'application
     app.before_request_funcs.setdefault(None, []).insert(0, _isoler_requete)
@@ -1800,3 +1800,53 @@ def test_n1_designe_dans_une_autre_entite(app):
     c2 = app.test_client()
     login(c2, essomba.compte.email if essomba.compte else "essomba.n1@x.cm")
     assert c2.post(f"/personnel/affectations/{a_orig.id}", data={"action": "evaluateur", "evaluateur_id": ""}).status_code == 403
+
+
+def test_portee_groupe_entites_choisies_et_main_mise(app):
+    """Personnel groupe : tout le groupe ou entités choisies ; visible seulement ou main mise."""
+    from flask import g
+    from app.services.entites import roles_par_entite
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    ste = _creer_entite(c)
+    autre = _creer_entite(c, "Autre Société", "AUT")
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))     # Directeur technique (groupe)
+    principale = db.session.scalar(select(db.text("id FROM entites WHERE principale")))
+    fiche = c.get(f"/personnel/{tchoua.id}").get_data(as_text=True)
+    assert "Portée groupe" in fiche
+    # Par défaut : visible dans toutes les entités
+    c.get(f"/entite/{ste.id}")
+    assert "<strong>TCHOUA" in c.get("/personnel/").get_data(as_text=True)
+    # Seulement « Autre Société » : il disparaît de STE, reste dans AUT
+    r = c.post(f"/personnel/{tchoua.id}/portee-groupe", data={"etendue": "choix", "entites": [str(autre.id)], "main": "0"})
+    assert r.status_code == 302
+    c.get(f"/entite/{ste.id}")
+    assert "<strong>TCHOUA" not in c.get("/personnel/").get_data(as_text=True)
+    c.get(f"/entite/{autre.id}")
+    assert "<strong>TCHOUA" in c.get("/personnel/").get_data(as_text=True)
+    # Visible seulement : aucun droit dans AUT
+    u = tchoua.compte
+    if u is None:
+        u = Utilisateur(email="tchoua.groupe@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False, employe_id=tchoua.id)
+        u.set_password(MDP); db.session.add(u); db.session.commit()
+    for k in ("_portees_groupe", "_ids_groupe"):
+        g.pop(k, None)
+    assert roles_par_entite(u).get(autre.id) != "direction"
+    # Main mise : droits Direction dans AUT, pas dans STE
+    c.post(f"/personnel/{tchoua.id}/portee-groupe", data={"etendue": "choix", "entites": [str(autre.id)], "main": "1"})
+    for k in ("_portees_groupe", "_ids_groupe"):
+        g.pop(k, None)
+    roles = roles_par_entite(db.session.get(Utilisateur, u.id))
+    assert roles.get(autre.id) == "direction" and roles.get(ste.id) != "direction"
+    # Son entité d'origine reste toujours incluse
+    c.post(f"/personnel/{tchoua.id}/portee-groupe", data={"etendue": "choix", "main": "0"})
+    from app.services.transverses import portee
+    g.pop("_portees_groupe", None)
+    assert portee(tchoua.id)["entites"] == {principale}
+    # Retour à « tout le groupe »
+    c.post(f"/personnel/{tchoua.id}/portee-groupe", data={"etendue": "tous", "main": "0"})
+    c.get(f"/entite/{ste.id}")
+    assert "<strong>TCHOUA" in c.get("/personnel/").get_data(as_text=True)
+    # Un salarié non groupe n'a pas la carte
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))
+    assert "Portée groupe" not in c.get(f"/personnel/{manga.id}").get_data(as_text=True)
