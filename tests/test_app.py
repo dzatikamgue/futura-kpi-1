@@ -1876,3 +1876,34 @@ def test_chef_de_departement_membre_d_office(app):
     assert eff[qual.id] == {"direct": 1, "total": 2} and eff[labo.id] == {"direct": 1, "total": 1}
     liste = c.get(f"/personnel/?departement={qual.id}").get_data(as_text=True)
     assert "<strong>ESSOMBA" in liste and "<strong>TCHOUA" in liste
+
+
+def test_collaborateur_voit_son_departement_son_chef_et_ceux_qu_il_note(app):
+    """Compte collaborateur : son département (chef compris) + les personnes qu'il note, rien d'autre."""
+    from app.models import Affectation, Departement
+    ndjock = _compte("NDJOCK", "ndjock.r@x.cm")                                       # membre DAF
+    essomba = db.session.scalar(select(Employe).where(Employe.nom == "ESSOMBA"))      # autre département
+    manga = db.session.scalar(select(Employe).where(Employe.nom == "MANGA"))          # autre département
+    tchoua = db.session.scalar(select(Employe).where(Employe.nom == "TCHOUA"))
+    rh = app.test_client()
+    login(rh, email_de("MBALLA"))
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    c = app.test_client()
+    login(c, ndjock.compte.email)
+    liste = c.get("/personnel/").get_data(as_text=True)
+    assert "<strong>ESSOMBA" not in liste and "<strong>MANGA" not in liste
+    # Chef de son département (sans affectation dans DAF) : visible, membre d'office
+    rh.post("/parametres/departements", data={"id": daf.id, "code": daf.code, "nom": daf.nom,
+                                              "responsable_id": str(essomba.id)})
+    c = app.test_client()
+    login(c, ndjock.compte.email)
+    liste = c.get("/personnel/").get_data(as_text=True)
+    assert "<strong>ESSOMBA" in liste and c.get(f"/personnel/{essomba.id}").status_code == 200
+    # Quelqu'un qu'il note (désigné N+1 par la RH) : visible ; les autres non
+    a = next(x for x in manga.affectations if x.actif)
+    rh.post(f"/personnel/affectations/{a.id}", data={"action": "evaluateur", "evaluateur_id": str(ndjock.id)})
+    c = app.test_client()
+    login(c, ndjock.compte.email)
+    liste = c.get("/personnel/").get_data(as_text=True)
+    assert "<strong>MANGA" in liste and "<strong>TCHOUA" not in liste
+    assert c.get(f"/personnel/{tchoua.id}").status_code == 403

@@ -206,8 +206,11 @@ class Perimetre:
         conds = [Employe.id.in_(ids_affectations)]
         if self.dept_ids:          # chef : tous les membres de ses départements et sous-départements
             conds.append(Employe.id.in_(self._membres(self.dept_ids)))
-        if self.membre_dept_ids:   # membre : la liste des collègues de son (ses) département(s)
+        if self.membre_dept_ids:   # membre : la liste des collègues de son (ses) département(s)…
             conds.append(Employe.id.in_(self._membres(self.membre_dept_ids)))
+            # … y compris le chef, membre d'office du département
+            conds.append(Employe.id.in_(select(Departement.responsable_id).where(
+                Departement.id.in_(self.membre_dept_ids), Departement.actif.is_(True))))
         if self.employe_id:
             conds.append(and_(dans_entite, Employe.id == self.employe_id))
         return or_(*conds)
@@ -219,6 +222,9 @@ class Perimetre:
         if self.voit_tout and employe.id in ids_groupe_dans(id_effectif(self.entite_id)):
             return True
         if self._est_membre(employe, self.dept_ids) or self._est_membre(employe, self.membre_dept_ids):
+            return True
+        if self.membre_dept_ids and db.session.scalar(select(Departement.id).where(   # son chef de département
+                Departement.id.in_(self.membre_dept_ids), Departement.responsable_id == employe.id).limit(1)):
             return True
         return any(self.voit_affectation(a) for a in employe.affectations)
 
