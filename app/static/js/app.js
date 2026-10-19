@@ -573,6 +573,22 @@
     });
     grille.addEventListener("input", majGrille);
     grille.addEventListener("click", function (ev) {
+      var m = ev.target.closest("[data-kpi-modifier], [data-kpi-annuler]");
+      if (m) {
+        var ligne = m.closest("tr"), lect = $("[data-kpi-lecture]", ligne), ed = $("[data-kpi-edition]", ligne),
+            lib = $("input[name^='libelle_']", ligne), desc = $("textarea[name^='description_']", ligne),
+            bouton = $("[data-kpi-modifier]", ligne);
+        if (m.hasAttribute("data-kpi-modifier") && ed.hidden) {
+          lib.dataset.avant = lib.value; desc.dataset.avant = desc.value;
+          ed.hidden = false; lect.hidden = true; bouton.textContent = "Fermer"; lib.focus();
+        } else {
+          if (m.hasAttribute("data-kpi-annuler")) { lib.value = lib.dataset.avant || lib.value; desc.value = desc.dataset.avant || ""; }
+          $("[data-lecture-libelle]", ligne).textContent = lib.value;
+          $("[data-lecture-description]", ligne).textContent = desc.value;
+          ed.hidden = true; lect.hidden = false; bouton.textContent = "Modifier"; bouton.focus();
+        }
+        return;
+      }
       var b = ev.target.closest("[data-monter], [data-descendre]");
       if (!b) return;
       var tr = b.closest("tr");

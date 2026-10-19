@@ -707,7 +707,11 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 
 /* Grille KPI d'un poste : édition directe, numéros, ordre */
 .col-num { width: 40px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.col-ordre { width: 76px; text-align: right; }
+.col-ordre { width: 1%; text-align: right; }
+.kpi-description { white-space: normal; overflow-wrap: anywhere; margin-top: 2px; line-height: 1.45; }
+.kpi-edition { display: grid; gap: 6px; margin-top: 4px; }
+.kpi-edition[hidden] { display: none; }
+.kpi-edition .textarea { min-height: 64px; resize: vertical; }
 .col-kpi { min-width: 260px; }
 .btn--icone { min-width: 30px; padding-left: 0; padding-right: 0; justify-content: center; }
 .input--inline { width: 100%; border-color: transparent; background: transparent; padding: 3px 6px; margin-left: -6px; min-height: 0; box-shadow: none; }

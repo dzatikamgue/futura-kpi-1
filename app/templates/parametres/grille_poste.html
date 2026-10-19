@@ -32,7 +32,7 @@
 <div class="grid grid-main">
   <section class="card" data-grille>
     <div class="card__head"><div><h2>KPI du poste « {{ poste }} »</h2>
-      <p>{% if propre %}Seuls les KPI de ce poste sont affichés, dans l'ordre de la fiche de notation. Modifiez le texte et les coefficients directement, changez l'ordre avec ↑ ↓, décochez pour retirer, puis enregistrez.
+      <p>{% if propre %}Seuls les KPI de ce poste sont affichés, dans l'ordre de la fiche de notation. « Modifier » pour changer le texte d'un KPI, coefficients ajustables directement, ordre avec ↑ ↓, décochez pour retirer, puis enregistrez.
          {% else %}Ce poste n'a pas encore de KPI propres : il est noté avec la grille commune. Ajoutez des KPI (nouveau, existant, import IA) ou partez de la grille commune.{% endif %}</p></div>
       {% if not propre %}<form method="post" style="margin-left:auto">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ poste }}"><input type="hidden" name="action" value="copier_commune">
@@ -44,26 +44,35 @@
           <tr data-ligne-grille {% if not coche %}class="ligne--off"{% endif %}>
             <td class="num col-num" data-num>{{ n if coche else "" }}</td>
             <td class="col-case"><input type="checkbox" class="case" name="inclus" value="{{ c.id }}" id="cr-{{ c.id }}" {% if coche %}checked{% endif %} data-inclus aria-label="Inclure {{ c.libelle }}"></td>
-            <td class="col-kpi">
-              <label class="sr-only" for="l-{{ c.id }}">Libellé</label>
-              <input class="input input--inline input--titre" id="l-{{ c.id }}" name="libelle_{{ c.id }}" value="{{ c.libelle }}" maxlength="120" required>
-              <label class="sr-only" for="d-{{ c.id }}">Description</label>
-              <input class="input input--inline small" id="d-{{ c.id }}" name="description_{{ c.id }}" value="{{ c.description or '' }}" maxlength="400" placeholder="Description (aide pour l'évaluateur)">
-              {% set ailleurs = utilisations.get(c.id, []) %}{% if ailleurs or (c.id not in specifiques) %}
-              <div class="small muted" title="Le libellé et la description sont partagés ; le coefficient et l'ordre restent propres à ce poste">Modifier le texte le change aussi pour : {% if c.id not in specifiques %}la grille commune{% if ailleurs %}, {% endif %}{% endif %}{{ ailleurs|join(", ") }}</div>{% endif %}
+            <td class="col-kpi" data-kpi>
+              <div data-kpi-lecture>
+                <strong data-lecture-libelle>{{ c.libelle }}</strong>
+                <div class="small muted kpi-description" data-lecture-description>{{ c.description or "" }}</div>
+              </div>
+              <div class="kpi-edition" data-kpi-edition hidden>
+                <label class="small" for="l-{{ c.id }}">Libellé</label>
+                <input class="input input--sm" id="l-{{ c.id }}" name="libelle_{{ c.id }}" value="{{ c.libelle }}" maxlength="120" required>
+                <label class="small" for="d-{{ c.id }}">Description (aide pour l'évaluateur)</label>
+                <textarea class="textarea" id="d-{{ c.id }}" name="description_{{ c.id }}" maxlength="400" rows="3">{{ c.description or '' }}</textarea>
+                {% set ailleurs = utilisations.get(c.id, []) %}{% if ailleurs or (c.id not in specifiques) %}
+                <div class="small muted">Le texte est partagé : il change aussi pour {% if c.id not in specifiques %}la grille commune{% if ailleurs %}, {% endif %}{% endif %}{{ ailleurs|join(", ") }}. Le coefficient et l'ordre restent propres à ce poste.</div>{% endif %}
+                <div class="row" style="gap:6px"><button class="btn btn--ghost btn--sm" type="button" data-kpi-annuler>Annuler</button>
+                  <span class="small muted">Puis « Enregistrer la grille » en bas.</span></div>
+              </div>
             </td>
             <td class="num"><label class="sr-only" for="p-{{ c.id }}">Coefficient de {{ c.libelle }}</label>
               <input class="input input--sm input--coef" type="text" inputmode="decimal" maxlength="7" id="p-{{ c.id }}" name="poids_{{ c.id }}"
                      value="{{ selection.get(c.id, coefs.get(c.id, c.poids))|coef }}" data-poids></td>
             <td class="num" data-part>—</td>
             <td class="col-ordre nowrap">
+              <button class="btn btn--secondary btn--sm" type="button" data-kpi-modifier aria-label="Modifier {{ c.libelle }}">Modifier</button>
               <button class="btn btn--ghost btn--sm btn--icone" type="button" data-monter title="Monter" aria-label="Monter {{ c.libelle }}">↑</button>
               <button class="btn btn--ghost btn--sm btn--icone" type="button" data-descendre title="Descendre" aria-label="Descendre {{ c.libelle }}">↓</button>
             </td>
           </tr>
       {%- endmacro %}
       <div class="table-wrap"><table class="table table--serree">
-        <thead><tr><th class="num col-num">N°</th><th class="col-case"><span class="sr-only">Inclus</span></th><th>KPI <span class="small muted">(modifiable directement)</span></th><th class="num">Coefficient</th><th class="num">Poids réel</th><th class="col-ordre"><span class="sr-only">Ordre</span></th></tr></thead>
+        <thead><tr><th class="num col-num">N°</th><th class="col-case"><span class="sr-only">Inclus</span></th><th>KPI</th><th class="num">Coefficient</th><th class="num">Poids réel</th><th class="col-ordre"><span class="sr-only">Ordre</span></th></tr></thead>
         <tbody data-kpi-poste>
         {% for c in kpi_poste %}{{ ligne(c, true, loop.index) }}{% else %}
           <tr data-vide><td colspan="6"><div class="muted" style="padding:var(--s4) 0">Aucun KPI propre à ce poste pour l'instant.</div></td></tr>
