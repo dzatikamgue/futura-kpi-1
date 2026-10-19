@@ -102,7 +102,9 @@ def grille_du_poste(entite_id: int, poste: str | None) -> list[CritereGrille] | 
     defn = grilles(entite_id).get(cle_texte(poste))
     if not defn or not defn["criteres"]:
         return None
-    res = [CritereGrille(c, defn["criteres"][c.id]) for c in _criteres_actifs(entite_id) if c.id in defn["criteres"]]
+    # Ordre propre au poste : celui de la grille enregistrée
+    actifs = {c.id: c for c in _criteres_actifs(entite_id)}
+    res = [CritereGrille(actifs[i], p) for i, p in defn["criteres"].items() if i in actifs]
     return res or None
 
 

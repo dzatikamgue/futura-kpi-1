@@ -1949,3 +1949,37 @@ def test_modifier_supprimer_kpi_sans_toucher_une_autre_entite(app):
     # « Tout supprimer » dans STE ne vide que STE
     c.post("/parametres/criteres", data={"action": "supprimer_masse", "tout": "1"})
     assert len(grille_commune(fut)) == len([v for v in avant.values() if v[3]])
+
+
+def test_grille_poste_edition_directe_numeros_et_ordre(app):
+    from app.models import Critere
+    from app.services.entites import principale
+    from app.services.grilles import grille_pour
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    eid = principale().id
+    crits = db.session.scalars(select(Critere).where(Critere.actif.is_(True)).order_by(Critere.ordre, Critere.id)).all()
+    a, b, d = crits[0], crits[1], crits[2]
+    url = "/parametres/postes/grille?libelle=Topographe"
+    # Ordre choisi : d, a, b (ordre des cases envoyées) + libellé / description modifiés directement
+    r = c.post(url, data={"libelle": "Topographe", "action": "enregistrer",
+                          "inclus": [str(d.id), str(a.id), str(b.id)],
+                          f"poids_{d.id}": "2", f"poids_{a.id}": "1,5", f"poids_{b.id}": "1",
+                          f"libelle_{a.id}": "Respect du planning (modifié)", f"description_{a.id}": "Nouvelle aide",
+                          f"libelle_{b.id}": b.libelle, f"libelle_{d.id}": d.libelle})
+    assert r.status_code == 302
+    lignes, propre = grille_pour(eid, "Topographe")
+    assert propre and [x.id for x in lignes] == [d.id, a.id, b.id]
+    db.session.expire_all()
+    assert db.session.get(Critere, a.id).libelle == "Respect du planning (modifié)"
+    assert db.session.get(Critere, a.id).description == "Nouvelle aide"
+    page = c.get(url).get_data(as_text=True)
+    assert "N°" in page and "data-monter" in page
+    corps = page[page.index("data-kpi-poste"):page.index("</tbody>", page.index("data-kpi-poste"))]
+    assert corps.index(f'id="cr-{d.id}"') < corps.index(f'id="cr-{a.id}"') < corps.index(f'id="cr-{b.id}"')
+    # Libellé déjà pris par un autre KPI de l'entité : refusé, rien n'est modifié
+    c.post(url, data={"libelle": "Topographe", "action": "enregistrer", "inclus": [str(a.id), str(b.id)],
+                      f"poids_{a.id}": "1", f"poids_{b.id}": "1", f"libelle_{a.id}": b.libelle})
+    db.session.expire_all()
+    assert db.session.get(Critere, a.id).libelle == "Respect du planning (modifié)"
+    assert [x.id for x in grille_pour(eid, "Topographe")[0]] == [d.id, a.id, b.id]

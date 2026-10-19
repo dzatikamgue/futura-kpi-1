@@ -555,8 +555,40 @@
       $("[data-total]", grille).textContent = (Math.round(total * 100) / 100).toString().replace(".", ",");
       $("[data-nb-criteres]", grille).textContent = nb;
     }
-    grille.addEventListener("change", majGrille);
+    var corps = $("[data-kpi-poste]", grille);
+    function renumeroter() {
+      var n = 0;
+      $$("[data-ligne-grille]", corps).forEach(function (tr) {
+        var on = $("[data-inclus]", tr).checked;
+        $("[data-num]", tr).textContent = on ? String(++n) : "";
+      });
+      var vide = $("[data-vide]", corps);
+      if (vide) vide.hidden = $$("[data-ligne-grille]", corps).length > 0;
+    }
+    grille.addEventListener("change", function (ev) {
+      // Un KPI coché dans « Ajouter des KPI existants » rejoint la liste du poste (en dernier)
+      var tr = ev.target.closest("[data-ligne-grille]");
+      if (ev.target.matches("[data-inclus]") && tr && ev.target.checked && tr.parentNode !== corps) corps.appendChild(tr);
+      majGrille(); renumeroter();
+    });
     grille.addEventListener("input", majGrille);
+    grille.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-monter], [data-descendre]");
+      if (!b) return;
+      var tr = b.closest("tr");
+      if (b.hasAttribute("data-monter")) {
+        var prec = tr.previousElementSibling;
+        while (prec && !prec.hasAttribute("data-ligne-grille")) prec = prec.previousElementSibling;
+        if (prec) tr.parentNode.insertBefore(tr, prec);
+      } else {
+        var suiv = tr.nextElementSibling;
+        while (suiv && !suiv.hasAttribute("data-ligne-grille")) suiv = suiv.nextElementSibling;
+        if (suiv) tr.parentNode.insertBefore(suiv, tr);
+      }
+      renumeroter();
+      b.focus();
+    });
+    renumeroter();
     // Les coefficients des lignes décochées ne sont pas envoyés : réactivés juste avant l'envoi
     $("form", grille).addEventListener("submit", function () { $$("[data-poids]", grille).forEach(function (s) { s.disabled = false; }); });
     majGrille();

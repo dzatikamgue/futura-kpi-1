@@ -32,7 +32,7 @@
 <div class="grid grid-main">
   <section class="card" data-grille>
     <div class="card__head"><div><h2>KPI du poste « {{ poste }} »</h2>
-      <p>{% if propre %}Seuls les KPI de ce poste sont affichés. Décochez un KPI pour le retirer, ajustez les coefficients puis enregistrez.
+      <p>{% if propre %}Seuls les KPI de ce poste sont affichés, dans l'ordre de la fiche de notation. Modifiez le texte et les coefficients directement, changez l'ordre avec ↑ ↓, décochez pour retirer, puis enregistrez.
          {% else %}Ce poste n'a pas encore de KPI propres : il est noté avec la grille commune. Ajoutez des KPI (nouveau, existant, import IA) ou partez de la grille commune.{% endif %}</p></div>
       {% if not propre %}<form method="post" style="margin-left:auto">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ poste }}"><input type="hidden" name="action" value="copier_commune">
@@ -40,31 +40,42 @@
     </div>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="libelle" value="{{ poste }}"><input type="hidden" name="action" value="enregistrer">
-      {% macro ligne(c, coche) -%}
+      {% macro ligne(c, coche, n) -%}
           <tr data-ligne-grille {% if not coche %}class="ligne--off"{% endif %}>
+            <td class="num col-num" data-num>{{ n if coche else "" }}</td>
             <td class="col-case"><input type="checkbox" class="case" name="inclus" value="{{ c.id }}" id="cr-{{ c.id }}" {% if coche %}checked{% endif %} data-inclus aria-label="Inclure {{ c.libelle }}"></td>
-            <td><label for="cr-{{ c.id }}"><strong>{{ c.libelle }}</strong></label>
-              {% if c.description %}<div class="small muted">{{ c.description }}</div>{% endif %}</td>
+            <td class="col-kpi">
+              <label class="sr-only" for="l-{{ c.id }}">Libellé</label>
+              <input class="input input--inline input--titre" id="l-{{ c.id }}" name="libelle_{{ c.id }}" value="{{ c.libelle }}" maxlength="120" required>
+              <label class="sr-only" for="d-{{ c.id }}">Description</label>
+              <input class="input input--inline small" id="d-{{ c.id }}" name="description_{{ c.id }}" value="{{ c.description or '' }}" maxlength="400" placeholder="Description (aide pour l'évaluateur)">
+              {% set ailleurs = utilisations.get(c.id, []) %}{% if ailleurs or (c.id not in specifiques) %}
+              <div class="small muted" title="Le libellé et la description sont partagés ; le coefficient et l'ordre restent propres à ce poste">Modifier le texte le change aussi pour : {% if c.id not in specifiques %}la grille commune{% if ailleurs %}, {% endif %}{% endif %}{{ ailleurs|join(", ") }}</div>{% endif %}
+            </td>
             <td class="num"><label class="sr-only" for="p-{{ c.id }}">Coefficient de {{ c.libelle }}</label>
               <input class="input input--sm input--coef" type="text" inputmode="decimal" maxlength="7" id="p-{{ c.id }}" name="poids_{{ c.id }}"
                      value="{{ selection.get(c.id, coefs.get(c.id, c.poids))|coef }}" data-poids></td>
             <td class="num" data-part>—</td>
+            <td class="col-ordre nowrap">
+              <button class="btn btn--ghost btn--sm btn--icone" type="button" data-monter title="Monter" aria-label="Monter {{ c.libelle }}">↑</button>
+              <button class="btn btn--ghost btn--sm btn--icone" type="button" data-descendre title="Descendre" aria-label="Descendre {{ c.libelle }}">↓</button>
+            </td>
           </tr>
       {%- endmacro %}
       <div class="table-wrap"><table class="table table--serree">
-        <thead><tr><th class="col-case"><span class="sr-only">Inclus</span></th><th>KPI</th><th class="num">Coefficient</th><th class="num">Poids réel</th></tr></thead>
-        <tbody>
-        {% for c in kpi_poste %}{{ ligne(c, true) }}{% else %}
-          <tr><td colspan="4"><div class="muted" style="padding:var(--s4) 0">Aucun KPI propre à ce poste pour l'instant.</div></td></tr>
+        <thead><tr><th class="num col-num">N°</th><th class="col-case"><span class="sr-only">Inclus</span></th><th>KPI <span class="small muted">(modifiable directement)</span></th><th class="num">Coefficient</th><th class="num">Poids réel</th><th class="col-ordre"><span class="sr-only">Ordre</span></th></tr></thead>
+        <tbody data-kpi-poste>
+        {% for c in kpi_poste %}{{ ligne(c, true, loop.index) }}{% else %}
+          <tr data-vide><td colspan="6"><div class="muted" style="padding:var(--s4) 0">Aucun KPI propre à ce poste pour l'instant.</div></td></tr>
         {% endfor %}
         </tbody>
-        <tfoot><tr><td></td><td><span data-nb-criteres>0</span> KPI retenu(s)</td><td class="num">Total <span data-total>0</span></td><td class="num">100 %</td></tr></tfoot>
+        <tfoot><tr><td></td><td></td><td><span data-nb-criteres>0</span> KPI retenu(s)</td><td class="num">Total <span data-total>0</span></td><td class="num">100 %</td><td></td></tr></tfoot>
       </table></div>
       {% if autres_kpi %}
       <details class="bibliotheque">
         <summary>Ajouter des KPI existants de l'entité ({{ autres_kpi|length }})</summary>
         <div class="table-wrap"><table class="table table--serree"><tbody>
-          {% for c in autres_kpi %}{{ ligne(c, false) }}{% endfor %}
+          {% for c in autres_kpi %}{{ ligne(c, false, 0) }}{% endfor %}
         </tbody></table></div>
       </details>
       {% endif %}

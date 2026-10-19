@@ -704,3 +704,14 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .bibliotheque { border-top: 1px solid var(--line); }
 .bibliotheque > summary { cursor: pointer; padding: var(--s3) var(--s5); font-weight: 500; color: var(--brand); }
 .bibliotheque[open] > summary { border-bottom: 1px solid var(--line); }
+
+/* Grille KPI d'un poste : édition directe, numéros, ordre */
+.col-num { width: 40px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.col-ordre { width: 76px; text-align: right; }
+.col-kpi { min-width: 260px; }
+.btn--icone { min-width: 30px; padding-left: 0; padding-right: 0; justify-content: center; }
+.input--inline { width: 100%; border-color: transparent; background: transparent; padding: 3px 6px; margin-left: -6px; min-height: 0; box-shadow: none; }
+.input--inline:hover { border-color: var(--line); }
+.input--inline:focus { border-color: var(--brand); background: var(--surface); }
+.input--titre { font-weight: 600; color: var(--ink); }
+.ligne--off .input--inline { color: var(--ink-3, var(--ink-2)); }

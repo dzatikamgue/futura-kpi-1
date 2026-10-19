@@ -788,19 +788,36 @@ def grille_poste():
                 flash(f"Critère « {lib} » créé et ajouté à la grille de « {poste} ».", "succes")
                 return redirect(url_retour)
         if action == "enregistrer":
-            choix = {}
+            choix = {}                      # l'ordre des lignes à l'écran = l'ordre de la grille du poste
             for cid in request.form.getlist("inclus"):
-                if not cid.isdigit():
+                if not cid.isdigit() or int(cid) in choix:
                     continue
                 p_ = G.lire_coefficient(request.form.get(f"poids_{cid}")) or 1
                 choix[int(cid)] = p_
-            valides = {c.id for c in db.session.scalars(select(Critere).where(
+            objets = {c.id: c for c in db.session.scalars(select(Critere).where(
                 Critere.id.in_(choix or {-1}), Critere.actif.is_(True), cond_entite(Critere.entite_id, eid)))}
-            choix = {k: v for k, v in choix.items() if k in valides}
+            choix = {k: v for k, v in choix.items() if k in objets}
             if not choix:
                 flash("Cochez au moins un critère (ou revenez à la grille commune).", "erreur")
                 return redirect(url_retour)
+            # Modification directe du libellé / de la description des KPI retenus
+            modifies = []
+            for cid, c in objets.items():
+                lib = " ".join((request.form.get(f"libelle_{cid}") or c.libelle).split())[:120]
+                desc = (request.form.get(f"description_{cid}", c.description or "") or "").strip()[:400] or None
+                if not lib:
+                    flash("Le libellé d'un KPI ne peut pas être vide.", "erreur")
+                    return redirect(url_retour)
+                if lib != c.libelle and db.session.scalar(select(Critere.id).where(
+                        func.lower(Critere.libelle) == lib.lower(), Critere.id != cid, cond_entite(Critere.entite_id, eid))):
+                    flash(f"Un KPI « {lib} » existe déjà dans l'entité : choisissez un autre libellé.", "erreur")
+                    return redirect(url_retour)
+                if lib != c.libelle or desc != c.description:
+                    c.libelle, c.description = lib, desc
+                    modifies.append(lib)
             G.definir_grille(eid, poste, choix, current_user.id)
+            if modifies:
+                journaliser("critere_modifie", ", ".join(modifies)[:200], f"depuis la grille du poste {poste}")
             journaliser("grille_poste", poste, f"{len(choix)} critère(s)")
             db.session.commit()
             flash(f"Grille de « {poste} » enregistrée : {len(choix)} critère(s). Elle s'applique aux évaluations à venir.",
@@ -816,12 +833,14 @@ def grille_poste():
                              if k != cle_texte(poste) and v["criteres"]), key=cle_texte)
     nb_salaries = sum(1 for p_ in db.session.scalars(select(Employe.poste).where(
         Employe.actif.is_(True), Employe.poste.isnot(None), cond_entite(Employe.entite_id, eid))) if cle_texte(p_) == cle_texte(poste))
-    kpi_poste = [c for c in bibliotheque if c.id in selection]
+    par_id = {c.id: c for c in bibliotheque}
+    kpi_poste = [par_id[i] for i in selection if i in par_id]          # ordre propre au poste
     autres_kpi = [c for c in bibliotheque if c.id not in selection]
     return render_template("parametres/grille_poste.html", poste=poste, propre=propre is not None,
                            kpi_poste=kpi_poste, autres_kpi=autres_kpi,
                            selection=selection, bibliotheque=bibliotheque, specifiques=spe, coefs=coefs,
-                           utilisations={c.id: G.postes_utilisant(eid, c.id) for c in bibliotheque if c.id in spe},
+                           utilisations={c.id: [x for x in G.postes_utilisant(eid, c.id) if cle_texte(x) != cle_texte(poste)]
+                                         for c in bibliotheque},
                            autres_grilles=autres_grilles, nb_salaries=nb_salaries, erreurs=erreurs, donnees=donnees)
 
 
