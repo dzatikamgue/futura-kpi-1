@@ -5,7 +5,8 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Grille KPI</span>{% endblock %}
 {% block content %}
 {% set poste_cible = none %}
-<div class="page-head"><div><h1>Grille KPI</h1>
+<div class="page-head"><div><h1>Grille KPI{% if entite %} — {{ entite.nom }}{% endif %}</h1>
+  <p class="small muted" style="margin:0 0 4px">Les KPI ci-dessous appartiennent uniquement à {{ entite.nom if entite else "cette entité" }} : les modifier ou les supprimer ne touche aucune autre entité. Changez d'entité avec les onglets en haut.</p>
   <p>Critères notés de 0 à 100 chaque mois. Note globale = moyenne pondérée des critères, sur 100.
      Cette page est la <strong>grille commune</strong> (et la bibliothèque des critères). Un poste peut avoir sa propre grille : elle remplace alors la grille commune pour ses titulaires.</p></div></div>
 

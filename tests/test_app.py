@@ -1907,3 +1907,45 @@ def test_collaborateur_voit_son_departement_son_chef_et_ceux_qu_il_note(app):
     liste = c.get("/personnel/").get_data(as_text=True)
     assert "<strong>MANGA" in liste and "<strong>TCHOUA" not in liste
     assert c.get(f"/personnel/{tchoua.id}").status_code == 403
+
+
+def test_modifier_supprimer_kpi_sans_toucher_une_autre_entite(app):
+    """Les KPI d'une entité se modifient / suppriment sans effet sur une autre entité."""
+    from app.models import Critere
+    from app.services.entites import principale
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    fut = principale().id
+    avant = {x.id: (x.libelle, x.description, x.poids, x.actif) for x in db.session.scalars(
+        select(Critere).where(Critere.entite_id.is_(None) | (Critere.entite_id == fut)))}
+    assert avant
+    ent = _creer_entite(c)
+    c.get(f"/entite/{ent.id}")
+    c.post("/parametres/copier-entite", data={"source_id": fut, "commune": "1", "retour": "/parametres/criteres"})
+    ste = db.session.scalars(select(Critere).where(Critere.entite_id == ent.id).order_by(Critere.id)).all()
+    assert len(ste) >= 3
+    page = c.get("/parametres/criteres").get_data(as_text=True)
+    assert "Grille KPI — Société Test" in page
+    # Modifier un KPI de STE
+    k = ste[0]
+    c.post("/parametres/criteres", data={"id": k.id, "libelle": k.libelle + " (STE)", "description": "Propre à STE",
+                                        "poids": "3,5", "ordre": "1"})
+    # Supprimer plusieurs KPI cochés de STE
+    c.post("/parametres/criteres", data={"action": "supprimer_masse", "ids": [str(ste[1].id), str(ste[2].id)]})
+    db.session.expire_all()
+    assert db.session.get(Critere, k.id).libelle.endswith("(STE)")
+    # FUTURA strictement inchangé
+    apres = {x.id: (x.libelle, x.description, x.poids, x.actif) for x in db.session.scalars(
+        select(Critere).where(Critere.id.in_(avant.keys())))}
+    assert apres == avant
+    from app.services.grilles import grille_commune
+    assert len(grille_commune(fut)) == len([v for v in avant.values() if v[3]])
+    # Depuis STE, impossible de toucher un KPI de FUTURA (même en forçant l'identifiant)
+    fid = next(iter(avant))
+    assert c.post("/parametres/criteres", data={"id": fid, "libelle": "Piraté", "poids": "1", "ordre": "0"}).status_code == 404
+    assert c.post("/parametres/criteres", data={"action": "supprimer_masse", "ids": [str(fid)]}).status_code in (302, 404)
+    db.session.expire_all()
+    assert db.session.get(Critere, fid) is not None and db.session.get(Critere, fid).libelle == avant[fid][0]
+    # « Tout supprimer » dans STE ne vide que STE
+    c.post("/parametres/criteres", data={"action": "supprimer_masse", "tout": "1"})
+    assert len(grille_commune(fut)) == len([v for v in avant.values() if v[3]])
