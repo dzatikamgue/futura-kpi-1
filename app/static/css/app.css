@@ -651,8 +651,20 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .lien-grille:hover { color: var(--brand); text-decoration: underline; }
 
 /* ---------- Organigramme ---------- */
-.org-zone { overflow-x: auto; padding: var(--s6) var(--s4); }
-.org { display: flex; justify-content: center; min-width: max-content; }
+.org-visionneuse { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.org-outils { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line); background: var(--surface); }
+.org-curseur { width: 160px; accent-color: var(--brand); }
+.org-pourcent { min-width: 48px; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.org-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); }
+.org-zone { overflow: auto; height: calc(100vh - 290px); min-height: 380px; padding: var(--s6) var(--s4);
+  cursor: grab; background: var(--bg, transparent); outline: none; }
+.org-zone.is-glisse { cursor: grabbing; user-select: none; }
+.org-zone:focus-visible { box-shadow: inset 0 0 0 2px var(--brand); }
+.org { display: flex; width: max-content; margin: 0 auto; }
+.org-visionneuse:fullscreen { border-radius: 0; background: var(--surface); }
+.org-visionneuse:fullscreen .org-zone { height: auto; flex: 1; }
+@media (max-width: 720px) { .org-curseur { width: 110px; } .org-zone { height: calc(100vh - 230px); } }
 .org-niveau { display: flex; justify-content: center; padding: 22px 0 0; margin: 0; list-style: none; position: relative; }
 .org > .org-niveau { padding-top: 0; }
 .org-noeud { position: relative; padding: 22px 8px 0; display: flex; flex-direction: column; align-items: center; }
@@ -685,7 +697,8 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .org-projets svg { width: 12px; height: 12px; vertical-align: -1px; }
 @media print {
   .sidebar, .topbar, .no-print, .breadcrumb { display: none !important; }
-  .org-zone { overflow: visible; border: 0; box-shadow: none; }
+  .org-zone { overflow: visible; height: auto; border: 0; box-shadow: none; padding: 0; }
+  .org-visionneuse { border: 0; box-shadow: none; overflow: visible; }
 }
 .input--coef { width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
 .bibliotheque { border-top: 1px solid var(--line); }

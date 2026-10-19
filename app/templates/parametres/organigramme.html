@@ -35,8 +35,21 @@
 </div>
 
 {% if racines %}
-<section class="card org-zone">
-  <div class="org">
+<section class="card org-visionneuse" data-organigramme>
+  <div class="org-outils no-print" role="toolbar" aria-label="Affichage de l'organigramme">
+    <button class="btn btn--ghost btn--sm" type="button" data-org-zoom="-" title="Réduire (Ctrl + molette)" aria-label="Réduire">−</button>
+    <input class="org-curseur" type="range" min="20" max="200" step="5" value="100" data-org-curseur aria-label="Taille de l'organigramme">
+    <button class="btn btn--ghost btn--sm" type="button" data-org-zoom="+" title="Agrandir (Ctrl + molette)" aria-label="Agrandir">+</button>
+    <span class="org-pourcent" data-org-pourcent aria-live="polite">100 %</span>
+    <span class="org-sep"></span>
+    <button class="btn btn--secondary btn--sm" type="button" data-org-ajuster title="Tout voir dans la fenêtre">Tout voir</button>
+    <button class="btn btn--ghost btn--sm" type="button" data-org-zoom="100">100 %</button>
+    <span class="spacer"></span>
+    <span class="small muted hide-mobile">Cliquez-glissez pour vous déplacer</span>
+    <button class="btn btn--ghost btn--sm" type="button" data-org-plein title="Plein écran (Échap pour sortir)">Plein écran</button>
+  </div>
+  <div class="org-zone" data-org-zone tabindex="0" aria-label="Organigramme (déplaçable)">
+  <div class="org" data-org-contenu>
     <ul class="org-niveau">
       <li class="org-noeud">
         <div class="org-carte org-carte--entite">
@@ -46,6 +59,7 @@
         <ul class="org-niveau">{% for r in racines %}{{ noeud(r) }}{% endfor %}</ul>
       </li>
     </ul>
+  </div>
   </div>
 </section>
 {% if sans_dep %}

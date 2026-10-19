@@ -572,6 +572,78 @@
   });
   $$("[data-imprimer]").forEach(function (b) { b.addEventListener("click", function () { window.print(); }); });
 
+  /* ---------- Organigramme : zoom, tout voir, plein écran, déplacement ---------- */
+  var orgV = $("[data-organigramme]");
+  if (orgV) (function () {
+    var zone = $("[data-org-zone]", orgV), contenu = $("[data-org-contenu]", orgV),
+        curseur = $("[data-org-curseur]", orgV), pourcent = $("[data-org-pourcent]", orgV);
+    var MIN = 20, MAX = 200, CLE = "org-zoom", z = 100;
+    function lire() { try { return parseInt(localStorage.getItem(CLE), 10) || 0; } catch (e) { return 0; } }
+    function ecrire(v) { try { localStorage.setItem(CLE, String(v)); } catch (e) { /* stockage indisponible */ } }
+    function appliquer(v, garderCentre) {
+      v = Math.max(MIN, Math.min(MAX, Math.round(v)));
+      var cx = zone.scrollLeft + zone.clientWidth / 2, cy = zone.scrollTop + zone.clientHeight / 2, ratio = v / z;
+      z = v;
+      contenu.style.zoom = (v / 100).toString();
+      curseur.value = v; pourcent.textContent = v + " %";
+      if (garderCentre) { zone.scrollLeft = cx * ratio - zone.clientWidth / 2; zone.scrollTop = cy * ratio - zone.clientHeight / 2; }
+      ecrire(v);
+    }
+    function ajuster() {
+      contenu.style.zoom = "1";
+      var st = getComputedStyle(zone),
+          w = zone.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight),
+          h = zone.clientHeight - parseFloat(st.paddingTop) - parseFloat(st.paddingBottom);
+      var v = Math.floor(Math.min(w / contenu.scrollWidth, h / contenu.scrollHeight, 1) * 100);
+      z = 100; appliquer(v, false);
+      zone.scrollLeft = 0; zone.scrollTop = 0;
+    }
+    $$("[data-org-zoom]", orgV).forEach(function (b) {
+      b.addEventListener("click", function () {
+        var a = b.getAttribute("data-org-zoom");
+        appliquer(a === "+" ? z + 10 : a === "-" ? z - 10 : parseInt(a, 10), true);
+      });
+    });
+    curseur.addEventListener("input", function () { appliquer(parseInt(curseur.value, 10), true); });
+    $("[data-org-ajuster]", orgV).addEventListener("click", ajuster);
+    zone.addEventListener("wheel", function (ev) {
+      if (!ev.ctrlKey && !ev.metaKey) return;              // molette seule : défilement normal
+      ev.preventDefault();
+      appliquer(z + (ev.deltaY < 0 ? 10 : -10), true);
+    }, { passive: false });
+    zone.addEventListener("keydown", function (ev) {
+      if (ev.key === "+" || ev.key === "=") { appliquer(z + 10, true); ev.preventDefault(); }
+      else if (ev.key === "-") { appliquer(z - 10, true); ev.preventDefault(); }
+      else if (ev.key === "0") { ajuster(); ev.preventDefault(); }
+    });
+    // Cliquer-glisser pour se déplacer (sauf sur les liens)
+    var glisse = null;
+    zone.addEventListener("pointerdown", function (ev) {
+      if (ev.button !== 0 || ev.target.closest("a, button, input")) return;
+      glisse = { x: ev.clientX, y: ev.clientY, l: zone.scrollLeft, t: zone.scrollTop };
+      zone.classList.add("is-glisse"); zone.setPointerCapture(ev.pointerId);
+    });
+    zone.addEventListener("pointermove", function (ev) {
+      if (!glisse) return;
+      zone.scrollLeft = glisse.l - (ev.clientX - glisse.x); zone.scrollTop = glisse.t - (ev.clientY - glisse.y);
+    });
+    function fin() { glisse = null; zone.classList.remove("is-glisse"); }
+    zone.addEventListener("pointerup", fin); zone.addEventListener("pointercancel", fin);
+    // Plein écran
+    var plein = $("[data-org-plein]", orgV);
+    if (!orgV.requestFullscreen) plein.hidden = true;
+    plein.addEventListener("click", function () {
+      if (document.fullscreenElement) document.exitFullscreen(); else orgV.requestFullscreen();
+    });
+    document.addEventListener("fullscreenchange", function () {
+      plein.textContent = document.fullscreenElement ? "Quitter le plein écran" : "Plein écran";
+      setTimeout(ajuster, 60);
+    });
+    // Au chargement : taille mémorisée, sinon « tout voir »
+    var memo = lire();
+    if (memo) appliquer(memo, false); else ajuster();
+  })();
+
   /* ---------- Copier dans le presse-papiers ---------- */
   $$(".kbd-copy").forEach(function (el) {
     el.addEventListener("click", function () {
