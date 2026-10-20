@@ -1269,13 +1269,15 @@ def test_organigramme(app):
     # Le sous-département est dans la branche de son parent
     org = page[page.index('class="org"'):]
     assert org.index("Direction technique") < org.index("Méthodes")
-    # Direction : accès en lecture ; collaborateur : refusé
+    # Visible par tous (lecture seule) : direction, collaborateur
     c2 = app.test_client()
     login(c2, email_de("NGUEMA"))
     assert c2.get("/parametres/organigramme").status_code == 200
     c3 = app.test_client()
-    login(c3, email_de("FOTSO"))   # chef de projet : pas d'accès
-    assert c3.get("/parametres/organigramme").status_code == 403
+    login(c3, email_de("FOTSO"))   # collaborateur (chef de projet)
+    page = c3.get("/parametres/organigramme").get_data(as_text=True)
+    assert "Méthodes" in page and 'href="/parametres/organigramme"' in page
+    assert "Gérer les départements" not in page and "/personnel/equipe/" not in page   # pas de gestion ni de liens
 
 
 def test_suppression_de_departements(app):

@@ -205,9 +205,11 @@ def _dans_entite_ou_none(model, obj_id):
 @bp.get("/organigramme")
 @login_required
 def organigramme():
-    """Organigramme de l'entité : départements, sous-départements et projets rattachés (RH et direction)."""
-    if not perimetre().voit_tout:
-        abort(403)
+    """Organigramme de l'entité active : visible par tous les utilisateurs connectés (lecture seule).
+
+    Seuls les noms des départements, des chefs, les effectifs et les projets sont affichés ;
+    les liens vers les équipes et la gestion restent réservés à la RH (voir le gabarit).
+    """
     from ..services.hierarchie import parent_de
     eid = _eid()
     deps = db.session.scalars(select(Departement).options(joinedload(Departement.responsable))

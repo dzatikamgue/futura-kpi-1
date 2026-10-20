@@ -35,9 +35,7 @@
       {% endif %}
       <a href="{{ url_for('suivi.index') }}" {% if nav == 'suivi' %}aria-current="page"{% endif %}>{{ icon('chart') }} Suivi trimestriel &amp; annuel</a>
       <a href="{{ url_for('personnel.liste') }}" {% if nav == 'personnel' %}aria-current="page"{% endif %}>{{ icon('users') }} {{ "Personnel" if per.voit_tout or per.est_evaluateur or per.est_responsable or per.voit_collegues else "Ma fiche" }}</a>
-      {% if per.voit_tout %}
       <a href="{{ url_for('parametres.organigramme') }}" {% if nav == 'organigramme' %}aria-current="page"{% endif %}>{{ icon('building') }} Organigramme</a>
-      {% endif %}
       {% if current_user.est_rh %}
       <div class="nav__section">Administration RH</div>
       <a href="{{ url_for('import_personnel.index') }}" {% if nav == 'import' %}aria-current="page"{% endif %}>{{ icon('upload') }} Importer le personnel</a>
