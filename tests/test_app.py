@@ -1985,3 +1985,44 @@ def test_grille_poste_edition_directe_numeros_et_ordre(app):
     db.session.expire_all()
     assert db.session.get(Critere, a.id).libelle == "Respect du planning (modifié)"
     assert [x.id for x in grille_pour(eid, "Topographe")[0]] == [d.id, a.id, b.id]
+
+
+def test_portail_modules_et_connexion_unique(app, monkeypatch):
+    """Portail des modules : KPI + Flotte ; jeton signé, e-mail, 60 s ; module masqué sans compte."""
+    from urllib.parse import parse_qs, urlparse
+    from itsdangerous import URLSafeTimedSerializer
+    from app.services import modules as M
+    # Sans module externe configuré : comportement inchangé
+    monkeypatch.delenv("MODULE_FLOTTE_URL", raising=False)
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    assert c.get("/modules/").status_code == 302
+    assert "Modules</a>" not in c.get("/").get_data(as_text=True)
+    # Module Flotte configuré
+    monkeypatch.setenv("MODULE_FLOTTE_URL", "https://flotte.exemple.cm/")
+    monkeypatch.setenv("MODULE_FLOTTE_SECRET", "secret-partage")
+    monkeypatch.setattr(M, "a_acces", lambda code, email: True)
+    c = app.test_client()
+    r = c.post("/connexion", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
+    assert r.status_code == 302 and r.location.endswith("/modules/")       # arrivée sur le portail
+    page = c.get("/modules/").get_data(as_text=True)
+    assert "Performance KPI" in page and "Flotte automobile" in page
+    r = c.get("/modules/flotte")
+    assert r.status_code == 302 and r.location.startswith("https://flotte.exemple.cm/sso?jeton=")
+    jeton = parse_qs(urlparse(r.location).query)["jeton"][0]
+    d = URLSafeTimedSerializer("secret-partage", salt="futura-sso").loads(jeton, max_age=60)
+    assert d["email"] == email_de("MBALLA").lower() and d["m"] == "flotte" and d["n"]
+    # Mauvais secret : jeton refusé
+    import pytest
+    from itsdangerous import BadSignature
+    with pytest.raises(BadSignature):
+        URLSafeTimedSerializer("autre", salt="futura-sso").loads(jeton, max_age=60)
+    # Le module KPI ramène au tableau de bord ; module inconnu : 404
+    assert c.get("/modules/kpi").location.endswith("/")
+    assert c.get("/modules/inconnu").status_code == 404
+    # Pas de compte dans la flotte : module non proposé
+    monkeypatch.setattr(M, "a_acces", lambda code, email: False)
+    assert "Flotte automobile" not in c.get("/modules/").get_data(as_text=True)
+    # Flotte injoignable : module proposé avec un avertissement
+    monkeypatch.setattr(M, "a_acces", lambda code, email: None)
+    assert "momentanément injoignable" in c.get("/modules/").get_data(as_text=True)

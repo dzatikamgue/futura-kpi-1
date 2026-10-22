@@ -80,6 +80,8 @@ def register_filters(app):
     from .services.grilles import format_coef, poids_note
     app.jinja_env.filters["coef"] = format_coef
 
+    from .services.modules import externes_configures
+
     @app.context_processor
     def globals_gabarits():
         per = entite = None
@@ -96,6 +98,7 @@ def register_filters(app):
             id_principale, nom_principale = _p().id, _p().nom
         return {
             "entite": entite,
+            "modules_externes": bool(externes_configures()),
             "id_principale": id_principale,
             "nom_principale": nom_principale,
             "onglets_entites": onglets,

@@ -719,3 +719,15 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .input--inline:focus { border-color: var(--brand); background: var(--surface); }
 .input--titre { font-weight: 600; color: var(--ink); }
 .ligne--off .input--inline { color: var(--ink-3, var(--ink-2)); }
+
+/* ---------- Portail des modules ---------- */
+.modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s4); max-width: 980px; }
+.module { display: flex; align-items: center; gap: var(--s4); padding: var(--s5); text-decoration: none; color: inherit;
+  transition: border-color .15s, box-shadow .15s, transform .15s; }
+.module:hover, .module:focus-visible { border-color: var(--brand); box-shadow: var(--shadow-md, var(--shadow-sm)); transform: translateY(-1px); outline: none; }
+.module__icone { width: 52px; height: 52px; flex: none; border-radius: 14px; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; }
+.module__icone svg { width: 26px; height: 26px; }
+.module__texte { display: grid; gap: 4px; flex: 1; }
+.module__texte strong { font-size: 16px; color: var(--ink); }
+.module__fleche { color: var(--ink-2); font-size: 18px; }
+.module:hover .module__fleche { color: var(--brand); }

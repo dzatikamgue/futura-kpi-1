@@ -65,7 +65,11 @@ def login():
                     if e:
                         flash(f"Votre compte n'a pas accès à {e.nom}. Vous êtes dans votre espace habituel.", "info")
             suivant = request.args.get("next")
-            return redirect(suivant if _url_sure(suivant) else url_for("tableau_bord.index"))
+            if _url_sure(suivant):
+                return redirect(suivant)
+            # Plusieurs modules (KPI, Flotte…) : on arrive sur le portail des modules
+            from ..services.modules import externes_configures
+            return redirect(url_for("modules.portail") if externes_configures() else url_for("tableau_bord.index"))
         else:
             if u:
                 u.echecs_connexion = (u.echecs_connexion or 0) + 1

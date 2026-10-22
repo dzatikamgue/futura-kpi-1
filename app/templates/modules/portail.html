@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "modules" %}
+{% block title %}Modules Futura{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Modules</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Bonjour{{ " " ~ current_user.employe.prenom if current_user.employe and current_user.employe.prenom }}</h1>
+  <p>Choisissez le module à ouvrir. Vous êtes connecté une seule fois pour tous.</p></div></div>
+
+<div class="modules">
+  {% for m in modules %}
+  <a class="card module" href="{{ url_for('modules.ouvrir', code=m.code) }}">
+    <span class="module__icone" aria-hidden="true">{{ icon(m.icone) }}</span>
+    <span class="module__texte">
+      <strong>{{ m.nom }}</strong>
+      <span class="muted small">{{ m.description }}</span>
+      {% if m.etat == "inconnu" %}<span class="small" style="color:var(--warning, #b45309)">Module momentanément injoignable : réessayez dans un instant.</span>{% endif %}
+    </span>
+    <span class="module__fleche" aria-hidden="true">→</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
