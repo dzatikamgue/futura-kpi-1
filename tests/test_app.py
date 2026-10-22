@@ -2005,6 +2005,14 @@ def test_portail_modules_et_connexion_unique(app, monkeypatch):
     c = app.test_client()
     r = c.post("/connexion", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
     assert r.status_code == 302 and r.location.endswith("/modules/")       # arrivée sur le portail
+    # Arrivée par le lien principal (« / » → connexion?next=/) : portail aussi
+    c2 = app.test_client()
+    r2 = c2.post("/connexion?next=%2F", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
+    assert r2.location.endswith("/modules/")
+    # Une vraie page demandée reste respectée
+    c3 = app.test_client()
+    r3 = c3.post("/connexion?next=%2Fpersonnel%2F", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
+    assert r3.location.endswith("/personnel/")
     page = c.get("/modules/").get_data(as_text=True)
     assert "Performance KPI" in page and "Flotte automobile" in page
     r = c.get("/modules/flotte")

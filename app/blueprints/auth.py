@@ -34,7 +34,8 @@ def _url_sure(cible: str | None) -> bool:
 @bp.route("/connexion", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("tableau_bord.index"))
+        from ..services.modules import externes_configures
+        return redirect(url_for("modules.portail") if externes_configures() else url_for("tableau_bord.index"))
     erreur = None
     email = ""
     entites = db.session.scalars(select(Entite).where(Entite.actif.is_(True))
@@ -65,7 +66,8 @@ def login():
                     if e:
                         flash(f"Votre compte n'a pas accès à {e.nom}. Vous êtes dans votre espace habituel.", "info")
             suivant = request.args.get("next")
-            if _url_sure(suivant):
+            # « / » (lien principal) n'est pas une vraie destination : on passe par le portail
+            if _url_sure(suivant) and suivant.rstrip("/") not in ("", url_for("tableau_bord.index").rstrip("/")):
                 return redirect(suivant)
             # Plusieurs modules (KPI, Flotte…) : on arrive sur le portail des modules
             from ..services.modules import externes_configures
