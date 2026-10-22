@@ -1,6 +1,6 @@
 """Tableau de bord : KPI du mois, évolution annuelle, répartition, à faire."""
-from flask import Blueprint, render_template, request
-from flask_login import login_required
+from flask import Blueprint, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
@@ -27,8 +27,11 @@ def lire_periode():
 
 
 @bp.get("/")
-@login_required
 def index():
+    if not current_user.is_authenticated:
+        # Lien principal : page des modules avant la connexion (si plusieurs modules)
+        from ..services.modules import externes_configures
+        return redirect(url_for("modules.portail") if externes_configures() else url_for("auth.login", next="/"))
     per = perimetre()
     annee, mois = lire_periode()
     kpi = stats.indicateurs_mois(per, annee, mois)

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Modules · {{ company_name }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/logo-icon.svg') }}" type="image/svg+xml">
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=18">
+</head>
+<body>
+{% from "macros.html" import icon with context %}
+<div class="auth accueil-modules">
+  <section class="auth__brand">
+    <div class="auth__group">
+      <img src="{{ url_for('static', filename='img/logo-white.svg') }}" alt="{{ company_name }}" width="104" height="40">
+      <span>Plateforme</span>
+    </div>
+    <div class="auth__choix">
+      <h2>Les applications du groupe</h2>
+      <p>Choisissez un module. Si vous êtes déjà connecté à l'un, l'autre s'ouvre sans nouvelle connexion quand vous y avez un compte.</p>
+    </div>
+    <div class="auth__pied small">{{ company_name }} · Douala</div>
+  </section>
+
+  <section class="auth__panel">
+    <div class="auth__form">
+      <h1>Modules</h1>
+      <p>Cliquez sur un module pour vous connecter.</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}<div class="alert alert--{{ cat }}" style="margin-bottom:16px"><span>{{ msg }}</span></div>{% endfor %}
+      {% endwith %}
+      <div class="stack" style="gap:12px">
+        {% for m in modules %}
+        <a class="card module" href="{{ url_for('modules.ouvrir', code=m.code) }}">
+          <span class="module__icone" aria-hidden="true">{{ icon(m.icone) }}</span>
+          <span class="module__texte"><strong>{{ m.nom }}</strong><span class="muted small">{{ m.description }}</span></span>
+          <span class="module__fleche" aria-hidden="true">→</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

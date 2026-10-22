@@ -63,6 +63,12 @@ def url_ouverture(code: str, email: str) -> str:
     return f"{url}/sso?{urllib.parse.urlencode({'jeton': jeton})}"
 
 
+def url_connexion(code: str) -> str:
+    """Page de connexion propre au module (pour un visiteur pas encore connecté)."""
+    url, _s = _conf(code)
+    return f"{url}/connexion"
+
+
 def a_acces(code: str, email: str) -> bool | None:
     """Le module a-t-il un compte actif pour cet e-mail ? (None si le module ne répond pas)
 

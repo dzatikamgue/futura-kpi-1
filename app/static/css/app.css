@@ -726,8 +726,12 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
   transition: border-color .15s, box-shadow .15s, transform .15s; }
 .module:hover, .module:focus-visible { border-color: var(--brand); box-shadow: var(--shadow-md, var(--shadow-sm)); transform: translateY(-1px); outline: none; }
 .module__icone { width: 52px; height: 52px; flex: none; border-radius: 14px; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; }
-.module__icone svg { width: 26px; height: 26px; }
+.module__icone svg { width: 26px; height: 26px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .module__texte { display: grid; gap: 4px; flex: 1; }
 .module__texte strong { font-size: 16px; color: var(--ink); }
 .module__fleche { color: var(--ink-2); font-size: 18px; }
 .module:hover .module__fleche { color: var(--brand); }
+.accueil-modules .auth__form { max-width: 440px; }
+.accueil-modules .module { padding: var(--s4); }
+.auth__retour { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); text-decoration: none; margin-bottom: var(--s4); }
+.auth__retour:hover { color: var(--brand); }

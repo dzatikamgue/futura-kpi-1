@@ -6,7 +6,7 @@
   <title>Connexion · {{ app_name }}</title>
   <link rel="icon" href="{{ url_for('static', filename='img/logo-icon.svg') }}" type="image/svg+xml">
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=4">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=18">
 </head>
 {% set depart = (entites|selectattr("id", "equalto", choisie)|first) if choisie else (entites[0] if entites|length == 1 else none) %}
 <body>
@@ -37,6 +37,7 @@
 
   <section class="auth__panel">
     <form class="auth__form" method="post" data-validate data-loading>
+      {% if modules_externes %}<a class="auth__retour" href="{{ url_for('modules.portail') }}">← Tous les modules</a>{% endif %}
       <h1 data-titre-connexion>{{ "Connexion à " ~ depart.nom if depart else "Connexion" }}</h1>
       <p>Utilisez l'adresse e-mail de votre fiche salarié.</p>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

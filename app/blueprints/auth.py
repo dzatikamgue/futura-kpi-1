@@ -35,7 +35,9 @@ def _url_sure(cible: str | None) -> bool:
 def login():
     if current_user.is_authenticated:
         from ..services.modules import externes_configures
-        return redirect(url_for("modules.portail") if externes_configures() else url_for("tableau_bord.index"))
+        if request.args.get("module") == "kpi" or not externes_configures():
+            return redirect(url_for("tableau_bord.index"))
+        return redirect(url_for("modules.portail"))
     erreur = None
     email = ""
     entites = db.session.scalars(select(Entite).where(Entite.actif.is_(True))
@@ -66,6 +68,8 @@ def login():
                     if e:
                         flash(f"Votre compte n'a pas accès à {e.nom}. Vous êtes dans votre espace habituel.", "info")
             suivant = request.args.get("next")
+            if request.args.get("module") == "kpi":             # choisi sur la page des modules
+                return redirect(url_for("tableau_bord.index"))
             # « / » (lien principal) n'est pas une vraie destination : on passe par le portail
             if _url_sure(suivant) and suivant.rstrip("/") not in ("", url_for("tableau_bord.index").rstrip("/")):
                 return redirect(suivant)
@@ -91,7 +95,8 @@ def logout():
     journaliser("deconnexion", current_user.email, commit=True)
     logout_user()
     flash("Vous êtes déconnecté.", "info")
-    return redirect(url_for("auth.login"))
+    from ..services.modules import externes_configures
+    return redirect(url_for("modules.portail") if externes_configures() else url_for("auth.login"))
 
 
 @bp.route("/mot-de-passe", methods=["GET", "POST"])
