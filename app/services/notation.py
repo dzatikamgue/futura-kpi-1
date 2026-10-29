@@ -16,20 +16,21 @@ SEUIL_JUSTIFICATION = 60  # une note de critère < 60 doit être commentée
 
 # Seuils sur 100 → (code, libellé) ; utilisés pour les critères ET la note globale
 NIVEAUX = [
-    (90, "excellent", "Excellent"),
-    (70, "tres-bien", "Très bien"),
-    (60, "bien", "Bien"),
-    (50, "passable", "Passable"),
-    (0, "insuffisant", "Insuffisant"),
+    # (borne basse incluse, code couleur, libellé) — barème Futura
+    (95, "excellent", "Excellent"),
+    (90, "tres-bien", "Très bien"),
+    (85, "bien", "Bien"),
+    (80, "passable", "Acceptable"),
+    (0, "insuffisant", "Insuffisant — amélioration nécessaire"),
 ]
 
 # Légende affichée aux évaluateurs (borne basse, libellé, description)
 ECHELLE = [
-    (90, "Excellent", "Performance exceptionnelle, exemplaire"),
-    (70, "Très bien", "Dépasse régulièrement les attentes"),
-    (60, "Bien", "Répond pleinement aux attentes du poste"),
-    (50, "Passable", "Partiellement conforme, progrès attendus"),
-    (0, "Insuffisant", "En dessous des attentes"),
+    (95, "Excellent", "95 et plus — performance exceptionnelle, exemplaire"),
+    (90, "Très bien", "90 à 94 — dépasse régulièrement les attentes"),
+    (85, "Bien", "85 à 89 — répond pleinement aux attentes du poste"),
+    (80, "Acceptable", "80 à 84 — conforme, des progrès sont attendus"),
+    (0, "Insuffisant — amélioration nécessaire", "Moins de 80 — en dessous des attentes"),
 ]
 
 
@@ -47,7 +48,7 @@ def niveau(note: float | None) -> tuple[str, str]:
     for seuil, code, libelle in NIVEAUX:
         if note >= seuil:
             return code, libelle
-    return "insuffisant", "Insuffisant"
+    return "insuffisant", "Insuffisant — amélioration nécessaire"
 
 
 def trimestre_de(mois: int) -> int:

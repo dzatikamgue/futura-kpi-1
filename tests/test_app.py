@@ -63,8 +63,11 @@ def test_calcul_note_globale():
     assert calculer_note_globale([(40, 3), (80, 1)]) == 50.0  # (120+80)/4
     assert calculer_note_globale([(0, 2)]) == 0.0
     assert calculer_note_globale([]) is None
-    assert niveau(90)[0] == "excellent" and niveau(89.99)[0] == "tres-bien"
-    assert niveau(49.99)[0] == "insuffisant" and niveau(0)[0] == "insuffisant"
+    # Barème Futura : Excellent ≥95, Très bien 90–94, Bien 85–89, Acceptable 80–84, Insuffisant — amélioration nécessaire <80
+    assert niveau(95) == ("excellent", "Excellent") and niveau(94.99) == ("tres-bien", "Très bien")
+    assert niveau(90)[1] == "Très bien" and niveau(89.99) == ("bien", "Bien") and niveau(85)[1] == "Bien"
+    assert niveau(84.99) == ("passable", "Acceptable") and niveau(80)[1] == "Acceptable"
+    assert niveau(79.99) == ("insuffisant", "Insuffisant — amélioration nécessaire") and niveau(0)[1] == "Insuffisant — amélioration nécessaire"
 
 
 # ---------------------------------------------------------------- pages

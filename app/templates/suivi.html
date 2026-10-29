@@ -53,7 +53,7 @@
       <td class="num">{{ data.total_annuel|note }}</td><td>{{ badge_niveau(data.total_annuel) }}</td><td class="hide-mobile"></td>
     </tr></tfoot>
   </table></div>
-  <div class="card__foot small muted">Trimestre = moyenne des mois notés du trimestre · Année = moyenne des mois notés de l'année · Seuils : Excellent ≥90, Très bien ≥70, Bien ≥60, Passable ≥50.</div>
+  <div class="card__foot small muted">Trimestre = moyenne des mois notés du trimestre · Année = moyenne des mois notés de l'année · Barème : Excellent ≥95, Très bien 90–94, Bien 85–89, Acceptable 80–84, Insuffisant — amélioration nécessaire &lt;80.</div>
   {% else %}
   {{ vide("Aucune note pour ces critères", "Aucune évaluation soumise en " ~ annee ~ " pour cette sélection.", "chart") }}
   {% endif %}

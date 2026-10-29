@@ -12,8 +12,8 @@
   // Seuils sur 100 (identiques à app/services/notation.py)
   function niveau(n) {
     if (n == null || isNaN(n)) return ["aucun", "—"];
-    return n >= 90 ? ["excellent", "Excellent"] : n >= 70 ? ["tres-bien", "Très bien"]
-      : n >= 60 ? ["bien", "Bien"] : n >= 50 ? ["passable", "Passable"] : ["insuffisant", "Insuffisant"];
+    return n >= 95 ? ["excellent", "Excellent"] : n >= 90 ? ["tres-bien", "Très bien"]
+      : n >= 85 ? ["bien", "Bien"] : n >= 80 ? ["passable", "Acceptable"] : ["insuffisant", "Insuffisant — amélioration nécessaire"];
   }
 
   /* ---------- Thème clair / sombre ---------- */
