@@ -735,3 +735,10 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
 .accueil-modules .module { padding: var(--s4); }
 .auth__retour { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); text-decoration: none; margin-bottom: var(--s4); }
 .auth__retour:hover { color: var(--brand); }
+
+/* Évaluations : « Faire refaire » (motif dans un petit volet) */
+.action-motif { display: inline-block; vertical-align: top; }
+.action-motif > summary { list-style: none; cursor: pointer; }
+.action-motif > summary::-webkit-details-marker { display: none; }
+.action-motif__form { margin-top: 6px; width: 260px; display: grid; gap: 6px; text-align: left; white-space: normal;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3); }

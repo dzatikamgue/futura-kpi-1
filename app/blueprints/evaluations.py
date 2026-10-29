@@ -17,7 +17,7 @@ from ..services.exports import export_excel
 from ..services.grilles import memoriser_coefficients_note, poids_pour_note
 from ..services.notation import (NOTE_MAX, NOTE_MIN, SEUIL_JUSTIFICATION,
                                  calculer_note_globale, libelle_periode,
-                                 periode_ouverte, periodes_saisissables,
+                                 periode_courante, periode_ouverte, periodes_saisissables,
                                  niveau)
 from ..filters import note_fr
 from ..utils import paginer
@@ -71,6 +71,16 @@ def _requete_campagne(per, annee, mois):
     return q
 
 
+def _mois_recents(n: int) -> list[tuple[int, int]]:
+    """Les n derniers mois (mois en cours compris), du plus récent au plus ancien."""
+    a, m = periode_courante()
+    res = []
+    for _ in range(n):
+        res.append((a, m))
+        a, m = (a - 1, 12) if m == 1 else (a, m - 1)
+    return res
+
+
 @bp.get("/")
 @login_required
 def campagne():
@@ -102,8 +112,16 @@ def campagne():
             .where(Affectation.actif.is_(True), Employe.actif.is_(True), per.filtre_affectations_visibles()))
     total, commencees, soumises = db.session.execute(base).one()
 
+    # Mois clôturés où la RH a rouvert des évaluations à faire par cet utilisateur
+    rouverts = []
+    if per.employe_id:
+        rouverts = sorted({(a, m) for a, m in db.session.execute(
+            select(Evaluation.annee, Evaluation.mois).where(
+                Evaluation.rouverte.is_(True), Evaluation.statut == StatutEvaluation.BROUILLON,
+                Evaluation.evaluateur_id == per.employe_id)).all()} - set(periodes_saisissables()))
     return render_template(
         "evaluations/campagne.html", page=page, lignes=lignes, annee=annee, mois=mois,
+        periodes_rouvertes=rouverts, mois_recents=_mois_recents(24),
         periode=libelle_periode(annee, mois), ouverte=periode_ouverte(annee, mois),
         periodes_ouvertes=periodes_saisissables(),
         compteurs={"total": total, "a_faire": total - commencees, "brouillons": commencees - soumises,
@@ -282,5 +300,54 @@ def rouvrir(evaluation_id):
     ev.updated_by_id = current_user.id
     journaliser("evaluation_rouverte", f"{ev.employe.nom_complet} — {libelle_periode(ev.annee, ev.mois)}", motif)
     db.session.commit()
-    flash("Évaluation rouverte : l'évaluateur peut à nouveau la modifier.", "succes")
+    flash(f"Évaluation de {ev.employe.nom_complet} rouverte : "
+          f"{ev.evaluateur.nom_complet if ev.evaluateur else 'l’évaluateur'} peut la refaire, même si le mois est clôturé.", "succes")
+    retour = request.form.get("retour") or ""
+    if retour.startswith("/") and not retour.startswith("//"):
+        return redirect(retour)
     return redirect(url_for("evaluations.detail", evaluation_id=ev.id))
+
+
+@bp.post("/autoriser")
+@login_required
+@rh_requis
+def autoriser_saisie():
+    """Mois clôturé : la RH / l'admin autorise le N+1 à noter quand même (saisie en retard).
+
+    Aucune structure ajoutée : une évaluation « brouillon rouverte » est préparée pour chaque
+    affectation choisie (ou les brouillons existants sont rouverts). L'évaluateur la complète
+    puis la soumet comme d'habitude ; à la soumission, la réouverture prend fin.
+    """
+    per = perimetre()
+    annee, mois = lire_periode()
+    retour = url_for("evaluations.campagne", annee=annee, mois=mois)
+    if request.form.get("tout") == "1":
+        ids = {a.id for a, ev in db.session.execute(
+            _requete_campagne(per, annee, mois).order_by(None)).all() if not (ev and ev.est_soumise)}
+    else:
+        ids = {int(x) for x in request.form.getlist("aff_ids") if x.isdigit()}
+    affs = db.session.scalars(select(Affectation).where(Affectation.id.in_(ids or {-1}),
+                                                        Affectation.actif.is_(True))).all()
+    existantes = {e.affectation_id: e for e in db.session.scalars(select(Evaluation).where(
+        Evaluation.affectation_id.in_(ids or {-1}), Evaluation.annee == annee, Evaluation.mois == mois))}
+    n = 0
+    for aff in affs:
+        ev = existantes.get(aff.id)
+        if ev and ev.est_soumise:
+            continue                                   # déjà soumise : utiliser « Faire refaire »
+        if ev is None:
+            ev = Evaluation(affectation_id=aff.id, annee=annee, mois=mois, employe_id=aff.employe_id,
+                            evaluateur_id=aff.evaluateur_id, departement_id=aff.departement_id,
+                            projet_id=aff.projet_id, created_by_id=current_user.id)
+            db.session.add(ev)
+        ev.rouverte = True
+        ev.updated_by_id = current_user.id
+        n += 1
+    if not n:
+        flash("Aucune évaluation à autoriser (déjà soumises ou aucune sélection).", "info")
+        return redirect(retour)
+    journaliser("saisie_tardive_autorisee", libelle_periode(annee, mois), f"{n} évaluation(s)")
+    db.session.commit()
+    flash(f"Saisie autorisée pour {n} évaluation(s) de {libelle_periode(annee, mois)} : "
+          "les N+1 concernés peuvent noter maintenant, puis soumettre.", "succes")
+    return redirect(retour)

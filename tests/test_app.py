@@ -2046,3 +2046,58 @@ def test_portail_modules_et_connexion_unique(app, monkeypatch):
     # Flotte injoignable : module proposé avec un avertissement
     monkeypatch.setattr(M, "a_acces", lambda code, email: None)
     assert "momentanément injoignable" in c.get("/modules/").get_data(as_text=True)
+
+
+def test_saisie_en_retard_et_faire_refaire(app):
+    """Mois clôturé : la RH autorise la saisie ; « Faire refaire » depuis la liste du mois."""
+    from app.models import Critere
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))
+    owona = db.session.scalar(select(Employe).where(Employe.nom == "OWONA"))
+    aff = db.session.scalar(select(Affectation).where(Affectation.employe_id == owona.id))
+    a, _ = periode_courante()
+    annee, mois = a - 1, 3                                         # mois clôturé
+    criteres = db.session.scalars(select(Critere).where(Critere.actif.is_(True))).all()
+    data = {f"note_{x.id}": "82" for x in criteres}
+    n1 = app.test_client()
+    login(n1, fotso.email)
+    url = f"/evaluations/noter/{aff.id}?annee={annee}&mois={mois}"
+    assert n1.post(url, data={**data, "action": "soumettre"}).status_code == 302     # refusé : clôturé
+    assert db.session.scalar(select(Evaluation).where(Evaluation.affectation_id == aff.id,
+                                                      Evaluation.annee == annee, Evaluation.mois == mois)) is None
+    # La RH voit le mois clôturé et autorise la saisie de cette ligne
+    rh = app.test_client()
+    login(rh, email_de("MBALLA"))
+    page = rh.get(f"/evaluations/?annee={annee}&mois={mois}").get_data(as_text=True)
+    assert "Autoriser toutes les saisies en retard" in page and "Autoriser la saisie" in page
+    r = rh.post(f"/evaluations/autoriser?annee={annee}&mois={mois}", data={"aff_ids": [str(aff.id)]})
+    assert r.status_code == 302
+    ev = db.session.scalar(select(Evaluation).where(Evaluation.affectation_id == aff.id,
+                                                    Evaluation.annee == annee, Evaluation.mois == mois))
+    assert ev and ev.rouverte and ev.statut == "brouillon"
+    # Le N+1 voit le mois rouvert et peut noter puis soumettre
+    camp = n1.get("/evaluations/").get_data(as_text=True)
+    assert "rouvert" in camp
+    assert n1.post(url, data={**data, "action": "soumettre"}).status_code == 302
+    db.session.refresh(ev)
+    assert ev.statut == "soumise" and ev.note_globale == 82.0 and not ev.rouverte
+    # Plus modifiable ensuite
+    assert n1.post(url, data={**data, "action": "brouillon"}).status_code == 302
+    db.session.refresh(ev)
+    assert ev.statut == "soumise"
+    # « Faire refaire » depuis la liste : retour à la liste, le N+1 peut corriger
+    page = rh.get(f"/evaluations/?annee={annee}&mois={mois}").get_data(as_text=True)
+    assert "Faire refaire" in page
+    retour = f"/evaluations/?annee={annee}&mois={mois}"
+    r = rh.post(f"/evaluations/{ev.id}/rouvrir", data={"motif": "Erreur sur un critère", "retour": retour})
+    assert r.status_code == 302 and r.location.endswith(retour)
+    db.session.refresh(ev)
+    assert ev.statut == "brouillon" and ev.rouverte
+    data[f"note_{criteres[0].id}"] = "90"
+    assert n1.post(url, data={**data, "action": "soumettre"}).status_code == 302
+    db.session.refresh(ev)
+    assert ev.statut == "soumise" and ev.note_globale > 82
+    # « Tout autoriser » et refus pour un non-RH
+    assert n1.post(f"/evaluations/autoriser?annee={annee}&mois={mois}", data={"tout": "1"}).status_code == 403
+    rh.post(f"/evaluations/autoriser?annee={annee}&mois={mois}", data={"tout": "1"})
+    assert db.session.scalar(select(db.func.count(Evaluation.id)).where(
+        Evaluation.annee == annee, Evaluation.mois == mois, Evaluation.rouverte.is_(True))) >= 1

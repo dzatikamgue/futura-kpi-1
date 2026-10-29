@@ -14,9 +14,38 @@
     {% for (a, m) in periodes_ouvertes %}
     <a class="btn {{ 'btn--primary' if (a, m) == (annee, mois) else 'btn--secondary' }}" href="{{ url_for('evaluations.campagne', annee=a, mois=m) }}">{{ MOIS[m-1] }} {{ a }}</a>
     {% endfor %}
+    {% for (a, m) in periodes_rouvertes %}
+    <a class="btn {{ 'btn--primary' if (a, m) == (annee, mois) else 'btn--secondary' }}" href="{{ url_for('evaluations.campagne', annee=a, mois=m, statut='non_soumise') }}" title="Évaluations rouvertes par la RH">{{ MOIS[m-1] }} {{ a }} <span class="badge badge--warn">rouvert</span></a>
+    {% endfor %}
+    {% if current_user.est_rh %}
+    <form method="get" class="row" style="gap:6px">
+      <label class="sr-only" for="choix-mois">Autre mois</label>
+      <select class="select select--sm" id="choix-mois" name="periode" data-periode-campagne style="width:auto">
+        <option value="">Autre mois…</option>
+        {% for (aa, mm) in mois_recents %}
+        <option value="{{ aa }}-{{ mm }}" {% if (aa, mm) == (annee, mois) %}selected{% endif %}>{{ MOIS[mm-1] }} {{ aa }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
     <a class="btn btn--secondary" href="{{ url_avec(export='xlsx') }}">{{ icon('download') }} Excel</a>
   </div>
 </div>
+
+{% if periodes_rouvertes and (annee, mois) not in periodes_rouvertes and not current_user.est_rh %}
+<div class="alert alert--warn" style="margin-bottom:16px">{{ icon('info') }}<span>La RH vous a rouvert des évaluations en retard :
+  {% for (a, m) in periodes_rouvertes %}<a href="{{ url_for('evaluations.campagne', annee=a, mois=m, statut='non_soumise') }}"><strong>{{ MOIS[m-1] }} {{ a }}</strong></a>{{ ", " if not loop.last }}{% endfor %}.</span></div>
+{% endif %}
+{% if current_user.est_rh and not ouverte and compteurs.total > compteurs.soumises %}
+<div class="alert alert--info row" style="margin-bottom:16px;gap:12px;flex-wrap:wrap;align-items:center">
+  <span style="flex:1;min-width:240px">{{ icon('lock') }} Mois clôturé : {{ compteurs.total - compteurs.soumises }} évaluation(s) non soumise(s).
+    Vous pouvez autoriser les N+1 à noter quand même, ligne par ligne ou pour toutes d'un coup.</span>
+  <form method="post" action="{{ url_for('evaluations.autoriser_saisie', annee=annee, mois=mois) }}"
+        data-confirm="Autoriser la saisie en retard de toutes les évaluations non soumises de {{ periode }} ?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="tout" value="1">
+    <button class="btn btn--primary btn--sm" type="submit">Autoriser toutes les saisies en retard</button>
+  </form>
+</div>
+{% endif %}
 
 <div class="grid grid-4" style="margin-bottom:16px">
   <a class="card kpi" href="{{ url_avec(statut='', page=1) }}" style="text-decoration:none;color:inherit"><div class="kpi__label">Attendues</div><div class="kpi__value">{{ compteurs.total }}</div></a>
@@ -69,6 +98,25 @@
               <a class="btn btn--primary btn--sm" href="{{ url_for('evaluations.noter', affectation_id=aff.id, annee=annee, mois=mois) }}">{{ "Reprendre" if ev else "Noter" }}</a>
             {% elif ev and per.peut_voir_evaluation(ev) %}
               <a class="btn btn--secondary btn--sm" href="{{ url_for('evaluations.detail', evaluation_id=ev.id) }}">Voir</a>
+            {% endif %}
+            {% if current_user.est_rh %}
+              {% if ev and ev.est_soumise %}
+              <details class="action-motif">
+                <summary class="btn btn--ghost btn--sm">Faire refaire</summary>
+                <form method="post" action="{{ url_for('evaluations.rouvrir', evaluation_id=ev.id) }}" class="action-motif__form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="retour" value="{{ request.full_path }}">
+                  <label class="small" for="motif-{{ ev.id }}">Motif (visible dans le journal)</label>
+                  <input class="input input--sm" id="motif-{{ ev.id }}" name="motif" required maxlength="300" placeholder="Ex. erreur de saisie">
+                  <button class="btn btn--danger btn--sm" type="submit">Rouvrir pour {{ aff.evaluateur.nom_complet if aff.evaluateur else "le N+1" }}</button>
+                </form>
+              </details>
+              {% elif not ouverte and not (ev and ev.rouverte) %}
+              <form method="post" action="{{ url_for('evaluations.autoriser_saisie', annee=annee, mois=mois) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="aff_ids" value="{{ aff.id }}">
+                <button class="btn btn--ghost btn--sm" type="submit" title="Permettre au N+1 de noter ce mois clôturé">Autoriser la saisie</button>
+              </form>
+              {% endif %}
             {% endif %}
           </td>
         </tr>

@@ -618,6 +618,15 @@
       if (c && sel && c.checked) sel.value = destTous.value === "__commune__" ? "" : destTous.value;
     });
   });
+  // Évaluations : choix d'un autre mois (RH)
+  $$("[data-periode-campagne]").forEach(function (sel) {
+    sel.addEventListener("change", function () {
+      if (!sel.value) return;
+      var p = sel.value.split("-"), u = new URL(window.location.href);
+      u.searchParams.set("annee", p[0]); u.searchParams.set("mois", p[1]); u.searchParams.delete("page");
+      window.location.href = u.toString();
+    });
+  });
   $$("[data-imprimer]").forEach(function (b) { b.addEventListener("click", function () { window.print(); }); });
 
   /* ---------- Organigramme : zoom, tout voir, plein écran, déplacement ---------- */
