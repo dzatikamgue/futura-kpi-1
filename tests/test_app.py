@@ -2104,3 +2104,86 @@ def test_saisie_en_retard_et_faire_refaire(app):
     rh.post(f"/evaluations/autoriser?annee={annee}&mois={mois}", data={"tout": "1"})
     assert db.session.scalar(select(db.func.count(Evaluation.id)).where(
         Evaluation.annee == annee, Evaluation.mois == mois, Evaluation.rouverte.is_(True))) >= 1
+
+
+# ---------------------------------------------------------------- messagerie
+def test_messagerie_privee_groupes_et_supervision(app):
+    from app.chat_models import Conversation, Membre, Message
+    from app.models import Departement, JournalAction as Journal
+    from sqlalchemy import inspect
+    # La base KPI ne contient aucune table du chat (base séparée)
+    assert not [t for t in inspect(db.engine).get_table_names() if t.startswith("chat_")]
+    assert "chat_messages" in inspect(db.engines["chat"]).get_table_names()
+
+    ekane = db.session.scalar(select(Employe).where(Employe.nom == "EKANE"))       # cheffe DAF
+    ndjock = _compte("NDJOCK", "ndjock.c@x.cm")                                     # membre DAF
+    moukoko = _compte("MOUKOKO", "moukoko.c@x.cm")                                  # membre DAF
+    fotso = db.session.scalar(select(Employe).where(Employe.nom == "FOTSO"))        # autre département
+    daf = db.session.scalar(select(Departement).where(Departement.code == "DAF"))
+    a = app.test_client(); login(a, ndjock.compte.email)
+    b = app.test_client(); login(b, moukoko.compte.email)
+
+    # 1) Conversation privée : création unique, envoi, non-lus, lecture
+    page = a.get("/messages/").get_data(as_text=True)
+    assert "Messagerie" in page and "consultées par l'administrateur" in page
+    r = a.post("/messages/nouvelle", data={"utilisateur_id": moukoko.compte.id})
+    conv_id = int(r.location.rsplit("/", 1)[1])
+    assert a.post("/messages/nouvelle", data={"utilisateur_id": moukoko.compte.id}).location == r.location  # pas de doublon
+    assert a.post(f"/messages/{conv_id}/envoyer", data={"texte": "Bonjour <b>Didier</b>"},
+                  headers={"X-Requested-With": "fetch"}).get_json() == {"ok": True}
+    assert b.get("/messages/non-lus").get_json()["non_lus"] == 1
+    assert 'data-chat-badge' in b.get("/").get_data(as_text=True)
+    page = b.get(f"/messages/{conv_id}").get_data(as_text=True)
+    assert "Bonjour &lt;b&gt;Didier&lt;/b&gt;" in page                          # échappé (pas de XSS)
+    assert b.get("/messages/non-lus").get_json()["non_lus"] == 0
+    d = a.get(f"/messages/{conv_id}/nouveaux?apres=0").get_json()
+    assert d["messages"][0]["moi"] and d["messages"][0]["texte"] == "Bonjour <b>Didier</b>"
+    b.post(f"/messages/{conv_id}/envoyer", data={"texte": "Bien reçu"})
+    nouveaux = a.get(f"/messages/{conv_id}/nouveaux?apres={d['messages'][0]['id']}").get_json()["messages"]
+    assert len(nouveaux) == 1 and nouveaux[0]["texte"] == "Bien reçu" and not nouveaux[0]["moi"]
+    assert a.post(f"/messages/{conv_id}/envoyer", data={"texte": "   "}, headers={"X-Requested-With": "fetch"}).status_code == 400
+    # Un tiers ne voit pas la conversation
+    t = app.test_client(); login(t, fotso.email)
+    assert t.get(f"/messages/{conv_id}").status_code == 404
+    assert t.post(f"/messages/{conv_id}/envoyer", data={"texte": "intrus"}).status_code == 404
+    # Suppression : seulement ses propres messages
+    mid = nouveaux[0]["id"]
+    assert a.post(f"/messages/message/{mid}/supprimer").status_code == 403
+    b.post(f"/messages/message/{mid}/supprimer")
+    assert db.session.get(Message, mid).supprime
+
+    # 2) Groupes : créés par la RH ou le chef du département
+    assert a.post("/messages/groupe", data={"departement_id": daf.id}).status_code == 302
+    assert db.session.scalar(select(Conversation).where(Conversation.type == "groupe")) is None   # NDJOCK n'est pas chef
+    e = app.test_client(); login(e, ekane.email)
+    assert "Groupe</summary>" in e.get("/messages/").get_data(as_text=True)
+    r = e.post("/messages/groupe", data={"departement_id": daf.id, "nom": "Équipe DAF", "tout_le_departement": "1"})
+    g_id = int(r.location.rsplit("/", 1)[1])
+    grp = db.session.get(Conversation, g_id)
+    membres = {m.utilisateur_id for m in grp.membres}
+    assert {ekane.compte.id, ndjock.compte.id, moukoko.compte.id} <= membres
+    assert fotso.compte.id not in membres
+    a.post(f"/messages/{g_id}/envoyer", data={"texte": "Réunion à 10 h"})
+    assert "Réunion à 10 h" in b.get(f"/messages/{g_id}").get_data(as_text=True)
+    assert t.get(f"/messages/{g_id}").status_code == 404
+    # Gestion : la cheffe ajoute FOTSO puis le retire ; un simple membre ne peut pas
+    assert a.post(f"/messages/{g_id}/membres", data={"action": "ajouter", "membres": [fotso.compte.id]}).status_code == 403
+    e.post(f"/messages/{g_id}/membres", data={"action": "ajouter", "membres": [fotso.compte.id]})
+    assert t.get(f"/messages/{g_id}").status_code == 200
+    e.post(f"/messages/{g_id}/membres", data={"action": "retirer", "utilisateur_id": fotso.compte.id})
+    assert t.get(f"/messages/{g_id}").status_code == 404
+    # La RH peut créer un groupe pour n'importe quel département
+    rh = app.test_client(); login(rh, email_de("MBALLA"))
+    tech = db.session.scalar(select(Departement).where(Departement.code == "TECH"))
+    assert rh.post("/messages/groupe", data={"departement_id": tech.id, "tout_le_departement": "1"}).status_code == 302
+    assert db.session.scalar(select(db.func.count(Conversation.id)).where(Conversation.type == "groupe")) == 2
+
+    # 3) Supervision : superadmin uniquement, consultation journalisée
+    assert rh.get("/messages/supervision").status_code == 403
+    sa = Utilisateur(email="super@x.cm", role=Role.COLLABORATEUR, doit_changer_mdp=False)
+    sa.set_password(MDP); db.session.add(sa); db.session.commit()
+    s = app.test_client(); login(s, "super@x.cm")
+    assert "Équipe DAF" in s.get("/messages/supervision").get_data(as_text=True)
+    page = s.get(f"/messages/supervision/{conv_id}").get_data(as_text=True)
+    assert "Bonjour &lt;b&gt;Didier&lt;/b&gt;" in page and "Lecture seule" in page
+    assert db.session.scalar(select(Journal).where(Journal.action == "chat_consultation_admin")) is not None

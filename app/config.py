@@ -28,6 +28,27 @@ def _database_url() -> str:
     return url
 
 
+def _chat_database_url() -> str | None:
+    """Base SÉPARÉE pour la messagerie (la base KPI n'est jamais touchée par le chat).
+
+    CHAT_DATABASE_URL absente : SQLite local en développement ; sur Railway, chat désactivé.
+    """
+    url = os.environ.get("CHAT_DATABASE_URL", "").strip()
+    if not url:
+        if SUR_RAILWAY:
+            return None
+        os.makedirs(os.path.join(BASE_DIR, "instance"), exist_ok=True)
+        return "sqlite:///" + os.path.join(BASE_DIR, "instance", "futura_chat.db")
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+_CHAT_URL = _chat_database_url()
+
+
 class Config:
     # Sur Railway, la production est le mode par défaut (cookies sécurisés, SECRET_KEY obligatoire)
     ENV_NAME = os.environ.get("APP_ENV", "production" if SUR_RAILWAY else "development")
@@ -38,6 +59,9 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True, "pool_recycle": 280}
+    # Messagerie : base séparée (bind « chat »)
+    CHAT_ACTIF = _CHAT_URL is not None
+    SQLALCHEMY_BINDS = {"chat": _CHAT_URL} if _CHAT_URL else {}
 
     # Sessions et cookies
     SESSION_COOKIE_HTTPONLY = True
@@ -76,5 +100,7 @@ class TestConfig(Config):
     # TEST_DATABASE_URL permet de jouer les tests sur PostgreSQL (comme en production)
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "sqlite://")
     SQLALCHEMY_ENGINE_OPTIONS = {}
+    CHAT_ACTIF = True
+    SQLALCHEMY_BINDS = {"chat": os.environ.get("TEST_CHAT_DATABASE_URL", "sqlite://")}
     WTF_CSRF_ENABLED = False
     SECRET_KEY = "test"

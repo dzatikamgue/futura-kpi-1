@@ -82,6 +82,13 @@ def register_filters(app):
 
     from .services.modules import externes_configures
 
+    def _chat_non_lus():
+        """Badge « Messages » du menu (calculé à l'affichage, jamais bloquant)."""
+        if not current_user.is_authenticated or not app.config.get("CHAT_ACTIF"):
+            return 0
+        from .services.chat import total_non_lus
+        return total_non_lus(current_user)
+
     @app.context_processor
     def globals_gabarits():
         per = entite = None
@@ -99,6 +106,8 @@ def register_filters(app):
         return {
             "entite": entite,
             "modules_externes": bool(externes_configures()),
+            "chat_actif": bool(app.config.get("CHAT_ACTIF")),
+            "chat_non_lus": _chat_non_lus,
             "id_principale": id_principale,
             "nom_principale": nom_principale,
             "onglets_entites": onglets,

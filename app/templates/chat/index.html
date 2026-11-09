@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "messages" %}
+{% block title %}Messages{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span>{% if conv %}<a class="crumb-mid" href="{{ url_for('chat.index') }}">Messages</a><span class="sep crumb-mid">/</span><span aria-current="page">{{ titre_conv }}</span>{% else %}<span aria-current="page">Messages</span>{% endif %}{% endblock %}
+{% block content %}
+<div class="chat {% if conv %}chat--ouverte{% endif %}">
+  {# ------------------------------------------------ colonne : conversations #}
+  <aside class="card chat__liste" aria-label="Conversations">
+    <div class="chat__liste-tete">
+      <h1 class="chat__h1">Messages</h1>
+      <div class="row" style="gap:6px">
+        <details class="chat__panneau">
+          <summary class="btn btn--primary btn--sm">{{ icon('plus') }} Nouveau</summary>
+          <form method="post" action="{{ url_for('chat.nouvelle_privee') }}" class="chat__panneau-corps stack" style="gap:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="small" for="filtre-contacts"><strong>Écrire à…</strong></label>
+            <input class="input input--sm" id="filtre-contacts" type="search" placeholder="Rechercher un nom" data-filtre-liste="#liste-contacts" autocomplete="off">
+            <div class="chat__choix" id="liste-contacts" role="radiogroup" aria-label="Contacts">
+              {% for u in contacts %}
+              <label class="chat__choix-ligne" data-filtre-texte="{{ C.nom(u)|lower }} {{ (u.employe.poste if u.employe and u.employe.poste else '')|lower }}">
+                <input type="radio" name="utilisateur_id" value="{{ u.id }}" required>
+                <span class="avatar avatar--sm" aria-hidden="true">{{ C.initiales(u) }}</span>
+                <span><strong>{{ C.nom(u) }}</strong>{% if u.employe and u.employe.poste %}<span class="small muted"> · {{ u.employe.poste }}</span>{% endif %}</span>
+              </label>
+              {% else %}<p class="small muted">Aucun contact disponible.</p>{% endfor %}
+            </div>
+            <button class="btn btn--primary btn--sm" type="submit">Ouvrir la conversation</button>
+          </form>
+        </details>
+        {% if departements %}
+        <details class="chat__panneau">
+          <summary class="btn btn--secondary btn--sm">{{ icon('users') }} Groupe</summary>
+          <form method="post" action="{{ url_for('chat.creer_groupe') }}" class="chat__panneau-corps stack" style="gap:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="small" for="g-dep"><strong>Département</strong></label>
+            <select class="select select--sm" id="g-dep" name="departement_id" required>
+              {% for d in departements %}<option value="{{ d.id }}">{{ d.nom }}</option>{% endfor %}
+            </select>
+            <label class="small" for="g-nom"><strong>Nom du groupe</strong> <span class="muted">(facultatif)</span></label>
+            <input class="input input--sm" id="g-nom" name="nom" maxlength="120" placeholder="Par défaut : nom du département">
+            <label class="row small" style="gap:8px"><input type="checkbox" name="tout_le_departement" value="1" checked> Ajouter tous les membres du département et de ses sous-départements</label>
+            <details><summary class="small" style="cursor:pointer">Ajouter d'autres personnes…</summary>
+              <input class="input input--sm" type="search" placeholder="Rechercher un nom" data-filtre-liste="#liste-g" autocomplete="off" style="margin:6px 0">
+              <div class="chat__choix" id="liste-g">
+                {% for u in contacts %}<label class="chat__choix-ligne" data-filtre-texte="{{ C.nom(u)|lower }}"><input type="checkbox" name="membres" value="{{ u.id }}"> <span>{{ C.nom(u) }}</span></label>{% endfor %}
+              </div>
+            </details>
+            <button class="btn btn--primary btn--sm" type="submit">Créer le groupe</button>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    <ul class="chat__convs">
+      {% for l in lignes %}
+      <li><a class="chat__conv {% if conv and conv.id == l.conv.id %}is-active{% endif %}" href="{{ url_for('chat.index', conv_id=l.conv.id) }}" {% if conv and conv.id == l.conv.id %}aria-current="page"{% endif %}>
+        <span class="avatar avatar--sm {% if l.conv.type == 'groupe' %}avatar--groupe{% endif %}" aria-hidden="true">{% if l.conv.type == 'groupe' %}{{ icon('users') }}{% else %}{{ l.titre[:2]|upper }}{% endif %}</span>
+        <span class="chat__conv-texte"><strong>{{ l.titre }}</strong><span class="small muted">{% if l.conv.type == 'groupe' %}Groupe · {{ l.conv.membres|length }} membre{{ "s" if l.conv.membres|length > 1 }}{% else %}Conversation privée{% endif %}</span></span>
+        <span class="chat__conv-meta"><span class="small muted">{{ l.heure }}</span>{% if l.non_lus %}<span class="count" aria-label="{{ l.non_lus }} non lu(s)">{{ l.non_lus }}</span>{% endif %}</span>
+      </a></li>
+      {% else %}
+      <li class="chat__vide small muted">Aucune conversation. Cliquez sur « Nouveau » pour écrire à un collègue.</li>
+      {% endfor %}
+    </ul>
+    <p class="chat__avis small muted">{{ icon('info') }} Les conversations peuvent être consultées par l'administrateur de la plateforme.</p>
+  </aside>
+
+  {# ------------------------------------------------ colonne : conversation #}
+  <section class="card chat__fil" aria-label="Conversation">
+    {% if conv %}
+    <header class="chat__fil-tete">
+      <a class="btn btn--ghost btn--sm chat__retour" href="{{ url_for('chat.index') }}" aria-label="Retour aux conversations">←</a>
+      <div style="flex:1;min-width:0">
+        <h2 class="chat__titre">{{ titre_conv }}</h2>
+        <span class="small muted">{% if conv.type == 'groupe' %}{{ conv.membres|length }} membre{{ "s" if conv.membres|length > 1 }} : {% for m in conv.membres[:6] %}{{ C.nom(noms.get(m.utilisateur_id)) }}{{ ", " if not loop.last }}{% endfor %}{% if conv.membres|length > 6 %}…{% endif %}{% else %}Conversation privée{% endif %}</span>
+      </div>
+      {% if peut_gerer %}
+      <details class="chat__panneau chat__panneau--droite">
+        <summary class="btn btn--secondary btn--sm">Gérer le groupe</summary>
+        <div class="chat__panneau-corps stack" style="gap:10px">
+          <form method="post" action="{{ url_for('chat.gerer_groupe', conv_id=conv.id) }}" class="row" style="gap:6px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="renommer">
+            <label class="sr-only" for="r-nom">Nom du groupe</label>
+            <input class="input input--sm" id="r-nom" name="nom" value="{{ conv.nom }}" maxlength="120" style="flex:1">
+            <button class="btn btn--secondary btn--sm" type="submit">Renommer</button>
+          </form>
+          <div><strong class="small">Membres ({{ conv.membres|length }})</strong>
+            <ul class="chat__membres">
+              {% for m in conv.membres %}<li><span>{{ C.nom(noms.get(m.utilisateur_id)) }}{% if m.utilisateur_id == conv.cree_par_id %} <span class="small muted">(créateur)</span>{% endif %}</span>
+                {% if m.utilisateur_id != conv.cree_par_id %}<form method="post" action="{{ url_for('chat.gerer_groupe', conv_id=conv.id) }}" data-confirm="Retirer cette personne du groupe ?">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="retirer"><input type="hidden" name="utilisateur_id" value="{{ m.utilisateur_id }}">
+                  <button class="btn btn--ghost btn--sm" type="submit" style="color:var(--danger)">Retirer</button></form>{% endif %}</li>{% endfor %}
+            </ul>
+          </div>
+          <form method="post" action="{{ url_for('chat.gerer_groupe', conv_id=conv.id) }}" class="stack" style="gap:6px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="ajouter">
+            <strong class="small">Ajouter</strong>
+            {% if conv.departement_id %}<label class="row small" style="gap:8px"><input type="checkbox" name="tout_le_departement" value="1"> Tous les membres du département</label>{% endif %}
+            <input class="input input--sm" type="search" placeholder="Rechercher un nom" data-filtre-liste="#liste-ajout" autocomplete="off">
+            <div class="chat__choix" id="liste-ajout">
+              {% set deja = conv.membres|map(attribute='utilisateur_id')|list %}
+              {% for u in contacts if u.id not in deja %}<label class="chat__choix-ligne" data-filtre-texte="{{ C.nom(u)|lower }}"><input type="checkbox" name="membres" value="{{ u.id }}"> <span>{{ C.nom(u) }}</span></label>{% endfor %}
+            </div>
+            <button class="btn btn--primary btn--sm" type="submit">Ajouter</button>
+          </form>
+          <form method="post" action="{{ url_for('chat.gerer_groupe', conv_id=conv.id) }}" data-confirm="Archiver ce groupe ? Il disparaîtra de la liste de tous ses membres.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="archiver">
+            <button class="btn btn--ghost btn--sm" type="submit" style="color:var(--danger)">Archiver le groupe</button>
+          </form>
+        </div>
+      </details>
+      {% endif %}
+    </header>
+
+    <div class="chat__messages" data-chat-messages data-groupe="{{ 1 if conv.type == 'groupe' else 0 }}" data-url="{{ url_for('chat.nouveaux', conv_id=conv.id) }}"
+         data-dernier="{{ messages[-1].id if messages else 0 }}" aria-live="polite">
+      {% for m in messages %}
+      <div class="bulle {% if m.moi %}bulle--moi{% endif %}" data-id="{{ m.id }}">
+        {% if not m.moi and conv.type == 'groupe' %}<span class="bulle__auteur">{{ m.auteur }}</span>{% endif %}
+        {% if m.supprime %}<span class="bulle__texte muted"><em>Message supprimé</em></span>
+        {% else %}<span class="bulle__texte">{{ m.texte }}</span>{% endif %}
+        <span class="bulle__heure">{{ m.heure }}
+          {% if m.moi and not m.supprime %}<form method="post" action="{{ url_for('chat.supprimer_message', message_id=m.id) }}" class="bulle__suppr" data-confirm="Supprimer ce message ?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" aria-label="Supprimer ce message" title="Supprimer">×</button></form>{% endif %}</span>
+      </div>
+      {% else %}
+      <div class="chat__debut small muted" data-chat-vide>Début de la conversation. Écrivez le premier message.</div>
+      {% endfor %}
+      <span id="bas"></span>
+    </div>
+
+    <form class="chat__saisie" method="post" action="{{ url_for('chat.envoyer', conv_id=conv.id) }}" data-chat-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="sr-only" for="chat-texte">Votre message</label>
+      <textarea class="textarea" id="chat-texte" name="texte" rows="1" maxlength="2000" placeholder="Écrire un message…" title="Entrée pour envoyer, Maj+Entrée pour aller à la ligne" required data-chat-texte></textarea>
+      <button class="btn btn--primary" type="submit" aria-label="Envoyer">{{ icon('send') }}</button>
+    </form>
+    {% else %}
+    <div class="chat__accueil">
+      <span class="chat__accueil-icone" aria-hidden="true">{{ icon('message') }}</span>
+      <h2>Messagerie {{ company_name }}</h2>
+      <p class="muted">Choisissez une conversation, ou cliquez sur « Nouveau » pour écrire à un collègue.
+        {% if departements %}Vous pouvez aussi créer un groupe pour un département.{% endif %}</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

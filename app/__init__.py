@@ -29,15 +29,17 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
 
     from . import models  # noqa: F401  (enregistre les modèles pour Alembic)
+    if app.config.get("CHAT_ACTIF"):
+        from . import chat_models  # noqa: F401  (messagerie : base séparée, hors Alembic)
 
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(models.Utilisateur, int(user_id))
 
-    from .blueprints import (auth, entites, evaluations, import_personnel, journal,
+    from .blueprints import (auth, chat, entites, evaluations, import_personnel, journal,
                              modules, parametres, personnel, suivi, tableau_bord)
     for bp in (auth.bp, tableau_bord.bp, evaluations.bp, personnel.bp, suivi.bp,
-               import_personnel.bp, parametres.bp, journal.bp, entites.bp, modules.bp):
+               import_personnel.bp, parametres.bp, journal.bp, entites.bp, modules.bp, chat.bp):
         app.register_blueprint(bp)
 
     from .filters import register_filters

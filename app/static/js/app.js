@@ -618,6 +618,86 @@
       if (c && sel && c.checked) sel.value = destTous.value === "__commune__" ? "" : destTous.value;
     });
   });
+  /* ---------- Messagerie ---------- */
+  // Filtre d'une liste de choix (contacts, membres)
+  $$("[data-filtre-liste]").forEach(function (inp) {
+    var liste = document.querySelector(inp.getAttribute("data-filtre-liste"));
+    if (!liste) return;
+    inp.addEventListener("input", function () {
+      var q = inp.value.trim().toLowerCase();
+      $$("[data-filtre-texte]", liste).forEach(function (l) {
+        l.hidden = q && l.getAttribute("data-filtre-texte").indexOf(q) === -1;
+      });
+    });
+  });
+  var fil = $("[data-chat-messages]");
+  if (fil) (function () {
+    var form = $("[data-chat-form]"), zone = $("[data-chat-texte]"), envoiEnCours = false;
+    var jeton = form ? $("input[name=csrf_token]", form).value : "";
+    function enBas() { fil.scrollTop = fil.scrollHeight; }
+    function bulle(m) {
+      if (fil.querySelector('[data-id="' + m.id + '"]')) return;
+      var vide = $("[data-chat-vide]", fil); if (vide) vide.remove();
+      var d = document.createElement("div");
+      d.className = "bulle" + (m.moi ? " bulle--moi" : ""); d.setAttribute("data-id", m.id);
+      if (!m.moi && fil.getAttribute("data-groupe") === "1") {
+        var a = document.createElement("span"); a.className = "bulle__auteur"; a.textContent = m.auteur; d.appendChild(a);
+      }
+      var t = document.createElement("span"); t.className = "bulle__texte";
+      if (m.supprime) { t.classList.add("muted"); t.innerHTML = "<em>Message supprimé</em>"; } else { t.textContent = m.texte; }
+      var h = document.createElement("span"); h.className = "bulle__heure"; h.textContent = m.heure;
+      d.appendChild(t); d.appendChild(h);
+      fil.insertBefore(d, $("#bas", fil));
+    }
+    function charger() {
+      var url = fil.getAttribute("data-url") + "?apres=" + fil.getAttribute("data-dernier");
+      return fetch(url, { headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d) return;
+          var basAvant = fil.scrollHeight - fil.scrollTop - fil.clientHeight < 80;
+          d.messages.forEach(bulle);
+          if (d.messages.length) { fil.setAttribute("data-dernier", d.messages[d.messages.length - 1].id); if (basAvant) enBas(); }
+          var badge = $("[data-chat-badge]");
+          if (badge) { badge.textContent = d.non_lus; badge.hidden = !d.non_lus; }
+        }).catch(function () { /* coupure réseau : on réessaiera */ });
+    }
+    enBas();
+    setInterval(function () { if (!document.hidden) charger(); }, 4000);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) charger(); });
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var texte = zone.value.trim();
+        if (!texte || envoiEnCours) return;
+        envoiEnCours = true;
+        var corps = new FormData(); corps.append("texte", texte); corps.append("csrf_token", jeton);
+        fetch(form.action, { method: "POST", body: corps, credentials: "same-origin",
+                             headers: { "X-Requested-With": "fetch", "X-CSRFToken": jeton } })
+          .then(function (r) { if (!r.ok) throw new Error(); zone.value = ""; zone.style.height = ""; return charger(); })
+          .then(enBas)
+          .catch(function () { alerteLocale("Message non envoyé : vérifiez votre connexion puis réessayez."); })
+          .then(function () { envoiEnCours = false; zone.focus(); });
+      });
+      zone.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); form.requestSubmit(); }
+      });
+      zone.addEventListener("input", function () { zone.style.height = "auto"; zone.style.height = Math.min(zone.scrollHeight, 160) + "px"; });
+    }
+    function alerteLocale(txt) {
+      var p = document.createElement("div"); p.className = "alert alert--erreur"; p.setAttribute("role", "alert");
+      p.style.margin = "0 12px 8px"; p.textContent = txt; form.parentNode.insertBefore(p, form);
+      setTimeout(function () { p.remove(); }, 5000);
+    }
+  })();
+  // Badge « Messages » mis à jour hors de la messagerie (toutes les 60 s)
+  var badgeChat = $("[data-chat-badge]");
+  if (badgeChat && !fil) setInterval(function () {
+    if (document.hidden) return;
+    fetch("/messages/non-lus", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) { badgeChat.textContent = d.non_lus; badgeChat.hidden = !d.non_lus; } }).catch(function () {});
+  }, 60000);
+
   // Évaluations : choix d'un autre mois (RH)
   $$("[data-periode-campagne]").forEach(function (sel) {
     sel.addEventListener("change", function () {

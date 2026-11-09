@@ -80,6 +80,15 @@ def register_cli(app):
         db.session.commit()
         click.echo(f"N+1 des départements alignés sur {len(responsables)} responsable(s).")
 
+    @app.cli.command("chat-init")
+    def chat_init():
+        """Crée les tables de la messagerie dans SA base séparée (idempotent ; base KPI non touchée)."""
+        if not app.config.get("CHAT_ACTIF"):
+            click.echo("Messagerie désactivée (CHAT_DATABASE_URL absente).")
+            return
+        db.create_all(bind_key="chat")
+        click.echo("Messagerie : tables prêtes dans la base du chat.")
+
     @app.cli.command("demo")
     @click.option("--mdp", default="Futura2026!", help="Mot de passe des comptes de démonstration")
     def demo(mdp):

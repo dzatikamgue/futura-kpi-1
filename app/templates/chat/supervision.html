@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "supervision_chat" %}
+{% block title %}Supervision des messages{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="crumb-mid">Administration</span><span class="sep crumb-mid">/</span><span aria-current="page">Supervision des messages</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Supervision des messages</h1>
+  <p>Réservé au super admin. Chaque consultation est inscrite dans le journal des actions. Lecture seule.</p></div></div>
+
+<div class="chat chat--supervision {% if conv %}chat--ouverte{% endif %}">
+  <aside class="card chat__liste" aria-label="Toutes les conversations">
+    <ul class="chat__convs">
+      {% for l in lignes %}
+      <li><a class="chat__conv {% if conv and conv.id == l.conv.id %}is-active{% endif %}" href="{{ url_for('chat.supervision', conv_id=l.conv.id) }}">
+        <span class="avatar avatar--sm {% if l.conv.type == 'groupe' %}avatar--groupe{% endif %}" aria-hidden="true">{% if l.conv.type == 'groupe' %}{{ icon('users') }}{% else %}{{ icon('message') }}{% endif %}</span>
+        <span class="chat__conv-texte"><strong>{{ l.titre }}</strong><span class="small muted">{{ "Groupe" if l.conv.type == 'groupe' else "Privée" }} · {{ l.membres }} membres{% if l.conv.archive %} · archivé{% endif %}</span></span>
+        <span class="chat__conv-meta"><span class="small muted">{{ l.heure }}</span></span>
+      </a></li>
+      {% else %}<li class="chat__vide small muted">Aucune conversation pour l'instant.</li>{% endfor %}
+    </ul>
+  </aside>
+  <section class="card chat__fil">
+    {% if conv %}
+    <header class="chat__fil-tete">
+      <a class="btn btn--ghost btn--sm chat__retour" href="{{ url_for('chat.supervision') }}" aria-label="Retour">←</a>
+      <h2 class="chat__titre" style="flex:1">{{ conv.nom or "Conversation privée" }}</h2>
+      <span class="badge badge--warn">Lecture seule</span>
+    </header>
+    <div class="chat__messages">
+      {% for m in messages %}
+      <div class="bulle" data-id="{{ m.id }}">
+        <span class="bulle__auteur">{{ m.auteur }}</span>
+        {% if m.supprime %}<span class="bulle__texte muted"><em>Message supprimé par son auteur</em></span>{% else %}<span class="bulle__texte">{{ m.texte }}</span>{% endif %}
+        <span class="bulle__heure">{{ m.heure }}</span>
+      </div>
+      {% else %}<div class="chat__debut small muted">Aucun message.</div>{% endfor %}
+    </div>
+    {% else %}
+    <div class="chat__accueil"><span class="chat__accueil-icone" aria-hidden="true">{{ icon('message') }}</span>
+      <p class="muted">Choisissez une conversation à consulter.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

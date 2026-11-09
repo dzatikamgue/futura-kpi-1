@@ -5,4 +5,5 @@ export FLASK_APP=wsgi.py
 flask db upgrade
 flask init-admin
 flask sync-n1
+flask chat-init
 exec gunicorn wsgi:app --bind 0.0.0.0:${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --threads 4 --timeout 180 --access-logfile -
