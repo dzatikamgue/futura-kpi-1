@@ -2223,3 +2223,23 @@ def test_api_ia_des_modules_signee(app, monkeypatch):
     monkeypatch.setattr(import_ia, "appeler_claude_blocs", sans_cle)
     r = appel()
     assert r.status_code == 422 and "clé API Claude" in r.get_json()["erreur"]
+
+
+def test_portail_module_factures(app, monkeypatch):
+    """Module « Circuit des factures » : proposé quand ses variables existent, jeton dédié (m=factures)."""
+    from urllib.parse import parse_qs, urlparse
+    from itsdangerous import URLSafeTimedSerializer
+    from app.services import modules as M
+    monkeypatch.setenv("MODULE_FACTURES_URL", "https://factures.exemple.cm")
+    monkeypatch.setenv("MODULE_FACTURES_SECRET", "secret-factures")
+    monkeypatch.setattr(M, "a_acces", lambda code, email: True)
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    assert "Circuit des factures" in c.get("/modules/").get_data(as_text=True)
+    r = c.get("/modules/factures")
+    assert r.location.startswith("https://factures.exemple.cm/sso?jeton=")
+    d = URLSafeTimedSerializer("secret-factures", salt="futura-sso").loads(
+        parse_qs(urlparse(r.location).query)["jeton"][0], max_age=60)
+    assert d["m"] == "factures"
+    monkeypatch.delenv("MODULE_FACTURES_URL")
+    assert c.get("/modules/factures").status_code == 404

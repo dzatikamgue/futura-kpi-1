@@ -31,6 +31,8 @@ MODULES = [
      "description": "Notation mensuelle du personnel, grilles KPI, suivi trimestriel et annuel."},
     {"code": "flotte", "nom": "Flotte automobile", "icone": "truck",
      "description": "Véhicules, chauffeurs, kilométrage, pannes et immobilisations."},
+    {"code": "factures", "nom": "Circuit des factures", "icone": "file",
+     "description": "Factures prestataires : où se trouve chaque facture, validations, retards et paiements."},
 ]
 
 
