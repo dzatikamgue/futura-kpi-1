@@ -790,4 +790,13 @@
       });
     });
   });
+
+  // ---------- Accès aux modules : filtre des comptes ----------
+  var filtreAcces = document.querySelector("[data-filtre-acces]");
+  if (filtreAcces) filtreAcces.addEventListener("input", function () {
+    var t = filtreAcces.value.trim().toLowerCase();
+    document.querySelectorAll("[data-ligne-acces]").forEach(function (tr) {
+      tr.hidden = !!t && tr.getAttribute("data-ligne-acces").indexOf(t) === -1;
+    });
+  });
 })();

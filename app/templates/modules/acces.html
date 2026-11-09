@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon with context %}
+{% set nav = "acces_modules" %}
+{% block title %}Accès aux modules{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Accès aux modules</span>{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Accès aux modules</h1>
+  <p>Un seul compte, celui de cette application, pour tous les modules. Choisissez ici le rôle de chaque personne dans chaque module :
+    à son premier clic sur la carte du module depuis le portail, son compte y est créé automatiquement avec ce rôle.</p></div></div>
+
+<form class="card" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card__body">
+    <label class="sr-only" for="filtre-acces">Filtrer</label>
+    <input class="input" id="filtre-acces" type="search" placeholder="Filtrer par e-mail ou nom…" data-filtre-acces style="max-width:360px">
+  </div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Compte</th>{% for m in modules %}<th>{{ m.nom }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for u in comptes %}
+    <tr data-ligne-acces="{{ (u.email ~ ' ' ~ u.nom_affiche)|lower }}">
+      <td><div class="cell-main"><div><strong>{{ u.nom_affiche }}</strong><span>{{ u.email }}</span></div></div></td>
+      {% for m in modules %}
+      {% set r = actuel.get(u.id, {}).get(m.code, '') %}
+      <td>
+        <label class="sr-only" for="r-{{ u.id }}-{{ m.code }}">Rôle de {{ u.email }} dans {{ m.nom }}</label>
+        <select class="select select--sm" id="r-{{ u.id }}-{{ m.code }}" name="r_{{ u.id }}_{{ m.code }}" style="width:auto">
+          <option value="">— Géré dans le module —</option>
+          {% for k, l in m.roles.items() %}<option value="{{ k }}" {% if r == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="card__body small ink-2 stack" style="gap:6px">
+    <p><strong class="ink">Rôle choisi ici</strong> : il s'impose dans le module (création du compte, changement de rôle, réactivation) à chaque ouverture depuis le portail. Aucun mot de passe supplémentaire n'est à communiquer.</p>
+    <p><strong class="ink">« Géré dans le module »</strong> : rien ne change, l'administrateur du module gère ce compte lui-même (comme aujourd'hui).</p>
+    <p class="muted">Pour retirer tout accès à quelqu'un qui quitte l'entreprise, désactivez son compte dans « Comptes &amp; accès » : il ne peut plus se connecter au portail, donc à aucun module.</p>
+  </div>
+  <div class="card__foot form-actions">
+    <button class="btn btn--primary" type="submit">Enregistrer les accès</button>
+  </div>
+</form>
+{% endblock %}

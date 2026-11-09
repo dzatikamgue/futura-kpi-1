@@ -46,6 +46,7 @@
       <a href="{{ url_for('parametres.postes') }}" {% if nav == 'postes' %}aria-current="page"{% endif %}>{{ icon('list') }} Postes</a>
       <a href="{{ url_for('parametres.criteres') }}" {% if nav == 'criteres' %}aria-current="page"{% endif %}>{{ icon('star') }} Grille KPI</a>
       <a href="{{ url_for('parametres.utilisateurs') }}" {% if nav == 'utilisateurs' %}aria-current="page"{% endif %}>{{ icon('key') }} Comptes &amp; accès</a>
+      {% if modules_externes %}<a href="{{ url_for('modules.acces') }}" {% if nav == 'acces_modules' %}aria-current="page"{% endif %}>{{ icon('grid') }} Accès aux modules</a>{% endif %}
       <a href="{{ url_for('entites.gestion') }}" {% if nav == 'entites' %}aria-current="page"{% endif %}>{{ icon('building') }} Entités</a>
       <a href="{{ url_for('parametres.claude') }}" {% if nav == 'claude' %}aria-current="page"{% endif %}>{{ icon('sparkles') }} Clé API Claude</a>
       <a href="{{ url_for('journal.index') }}" {% if nav == 'journal' %}aria-current="page"{% endif %}>{{ icon('log') }} Journal des actions</a>

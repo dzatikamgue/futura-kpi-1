@@ -30,10 +30,51 @@ MODULES = [
     {"code": "kpi", "nom": "Performance KPI", "icone": "star", "interne": True,
      "description": "Notation mensuelle du personnel, grilles KPI, suivi trimestriel et annuel."},
     {"code": "flotte", "nom": "Flotte automobile", "icone": "truck",
-     "description": "Véhicules, chauffeurs, kilométrage, pannes et immobilisations."},
+     "description": "Véhicules, chauffeurs, kilométrage, pannes et immobilisations.",
+     "roles": {"admin": "Administrateur", "gestionnaire": "Gestionnaire de parc",
+               "direction": "Direction (consultation)", "chauffeur": "Chauffeur"}},
     {"code": "factures", "nom": "Circuit des factures", "icone": "file",
-     "description": "Factures prestataires : où se trouve chaque facture, validations, retards et paiements."},
+     "description": "Factures prestataires : où se trouve chaque facture, validations, retards et paiements.",
+     "roles": {"admin": "Administrateur", "chef_projet": "Chef de projet", "assistant": "Assistant(e) financier(ère)",
+               "controleur": "Contrôleur de gestion groupe", "direction": "Direction", "finance": "Service financier",
+               "consultation": "Consultation"}},
 ]
+
+# Accès centralisés : rôle de chaque compte dans chaque module, décidé ici (RH / superadmin).
+# Rangés dans la table de réglages existante (Parametre, clé « acces_modules »),
+# JSON {utilisateur_id: {code_module: role}} : aucune modification de la base.
+CLE_ACCES = "acces_modules"
+
+
+def acces_centraux() -> dict:
+    from ..extensions import db
+    from ..models import Parametre
+    p = db.session.get(Parametre, CLE_ACCES)
+    try:
+        d = json.loads(p.valeur) if p else {}
+    except ValueError:
+        d = {}
+    return {int(k): v for k, v in d.items() if str(k).isdigit() and isinstance(v, dict)}
+
+
+def enregistrer_acces_centraux(acces: dict, utilisateur_id: int | None) -> None:
+    from ..extensions import db
+    from ..models import Parametre
+    propre = {str(uid): {c: r for c, r in v.items() if r} for uid, v in acces.items()}
+    propre = {k: v for k, v in propre.items() if v}
+    p = db.session.get(Parametre, CLE_ACCES) or Parametre(cle=CLE_ACCES, valeur="{}")
+    p.valeur = json.dumps(propre, ensure_ascii=False, sort_keys=True)
+    p.updated_by_id = utilisateur_id
+    db.session.add(p)
+
+
+def role_central(code: str, utilisateur) -> str | None:
+    """Rôle attribué depuis le portail pour ce module (None = géré dans le module lui-même)."""
+    if utilisateur is None or not getattr(utilisateur, "id", None):
+        return None
+    m = next((x for x in MODULES if x["code"] == code), None)
+    r = acces_centraux().get(utilisateur.id, {}).get(code)
+    return r if m and r in m.get("roles", {}) else None
 
 
 def _conf(code: str) -> tuple[str | None, str | None]:
@@ -58,10 +99,16 @@ def _signer(code: str, donnees: dict) -> str:
     return URLSafeTimedSerializer(secret, salt=SEL).dumps({**donnees, "m": code})
 
 
-def url_ouverture(code: str, email: str) -> str:
-    """Adresse de connexion unique vers le module (jeton à usage unique, 60 s)."""
+def url_ouverture(code: str, email: str, role: str | None = None, nom: str | None = None) -> str:
+    """Adresse de connexion unique vers le module (jeton à usage unique, 60 s).
+
+    Avec `role` (accès centralisé), le module crée ou met à jour le compte avec ce rôle.
+    """
     url, _s = _conf(code)
-    jeton = _signer(code, {"email": email.strip().lower(), "n": secrets.token_urlsafe(12)})
+    donnees = {"email": email.strip().lower(), "n": secrets.token_urlsafe(12)}
+    if role:
+        donnees.update(r=role, nom=(nom or "")[:120])
+    jeton = _signer(code, donnees)
     return f"{url}/sso?{urllib.parse.urlencode({'jeton': jeton})}"
 
 
@@ -92,12 +139,14 @@ def a_acces(code: str, email: str) -> bool | None:
     return ok
 
 
-def modules_pour(email: str) -> list[dict]:
+def modules_pour(email: str, utilisateur=None) -> list[dict]:
     """Modules proposés à l'utilisateur : KPI + modules externes où il a un compte (ou injoignables)."""
     res = []
     for m in MODULES:
         if m.get("interne"):
             res.append({**m, "etat": "ok"})
+        elif all(_conf(m["code"])) and role_central(m["code"], utilisateur):
+            res.append({**m, "etat": "ok"})          # accès attribué depuis le portail
         elif all(_conf(m["code"])):
             acces = a_acces(m["code"], email)
             if acces is not False:

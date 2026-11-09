@@ -2243,3 +2243,41 @@ def test_portail_module_factures(app, monkeypatch):
     assert d["m"] == "factures"
     monkeypatch.delenv("MODULE_FACTURES_URL")
     assert c.get("/modules/factures").status_code == 404
+
+
+def test_acces_centralises_modules(app, monkeypatch):
+    """Accès aux modules attribués depuis le portail : jeton avec rôle, carte affichée sans interroger le module."""
+    from urllib.parse import parse_qs, urlparse
+    from itsdangerous import URLSafeTimedSerializer
+    from app.services import modules as M
+    from app.models import Utilisateur
+    from app.extensions import db
+    monkeypatch.setenv("MODULE_FACTURES_URL", "https://factures.exemple.cm")
+    monkeypatch.setenv("MODULE_FACTURES_SECRET", "secret-factures")
+    monkeypatch.setattr(M, "a_acces", lambda code, email: False)        # pas de compte dans le module
+    with app.app_context():
+        uid = db.session.scalar(db.select(Utilisateur.id).where(Utilisateur.email == email_de("NGUEMA").lower()))
+    c = app.test_client()
+    login(c, email_de("NGUEMA"))
+    assert "Circuit des factures" not in c.get("/modules/").get_data(as_text=True)
+    assert c.get("/modules/acces").status_code == 403                  # réservé RH / superadmin
+    rh = app.test_client()
+    login(rh, email_de("MBALLA"))
+    page = rh.get("/modules/acces").get_data(as_text=True)
+    assert "Accès aux modules" in page and "Chef de projet" in page
+    rh.post("/modules/acces", data={f"r_{uid}_factures": "chef_projet", f"r_{uid}_flotte": "inventé"})
+    with app.app_context():
+        assert M.acces_centraux() == {uid: {"factures": "chef_projet"}}
+    assert "Circuit des factures" in c.get("/modules/").get_data(as_text=True)
+    r = c.get("/modules/factures")
+    d = URLSafeTimedSerializer("secret-factures", salt="futura-sso").loads(
+        parse_qs(urlparse(r.location).query)["jeton"][0], max_age=60)
+    assert d["r"] == "chef_projet" and d["m"] == "factures" and d["email"] == email_de("NGUEMA").lower()
+    # Retrait : retour au fonctionnement normal (jeton sans rôle)
+    rh.post("/modules/acces", data={})
+    with app.app_context():
+        assert M.acces_centraux() == {}
+    monkeypatch.setattr(M, "a_acces", lambda code, email: True)
+    d = URLSafeTimedSerializer("secret-factures", salt="futura-sso").loads(
+        parse_qs(urlparse(c.get("/modules/factures").location).query)["jeton"][0], max_age=60)
+    assert "r" not in d
