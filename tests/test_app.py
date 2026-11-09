@@ -2187,3 +2187,39 @@ def test_messagerie_privee_groupes_et_supervision(app):
     page = s.get(f"/messages/supervision/{conv_id}").get_data(as_text=True)
     assert "Bonjour &lt;b&gt;Didier&lt;/b&gt;" in page and "Lecture seule" in page
     assert db.session.scalar(select(Journal).where(Journal.action == "chat_consultation_admin")) is not None
+
+
+def test_api_ia_des_modules_signee(app, monkeypatch):
+    """Les modules (Flotte…) font lire leurs photos avec la clé de la KPI, par demande signée."""
+    import hashlib, hmac, json, time
+    from app.services import import_ia
+    monkeypatch.setenv("MODULE_FLOTTE_URL", "https://flotte.exemple.cm")
+    monkeypatch.setenv("MODULE_FLOTTE_SECRET", "secret-partage")
+    vu = {}
+    def faux(outil, blocs):
+        vu["outil"], vu["n"] = outil["name"], len(blocs)
+        return {"elements": [{"plaque": "LT 1 A"}]}
+    monkeypatch.setattr(import_ia, "appeler_claude_blocs", faux)
+    c = app.test_client()
+    corps = json.dumps({"outil": {"name": "enregistrer_vehicules", "input_schema": {"type": "object"}},
+                        "blocs": [{"type": "text", "text": "x"}]}).encode()
+    def appel(secret="secret-partage", ts=None, module="flotte", data=corps):
+        ts = str(ts or int(time.time()))
+        sig = hmac.new(secret.encode(), ts.encode() + b"." + data, hashlib.sha256).hexdigest()
+        return c.post("/modules/api/ia", data=data, content_type="application/json", headers={
+            "X-Futura-Module": module, "X-Futura-Horodatage": ts, "X-Futura-Signature": sig})
+    r = appel()
+    assert r.status_code == 200 and r.get_json() == {"entree": {"elements": [{"plaque": "LT 1 A"}]}}
+    assert vu == {"outil": "enregistrer_vehicules", "n": 1}
+    assert appel(secret="faux").status_code == 403                      # mauvais secret
+    assert appel(ts=int(time.time()) - 3600).status_code == 403          # demande trop ancienne (rejeu)
+    assert appel(module="kpi").status_code == 403                        # pas un module externe
+    assert c.post("/modules/api/ia", json={}).status_code == 403         # sans signature
+    bad = json.dumps({"outil": {"name": "x"}, "blocs": [{"type": "script"}]}).encode()
+    assert appel(data=bad).status_code == 400
+    # Clé absente côté KPI : message clair renvoyé au module
+    def sans_cle(outil, blocs):
+        raise import_ia.ErreurImport("La clé API Claude n'est pas configurée")
+    monkeypatch.setattr(import_ia, "appeler_claude_blocs", sans_cle)
+    r = appel()
+    assert r.status_code == 422 and "clé API Claude" in r.get_json()["erreur"]

@@ -101,3 +101,26 @@ def modules_pour(email: str) -> list[dict]:
             if acces is not False:
                 res.append({**m, "etat": "ok" if acces else "inconnu"})
     return res
+
+
+# ---------------------------------------------------------------------------
+# Lecture IA pour les modules : la clé API Claude reste dans l'application KPI.
+# Le module signe sa demande avec son secret partagé (HMAC-SHA256 du corps + horodatage).
+# ---------------------------------------------------------------------------
+import hashlib
+import hmac
+
+DELAI_SIGNATURE = 300   # secondes
+
+
+def verifier_signature_module(code: str, horodatage: str, signature: str, corps: bytes) -> bool:
+    url, secret = _conf(code)
+    if not (url and secret and horodatage and signature):
+        return False
+    try:
+        if abs(time.time() - int(horodatage)) > DELAI_SIGNATURE:
+            return False
+    except ValueError:
+        return False
+    attendu = hmac.new(secret.encode(), horodatage.encode() + b"." + corps, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(attendu, signature)

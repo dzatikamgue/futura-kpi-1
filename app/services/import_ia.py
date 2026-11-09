@@ -212,6 +212,17 @@ def appeler_claude(outil: dict, consigne: str, nom_fichier: str, type_mime: str,
     if not blocs:
         raise ErreurImport("Ajoutez un fichier ou collez un texte.")
     blocs.append({"type": "text", "text": consigne})
+    return appeler_claude_blocs(outil, blocs)
+
+
+def appeler_claude_blocs(outil: dict, blocs: list[dict]) -> dict:
+    """Appel Claude avec des blocs déjà préparés (aussi utilisé par les autres modules Futura)."""
+    from .reglages import cle_api
+    cle = cle_api()
+    if not cle:
+        raise ErreurImport("La clé API Claude n'est pas configurée : renseignez-la dans "
+                           "Administration RH → Clé API Claude (application KPI).")
+    import anthropic
 
     client = anthropic.Anthropic(api_key=cle, timeout=120.0, max_retries=2)
     modele = current_app.config["ANTHROPIC_MODEL"]
