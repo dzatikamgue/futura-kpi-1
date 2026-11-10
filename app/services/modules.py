@@ -35,8 +35,9 @@ MODULES = [
                "direction": "Direction (consultation)", "chauffeur": "Chauffeur"}},
     {"code": "factures", "nom": "Circuit des factures", "icone": "file",
      "description": "Factures prestataires : où se trouve chaque facture, validations, retards et paiements.",
-     "roles": {"admin": "Administrateur", "chef_projet": "Chef de projet", "assistant": "Assistant(e) financier(ère)",
-               "controleur": "Contrôleur de gestion groupe", "direction": "Direction", "finance": "Service financier",
+     "roles": {"admin": "Administrateur", "chef_projet": "Chef de projet", "superviseur": "Superviseur technique",
+               "assistant": "Assistant(e) financier(ère)", "controleur": "Contrôleur de gestion groupe",
+               "direction": "Direction", "logistique": "Responsable logistique", "finance": "Service financier",
                "consultation": "Consultation"}},
 ]
 
