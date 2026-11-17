@@ -39,6 +39,10 @@ MODULES = [
                "assistant": "Assistant(e) financier(ère)", "controleur": "Contrôleur de gestion groupe",
                "direction": "Direction", "logistique": "Responsable logistique", "finance": "Service financier",
                "consultation": "Consultation"}},
+    {"code": "services", "nom": "Services généraux", "icone": "home",
+     "description": "Visas, cartes de séjour, billets d'avion, loyers, électricité, eau et réparations des logements.",
+     "roles": {"admin": "Administrateur", "gestionnaire": "Gestionnaire (RH / services généraux)",
+               "direction": "Direction (consultation)", "occupant": "Occupant d'un logement"}},
 ]
 
 # Accès centralisés : rôle de chaque compte dans chaque module, décidé ici (RH / superadmin).

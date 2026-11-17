@@ -2281,3 +2281,21 @@ def test_acces_centralises_modules(app, monkeypatch):
     d = URLSafeTimedSerializer("secret-factures", salt="futura-sso").loads(
         parse_qs(urlparse(c.get("/modules/factures").location).query)["jeton"][0], max_age=60)
     assert "r" not in d
+
+
+def test_portail_module_services(app, monkeypatch):
+    """Module « Services généraux » : proposé quand ses variables existent, jeton dédié (m=services)."""
+    from urllib.parse import parse_qs, urlparse
+    from itsdangerous import URLSafeTimedSerializer
+    from app.services import modules as M
+    monkeypatch.setenv("MODULE_SERVICES_URL", "https://services.exemple.cm")
+    monkeypatch.setenv("MODULE_SERVICES_SECRET", "secret-services")
+    monkeypatch.setattr(M, "a_acces", lambda code, email: True)
+    c = app.test_client()
+    login(c, email_de("MBALLA"))
+    assert "Services généraux" in c.get("/modules/").get_data(as_text=True)
+    r = c.get("/modules/services")
+    assert r.location.startswith("https://services.exemple.cm/sso?jeton=")
+    d = URLSafeTimedSerializer("secret-services", salt="futura-sso").loads(
+        parse_qs(urlparse(r.location).query)["jeton"][0], max_age=60)
+    assert d["m"] == "services"
