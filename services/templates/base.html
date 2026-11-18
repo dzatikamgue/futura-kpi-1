@@ -102,6 +102,15 @@
         <span class="espace-ouvrir">Voir {{ icon('arrow', 16) }}</span>
       </a>
       {% endif %}
+      {% if loyers_notif and request.endpoint not in ('logements', 'logement_fiche', 'logement_modifier') %}
+      <a class="notif-docs {{ 'notif-docs-ko' if loyers_notif.echus }}" href="{{ url_for('logements', fin='proche') }}" role="status">
+        <span class="notif-docs-ico" aria-hidden="true">{{ icon('home', 18) }}</span>
+        <span><strong>{{ loyers_notif.total }} loyer{{ 's' if loyers_notif.total > 1 }} arrive{{ 'nt' if loyers_notif.total > 1 }} en fin de période dans moins de {{ seuil_loyer }} jours{% if loyers_notif.echus %} ({{ loyers_notif.echus }} déjà terminé{{ 's' if loyers_notif.echus > 1 }}){% endif %}.</strong>
+          Préparez le renouvellement du loyer.
+          <span class="muted petit">Le plus proche : {{ loyers_notif.premier.libelle }}, fin le {{ loyers_notif.premier.bail_fin|date }}.</span></span>
+        <span class="espace-ouvrir">Voir {{ icon('arrow', 16) }}</span>
+      </a>
+      {% endif %}
       {% block contenu %}{% endblock %}
     </main>
   </div>

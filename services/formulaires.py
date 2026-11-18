@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import request
 
-from models import (CATEGORIES_REPARATION, CHARGES, CLASSES, MODES_PAIEMENT, MOTIFS_BILLET, PERIODICITES, RENOUVELLEMENT,
+from models import (CATEGORIES_REPARATION, CHARGES, MODES_PAIEMENT, CLASSES, MODES_PAIEMENT, MOTIFS_BILLET, PERIODICITES, RENOUVELLEMENT,
                     ROLES, STATUTS_BILLET, STATUTS_REPARATION, TYPES_LOGEMENT, URGENCES, VILLES)
 
 class Invalide(ValueError):
@@ -220,9 +220,12 @@ def champs_billet(personnes):
 
 def champs_logement():
     return [
-        C("nom", "Nom du logement", requis=True, aide="Ex. Appartement A2 — Immeuble Bali", attrs="autofocus"),
+        C("batiment", "Nom du bâtiment", aide="Ex. ENERGY CLUB", attrs="autofocus", liste="batiments"),
+        C("numero", "N° d'appartement", max_long=30, aide="Ex. 1A (étage / bloc)"),
+        C("residents", "Résident(s)", "zone", plein=True, aide="Noms des personnes logées, séparés par des virgules."),
+        C("nom", "Nom du logement", aide="Facultatif si le bâtiment et le n° d'appartement sont remplis."),
         C("type_logement", "Type", "choix", options=paires(TYPES_LOGEMENT), vide=None, defaut="Appartement"),
-        C("ville", "Ville", "choix", options=paires(VILLES), vide=None, defaut="Douala"),
+        C("ville", "Ville", "choix", options=paires(VILLES), vide="— Non précisée —", defaut="Douala"),
         C("quartier", "Quartier", max_long=120),
         C("adresse", "Adresse / repère", max_long=255),
         C("bailleur", "Bailleur"),
@@ -236,8 +239,10 @@ def champs_logement():
         C("jour_echeance", "Jour d'échéance", "entier", min=1, max=28, defaut=5,
           aide="Jour du mois où le loyer est dû (1 à 28)."),
         C("caution", "Caution versée", "montant"),
-        C("bail_debut", "Début du bail", "date"),
-        C("bail_fin", "Fin du bail", "date"),
+        C("bail_debut", "Début de la période de loyer", "date", aide="Période payée / contrat en cours."),
+        C("bail_fin", "Fin de la période de loyer", "date",
+          aide="Une notification apparaît 1 mois avant cette date pour renouveler le loyer."),
+        C("mode_paiement", "Mode de paiement", "choix", options=paires(MODES_PAIEMENT + ["Versement bancaire"])),
         C("loyers_suivis_depuis", "Suivre les loyers à partir de", "mois",
           aide="Première échéance suivie. Les mois précédents ne sont pas comptés comme impayés."),
         C("compteur_electricite", "N° compteur / contrat ENEO", max_long=40),

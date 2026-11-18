@@ -69,7 +69,7 @@ REPARATIONS_OUVERTES = ("signalee", "prise_en_charge", "en_cours")
 
 MIMES_AUTORISES = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 ALERTE_DOC_JOURS = 30          # alerte avant l'expiration d'un visa / d'une carte de séjour (réglable)
-ALERTE_BAIL_JOURS = 60         # alerte avant la fin d'un bail
+ALERTE_BAIL_JOURS = 30         # notification avant la fin de la période de loyer (1 mois)
 
 SQL_ROLES = "role IN (" + ",".join(f"'{r}'" for r in ROLES) + ")"
 
@@ -288,8 +288,12 @@ class Logement(Tracable, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(120), nullable=False)
+    batiment = db.Column(db.String(120), index=True)      # nom du bâtiment (ex. ENERGY CLUB)
+    numero = db.Column(db.String(30))                     # n° d'appartement / étage-bloc (ex. 1A)
+    residents = db.Column(db.Text)                        # noms des résidents, tels que communiqués
+    mode_paiement = db.Column(db.String(30))
     type_logement = db.Column(db.String(30), default="Appartement")
-    ville = db.Column(db.String(40), default="Douala")
+    ville = db.Column(db.String(40))
     quartier = db.Column(db.String(120))
     adresse = db.Column(db.String(255))
     bailleur = db.Column(db.String(160))
@@ -340,7 +344,24 @@ class Logement(Tracable, db.Model):
 
     @property
     def libelle(self):
+        if self.batiment and self.numero:
+            return f"{self.batiment} · Appt {self.numero}"
         return f"{self.nom} · {self.quartier}" if self.quartier else self.nom
+
+    @property
+    def jours_avant_fin(self):
+        return (self.bail_fin - aujourdhui()).days if self.bail_fin else None
+
+    def niveau_fin(self, seuil=ALERTE_BAIL_JOURS):
+        """ok / alerte (fin dans le délai de notification) / critique (≤ 7 j) / echue."""
+        j = self.jours_avant_fin
+        if j is None:
+            return None
+        if j < 0:
+            return "echue"
+        if j <= 7:
+            return "critique"
+        return "alerte" if j <= seuil else "ok"
 
     def echeances_dues(self, jusqu_au=None):
         """Échéances de loyer échues (date ≤ jusqu_au) non couvertes par un paiement : [(début, date limite)]."""
@@ -558,7 +579,9 @@ def migrer():
     COLONNES_AJOUTEES = {
         "personnes": [("entreprise_id", "INTEGER REFERENCES entreprises(id) ON DELETE SET NULL")],
         "documents": [("note_le", "TIMESTAMP"), ("note_par_id", "INTEGER")],
-        "logements": [("charges_mode", "VARCHAR(10) NOT NULL DEFAULT 'aucune'"), ("charges", "BIGINT")],
+        "logements": [("charges_mode", "VARCHAR(10) NOT NULL DEFAULT 'aucune'"), ("charges", "BIGINT"),
+                      ("batiment", "VARCHAR(120)"), ("numero", "VARCHAR(30)"), ("residents", "TEXT"),
+                      ("mode_paiement", "VARCHAR(30)")],
         "loyers": [("montant_charges", "BIGINT")],
     }
     insp = inspect(db.engine)

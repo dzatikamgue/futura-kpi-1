@@ -500,3 +500,38 @@ def test_charges_communes(app):
         v = Logement.query.filter_by(nom="Villa D").one()
         assert v.charges_mode == "incluses" and v.montant_echeance == 1_200_000
     assert "sans charges communes" in rh.get("/logements").get_data(as_text=True) or True
+
+
+def test_logement_residents_et_notification(app, monkeypatch):
+    import base64, json
+    from app import import_initial
+    from models import Logement, aujourdhui
+    rh = client(app, "rh")
+    fin = aujourdhui() + timedelta(days=20)
+    r = rh.post("/logements/nouveau", data={"batiment": "BAT TEST", "numero": "2B", "residents": "Agent A, Agent B",
+                                            "loyer": "300 000", "periodicite": "6", "jour_echeance": "5",
+                                            "charges_mode": "en_sus", "charges": "50 000",
+                                            "bail_debut": (fin - timedelta(days=180)).isoformat(), "bail_fin": fin.isoformat()})
+    assert r.status_code == 302
+    with app.app_context():
+        l = Logement.query.filter_by(numero="2B").one()
+        assert l.nom == "BAT TEST — 2B" and l.montant_echeance == 2_100_000 and l.niveau_fin(30) == "alerte"
+    page = rh.get("/").get_data(as_text=True)
+    assert "arrive en fin de période dans moins de 30 jours" in page and "BAT TEST · Appt 2B" in page
+    liste = rh.get("/logements").get_data(as_text=True)
+    assert "Agent A, Agent B" in liste and "J-20" in liste and "2 100 000 FCFA" in liste
+    assert "Loyer à renouveler — BAT TEST · Appt 2B" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    # Sans bâtiment / n° ni nom : refusé
+    r = rh.post("/logements/nouveau", data={"batiment": "X", "periodicite": "1", "jour_echeance": "5", "charges_mode": "aucune"})
+    assert r.status_code == 200 and "Indiquez le bâtiment" in r.get_data(as_text=True)
+    # Import de logements par variable privée, sans doublon
+    donnees = {"logements": [{"batiment": "BAT TEST", "numero": "2B", "loyer": 1},
+                             {"batiment": "BAT TEST", "numero": "3C", "loyer": 300000, "charges": 50000, "charges_mode": "en_sus",
+                              "periodicite": 6, "bail_debut": "2026-10-16", "bail_fin": "2027-04-15", "ville": None}]}
+    monkeypatch.setenv("IMPORT_VISAS", base64.b64encode(json.dumps(donnees).encode()).decode())
+    with app.app_context():
+        import_initial()
+        import_initial()
+        assert Logement.query.filter_by(batiment="BAT TEST").count() == 2
+        c = Logement.query.filter_by(numero="3C").one()
+        assert c.ville is None and c.bail_fin.isoformat() == "2027-04-15" and c.montant_echeance == 2_100_000

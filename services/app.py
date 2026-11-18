@@ -284,6 +284,32 @@ def import_initial():
     except Exception:
         print("Import initial : variable IMPORT_VISAS illisible, rien n'est importé.", flush=True)
         return
+    # Logements (bâtiment + n° d'appartement) : créés s'ils n'existent pas encore
+    nb_l = 0
+    champs_l = ("batiment", "numero", "residents", "mode_paiement", "type_logement", "ville", "loyer", "charges",
+                "charges_mode", "periodicite", "caution", "notes")
+    for x in donnees.get("logements") or []:
+        bat, num = str(x.get("batiment") or "").strip(), str(x.get("numero") or "").strip()
+        if not bat or not num or Logement.query.filter(func.lower(Logement.batiment) == bat.lower(),
+                                                       func.lower(Logement.numero) == num.lower()).first():
+            continue
+        l = Logement(nom=f"{bat} — {num}"[:120], **{k: x[k] for k in champs_l if x.get(k) is not None})
+        for k in ("bail_debut", "bail_fin"):
+            if x.get(k):
+                setattr(l, k, date.fromisoformat(x[k]))
+        if "ville" in x and x["ville"] is None:
+            l.ville = None
+        db.session.add(l)
+        nb_l += 1
+    if nb_l:
+        journaliser("Import initial logements", "", f"{nb_l} logement(s)")
+        print(f"Import initial : {nb_l} logement(s).", flush=True)
+    if not donnees.get("lignes"):
+        p = db.session.get(Parametre, "import_visas_fait") or Parametre(cle="import_visas_fait", valeur="")
+        p.valeur = empreinte
+        db.session.add(p)
+        db.session.commit()
+        return
     nom_ent = str(donnees.get("entreprise") or "Futura").strip()[:160]
     ent = next((e for e in Entreprise.query if e.nom.strip().lower().startswith(nom_ent.lower())), None)
     if not ent:
@@ -572,9 +598,11 @@ def a_surveiller():
     for l in Logement.query.filter(Logement.actif.is_(True), Logement.bail_fin.isnot(None),
                                    Logement.bail_fin <= aujourdhui() + timedelta(days=seuil_bail())):
         j = (l.bail_fin - aujourdhui()).days
-        items.append(dict(niveau="critique" if j <= 15 else "alerte", icone="home", titre=f"Fin de bail — {l.libelle}",
-                          texte=(f"Bail échu depuis {-j} j" if j < 0 else f"Le bail se termine dans {j} j")
-                          + f" ({l.bail_fin:%d/%m/%Y})", lien=url_for("logement_fiche", lid=l.id), tri=j))
+        items.append(dict(niveau="critique" if j <= 7 else "alerte", icone="home",
+                          titre=f"Loyer à renouveler — {l.libelle}",
+                          texte=(f"Période de loyer terminée depuis {-j} j" if j < 0 else f"La période de loyer se termine dans {j} j")
+                          + f" ({l.bail_fin:%d/%m/%Y})" + (f" · {l.residents}" if l.residents else ""),
+                          lien=url_for("logement_fiche", lid=l.id), tri=j))
     items.sort(key=lambda x: (x["niveau"] != "critique", x["tri"]))
     return items
 
@@ -601,7 +629,7 @@ def register_filters(app):
             args = request.args.to_dict()
             args.update(kw)
             return url_for(request.endpoint, **(request.view_args or {}), **args)
-        nb_alertes, docs_notif = 0, None
+        nb_alertes, docs_notif, loyers_notif = 0, None, None
         if current_user.is_authenticated and not current_user.occupant and request.endpoint not in ("static", None):
             nb_alertes = len(a_surveiller())
             proches = documents_en_vigueur().filter(
@@ -610,13 +638,18 @@ def register_filters(app):
                 docs_notif = dict(total=len(proches), expires=sum(1 for d in proches if d.jours_restants < 0),
                                   a_lancer=sum(1 for d in proches if d.renouvellement in ("", "a_lancer")),
                                   premier=min(proches, key=lambda d: d.date_expiration))
+            fins = Logement.query.filter(Logement.actif.is_(True), Logement.bail_fin.isnot(None),
+                                         Logement.bail_fin <= aujourdhui() + timedelta(days=seuil_bail())) \
+                .order_by(Logement.bail_fin).all()
+            if fins:
+                loyers_notif = dict(total=len(fins), echus=sum(1 for l in fins if l.bail_fin < aujourdhui()), premier=fins[0])
         return dict(ROLES=ROLES, SOUS_MODULES=SOUS_MODULES, TYPES_DOCUMENT=TYPES_DOCUMENT,
                     RENOUVELLEMENT=RENOUVELLEMENT, MOTIFS_BILLET=MOTIFS_BILLET, STATUTS_BILLET=STATUTS_BILLET,
                     TYPES_ENERGIE=TYPES_ENERGIE, UNITES=UNITES, FOURNISSEURS=FOURNISSEURS,
                     STATUTS_REPARATION=STATUTS_REPARATION, URGENCES=URGENCES, PERIODICITES=PERIODICITES,
                     PORTAIL_URL=(os.environ.get("PORTAIL_URL") or "").strip() or None,
                     url_avec=url_avec, maintenant=now(), aujourdhui=aujourdhui(), seuil=seuil_docs(),
-                    nb_alertes=nb_alertes, docs_notif=docs_notif, periode_libelle=periode_libelle, options_de=F.options_de)
+                    nb_alertes=nb_alertes, docs_notif=docs_notif, loyers_notif=loyers_notif, seuil_loyer=seuil_bail(), periode_libelle=periode_libelle, options_de=F.options_de)
 
 
 # --------------------------------------------------------------------------- #
@@ -1442,8 +1475,9 @@ def register_routes(app):
         if r:
             like = f"%{r}%"
             q = q.filter(or_(Logement.nom.ilike(like), Logement.quartier.ilike(like), Logement.bailleur.ilike(like),
-                             Logement.adresse.ilike(like)))
-        liste = q.order_by(Logement.ville, Logement.nom).all()
+                             Logement.adresse.ilike(like), Logement.batiment.ilike(like), Logement.numero.ilike(like),
+                             Logement.residents.ilike(like)))
+        liste = q.order_by(Logement.batiment, Logement.numero, Logement.nom).all()
         return render_template("logements.html", liste=liste,
                                total_loyers=sum(l.mensuel_total for l in liste if l.actif))
 
@@ -1454,7 +1488,12 @@ def register_routes(app):
         if request.method == "POST":
             val, err, f = F.lire(champs)
             if val.get("bail_debut") and val.get("bail_fin") and val["bail_fin"] < val["bail_debut"]:
-                err["bail_fin"] = "La fin du bail doit suivre son début."
+                err["bail_fin"] = "La fin de la période doit suivre son début."
+            if not val.get("nom"):
+                if val.get("batiment") and val.get("numero"):
+                    val["nom"] = f"{val['batiment']} — {val['numero']}"[:120]
+                else:
+                    err["nom"] = "Indiquez le bâtiment et le n° d'appartement, ou un nom de logement."
             if val.get("charges_mode") == "en_sus" and not val.get("charges"):
                 err["charges"] = "Indiquez le montant des charges communes payées en plus du loyer."
             if val.get("loyer") and not val.get("loyers_suivis_depuis"):
@@ -1479,7 +1518,8 @@ def register_routes(app):
             f, err = F.depuis_objet(champs, l), {}
             if l is None:
                 f["loyers_suivis_depuis"] = aujourdhui().strftime("%Y-%m")
-        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=l,
+        batiments = [b for (b,) in db.session.query(Logement.batiment).filter(Logement.batiment.isnot(None)).distinct()]
+        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=l, listes={"batiments": batiments},
                                titre="Modifier le logement" if l else "Nouveau logement",
                                ariane=[("Logements", url_for("logements"))],
                                retour=url_for("logement_fiche", lid=l.id) if l else url_for("logements"))
@@ -2018,8 +2058,8 @@ def register_routes(app):
     def parametres():
         champs = [F.C("alerte_documents_jours", "Alerte avant l'expiration d'un visa, d'une carte de séjour ou d'un passeport",
                       "entier", requis=True, min=7, max=365, aide="En jours. Par défaut : 30 jours."),
-                  F.C("alerte_bail_jours", "Alerte avant la fin d'un bail", "entier", requis=True, min=7, max=365,
-                      aide="En jours.")]
+                  F.C("alerte_bail_jours", "Notification avant la fin de la période de loyer", "entier", requis=True,
+                      min=7, max=365, aide="En jours. Par défaut : 30 jours (1 mois).")]
         if request.method == "POST":
             val, err, f = F.lire(champs)
             if not err:

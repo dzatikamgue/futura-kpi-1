@@ -4,37 +4,49 @@
 {% block ariane %}<span aria-current="page">Logements</span>{% endblock %}
 {% block contenu %}
 <div class="titre-page">
-  <div><p class="action-sur">Logements</p><h1>Logements de l'entreprise</h1><p class="muted">{{ liste|length }} logement{{ 's' if liste|length > 1 }} · {{ total_loyers|fcfa }} de loyers par mois</p></div>
+  <div><p class="action-sur">Logements</p><h1>Logements de l'entreprise</h1>
+    <p class="muted">{{ liste|length }} logement{{ 's' if liste|length > 1 }} · {{ total_loyers|fcfa }} par mois (loyers + charges communes) · notification {{ seuil_loyer }} jours avant la fin de chaque période de loyer</p></div>
   {% if current_user.gere %}<div class="actions"><a class="btn btn-primary" href="{{ url_for('logement_nouveau') }}">{{ icon('plus', 16) }} Nouveau logement</a></div>{% endif %}
 </div>
+{% set proches = liste|selectattr('bail_fin')|selectattr('actif')|list %}
+{% set a_renouveler = [] %}{% for l in proches %}{% if l.niveau_fin(seuil_loyer) in ('alerte', 'critique', 'echue') %}{% set _ = a_renouveler.append(l) %}{% endif %}{% endfor %}
+{% if a_renouveler %}
+<div class="bandeau bandeau-{{ 'ko' if a_renouveler|selectattr('jours_avant_fin', 'lt', 0)|list else 'alerte' }}">
+  {{ icon('bell', 20) }}
+  <p><strong>{{ a_renouveler|length }} loyer{{ 's' if a_renouveler|length > 1 }} à renouveler :</strong>
+  {% for l in a_renouveler %}{{ l.libelle }} (fin le {{ l.bail_fin|date }}){{ ', ' if not loop.last }}{% endfor %}.</p>
+</div>
+{% endif %}
 <div class="filtres">
   {{ onglets('statut', [('actifs', 'Loués', none), ('inactifs', 'Rendus', none), ('tous', 'Tous', none)], 'actifs') }}
   <form class="recherche" method="get" role="search">
     {% for k, v in request.args.items() if k != 'q' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-    {{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, quartier, bailleur…" aria-label="Rechercher">
+    {{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Bâtiment, n°, résident, bailleur…" aria-label="Rechercher">
   </form>
 </div>
 {% if liste %}
-<div class="grille-logements">
-  {% for l in liste %}{% set dus = l.echeances_dues() %}{% set rep = l.reparations|selectattr('ouverte')|list %}
-  <a class="carte carte-logement {{ 'inactif' if not l.actif }}" href="{{ url_for('logement_fiche', lid=l.id) }}">
-    <div class="carte-logement-tete">
-      <span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('home', 16) }}</span>
-      <div><strong>{{ l.nom }}</strong><span class="muted petit">{{ l.type_logement }} · {{ l.quartier or '' }}{{ ', ' if l.quartier }}{{ l.ville }}</span></div>
-    </div>
-    <div class="carte-logement-occ">{{ icon('users', 14) }} {% if l.occupants %}{{ l.occupants|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">Aucun occupant</span>{% endif %}</div>
-    <div class="carte-logement-pied">
-      <span class="gros-montant">{{ l.mensuel_total|fcfa }}<small>/mois</small>
-        <span class="petit muted carte-charges">{% if l.charges_mode == 'en_sus' %}dont {{ l.charges|fcfa }} de charges communes{% elif l.charges_mode == 'incluses' %}charges communes incluses{% else %}sans charges communes{% endif %}</span></span>
-      <span class="carte-logement-badges">
-        {% if dus %}<span class="badge badge-ko">{{ dus|length }} loyer{{ 's' if dus|length > 1 }} en retard</span>{% elif l.loyer %}<span class="badge badge-ok">Loyers à jour</span>{% endif %}
-        {% if rep %}<span class="badge badge-alerte">{{ rep|length }} réparation{{ 's' if rep|length > 1 }}</span>{% endif %}
-      </span>
-    </div>
-  </a>
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Bâtiment</th><th>Appt</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période de loyer</th><th>Fin</th><th class="num">Montant de la période</th></tr></thead>
+  <tbody>
+  {% for l in liste %}{% set niv = l.niveau_fin(seuil_loyer) %}
+  <tr class="ligne-cliquable {{ 'ligne-expire' if niv in ('echue', 'critique') else 'ligne-alerte' if niv == 'alerte' }} {{ 'inactif' if not l.actif }}" data-href="{{ url_for('logement_fiche', lid=l.id) }}">
+    <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=l.id) }}"><strong>{{ l.batiment or l.nom }}</strong></a>{% if l.quartier %}<br><span class="muted petit">{{ l.quartier }}</span>{% endif %}</td>
+    <td><strong>{{ l.numero or '—' }}</strong></td>
+    <td class="petit">{% if l.residents %}{{ l.residents }}{% elif l.occupants %}{{ l.occupants|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="num">{{ l.loyer|fcfa }}</td>
+    <td class="num">{% if l.charges_mode == 'en_sus' %}{{ l.charges|fcfa }}{% elif l.charges_mode == 'incluses' %}<span class="muted petit">incluses</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="nowrap petit">{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → {{ l.bail_fin|date }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="nowrap">{% if niv == 'echue' %}<span class="badge badge-ko">Terminée depuis {{ -l.jours_avant_fin }} j</span>
+      {% elif niv == 'critique' %}<span class="badge badge-ko">J-{{ l.jours_avant_fin }} · renouveler</span>
+      {% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ l.jours_avant_fin }} · renouveler</span>
+      {% elif niv == 'ok' %}<span class="badge badge-ok">{{ l.jours_avant_fin }} j</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="num"><strong>{{ l.montant_echeance|fcfa if l.loyer else '—' }}</strong>{% if l.loyer %}<br><span class="muted petit">{{ PERIODICITES[l.periodicite]|lower }}</span>{% endif %}</td>
+  </tr>
   {% endfor %}
-</div>
+  </tbody>
+</table></div></div>
 {% else %}
-{{ vide('Aucun logement', 'Enregistrez les logements loués par l\'entreprise : loyers, factures et réparations y seront rattachés.', url_for('logement_nouveau') if current_user.gere else '', 'Nouveau logement', 'home') }}
+{{ vide('Aucun logement', 'Enregistrez les logements loués : bâtiment, n° d\'appartement, résidents, loyer, charges et période de loyer.', url_for('logement_nouveau') if current_user.gere else '', 'Nouveau logement', 'home') }}
 {% endif %}
 {% endblock %}

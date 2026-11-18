@@ -29,7 +29,7 @@ def charger():
         ("Studio Akwa 4B", "Akwa", 250_000, 1, "Imad Obeid"),
         ("Appartement Kotto C1", "Kotto", 400_000, 1, None),
     ]:
-        l = Logement(nom=nom, quartier=quartier, ville="Douala", type_logement="Villa" if "Villa" in nom else "Appartement",
+        l = Logement(nom=nom, batiment="RÉSIDENCE DÉMO", numero=quartier[:2].upper(), residents=occ_nom, quartier=quartier, ville="Douala", type_logement="Villa" if "Villa" in nom else "Appartement",
                      bailleur="SCI " + quartier, bailleur_telephone="+237 6 99 00 00 00", loyer=loyer, periodicite=per,
                      jour_echeance=5, caution=loyer * 3, bail_debut=j - timedelta(days=400),
                      bail_fin=j + timedelta(days=40 if quartier == "Akwa" else 400),

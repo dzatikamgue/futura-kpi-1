@@ -6,8 +6,8 @@
 <div class="titre-page">
   <div class="titre-module-g">
     <span class="sm-ico" aria-hidden="true">{{ icon('home', 22) }}</span>
-    <div><p class="action-sur">{{ l.type_logement }} · {{ l.ville }}</p><h1>{{ l.nom }} {% if not l.actif %}<span class="badge">Rendu</span>{% endif %}</h1>
-    <p class="muted">{{ l.quartier or '' }}{% if l.adresse %} · {{ l.adresse }}{% endif %}</p></div>
+    <div><p class="action-sur">{{ l.type_logement }}{% if l.ville %} · {{ l.ville }}{% endif %}</p><h1>{{ l.libelle }} {% if not l.actif %}<span class="badge">Rendu</span>{% endif %}</h1>
+    <p class="muted">{% if l.residents %}{{ icon('users', 14) }} {{ l.residents }}{% endif %}{% if l.quartier %} · {{ l.quartier }}{% endif %}{% if l.adresse %} · {{ l.adresse }}{% endif %}</p></div>
   </div>
   {% if current_user.gere %}
   <div class="actions">
@@ -17,6 +17,12 @@
   {% endif %}
 </div>
 
+{% set niv = l.niveau_fin(seuil_loyer) %}
+{% if niv in ('alerte', 'critique', 'echue') %}
+<div class="bandeau bandeau-{{ 'ko' if niv != 'alerte' else 'alerte' }}">{{ icon('bell', 20) }}
+  <p><strong>{% if niv == 'echue' %}La période de loyer est terminée depuis le {{ l.bail_fin|date }}.{% else %}La période de loyer se termine le {{ l.bail_fin|date }} (dans {{ l.jours_avant_fin }} jours).{% endif %}</strong>
+  Préparez le renouvellement : {{ l.montant_echeance|fcfa }} pour la prochaine période ({{ PERIODICITES[l.periodicite]|lower }}). Une fois payé, mettez à jour les dates de la période dans « Modifier ».</p></div>
+{% endif %}
 <div class="kpis">
   <div class="kpi sm-loyers"><span class="kpi-lib">{{ icon('key', 16) }} Loyers payés {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.loyers|fcfa }}</span>
     <span class="kpi-sous">{% if dus %}<span class="texte-ko">{{ dus|length }} échéance{{ 's' if dus|length > 1 }} en retard</span>{% elif prochaine %}Prochaine : {{ prochaine[1]|date }}{% else %}—{% endif %}</span></div>
@@ -79,6 +85,9 @@
     <section class="carte">
       <div class="carte-entete"><h2>{{ icon('file', 18) }} Bail</h2></div>
       <dl class="fiche">
+        <dt>Bâtiment</dt><dd>{{ l.batiment or '—' }}</dd>
+        <dt>N° d'appartement</dt><dd>{{ l.numero or '—' }}</dd>
+        <dt>Résident(s)</dt><dd>{{ l.residents or '—' }}</dd>
         <dt>Bailleur</dt><dd>{{ l.bailleur or '—' }}{% if l.bailleur_telephone %}<br><a class="lien petit" href="tel:{{ l.bailleur_telephone }}">{{ l.bailleur_telephone }}</a>{% endif %}</dd>
         <dt>Loyer</dt><dd>{{ l.loyer|fcfa }} / mois</dd>
         <dt>Charges communes</dt><dd>{% if l.charges_mode == 'en_sus' %}<span class="badge badge-charges">En plus</span> {{ l.charges|fcfa }} / mois<br><span class="muted petit">Total mensuel : {{ l.mensuel_total|fcfa }}</span>
@@ -86,7 +95,9 @@
           {% else %}<span class="muted">Aucune</span>{% endif %}</dd>
         <dt>Paiement</dt><dd>{{ PERIODICITES[l.periodicite] }}, le {{ l.jour_echeance }} du mois</dd>
         <dt>Caution</dt><dd>{{ l.caution|fcfa }}</dd>
-        <dt>Bail</dt><dd>{{ l.bail_debut|date }} → {{ l.bail_fin|date }}</dd>
+        <dt>Période de loyer</dt><dd>{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% if l.bail_fin %}<br><span class="muted petit">notification le {{ (l.bail_fin - timedelta_jours(seuil_loyer))|date }}</span>{% endif %}</dd>
+        <dt>Montant de la période</dt><dd>{{ l.montant_echeance|fcfa if l.loyer else '—' }} <span class="muted petit">({{ PERIODICITES[l.periodicite]|lower }})</span></dd>
+        <dt>Mode de paiement</dt><dd>{{ l.mode_paiement or '—' }}</dd>
         <dt>Suivi des loyers depuis</dt><dd>{{ l.loyers_suivis_depuis|mois }}</dd>
         {% if l.notes %}<dt>Notes</dt><dd class="pre">{{ l.notes }}</dd>{% endif %}
       </dl>
