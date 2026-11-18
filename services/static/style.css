@@ -935,3 +935,23 @@ body[class*="sm-"] .entete { box-shadow: inset 0 3px 0 var(--esp); }
 .carte-charges { display: block; font-weight: 400; font-size: 12px; margin-top: 2px; }
 .badge-nonpaye { background: #ffc000; color: #3d2a00; }
 .en-ligne { display: inline; }
+
+/* Bandeaux d'alerte : version sobre (fond neutre, simple liseré de couleur, pas d'animation) */
+.notif-docs, .notif-docs-ko, .bandeau-alertes {
+  background: var(--surface); color: var(--texte); border: 1px solid var(--bord);
+  border-left: 3px solid var(--alerte); box-shadow: none; padding: var(--e3) var(--e4); font-size: 14px; }
+.notif-docs-ko { border-left-color: var(--ko); }
+.notif-docs strong, .bandeau-alertes strong { font-weight: 600; }
+.notif-docs { margin-bottom: var(--e4); }
+.notif-docs-ico, .bandeau-alertes-ico { width: 28px; height: 28px; animation: none; box-shadow: none;
+  background: color-mix(in srgb, var(--alerte) 12%, transparent); color: var(--alerte); }
+.notif-docs-ko .notif-docs-ico { background: color-mix(in srgb, var(--ko) 12%, transparent); color: var(--ko); }
+.notif-docs-ico .ico, .bandeau-alertes-ico .ico { width: 16px; height: 16px; }
+.notif-docs .espace-ouvrir, .notif-docs-ko .espace-ouvrir, .bandeau-alertes .espace-ouvrir { color: var(--texte-2, var(--muted, inherit)); font-weight: 500; font-size: 13px; }
+.notif-docs:hover, .bandeau-alertes:hover { background: var(--surface-2); box-shadow: none; }
+.notif-docs > span:nth-child(2), .bandeau-alertes > span:nth-child(2) { font-size: 13px; color: var(--texte-2); line-height: 1.45; }
+.notif-docs > span:nth-child(2) strong, .bandeau-alertes > span:nth-child(2) strong { font-size: 14px; color: var(--texte); }
+@media (max-width: 600px) {
+  .notif-docs-ico, .bandeau-alertes-ico { display: none; }
+  .notif-docs .muted.petit { display: none; }
+}
