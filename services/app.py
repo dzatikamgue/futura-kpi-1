@@ -280,7 +280,11 @@ def import_initial():
     if (db.session.get(Parametre, "import_visas_fait") or Parametre(valeur="")).valeur == empreinte:
         return
     try:
-        donnees = json.loads(base64.b64decode(brut).decode("utf-8"))
+        if brut.startswith("z:"):          # JSON compressé (zlib) puis base64
+            import zlib
+            donnees = json.loads(zlib.decompress(base64.b64decode(brut[2:])).decode("utf-8"))
+        else:
+            donnees = json.loads(base64.b64decode(brut).decode("utf-8"))
     except Exception:
         print("Import initial : variable IMPORT_VISAS illisible, rien n'est importé.", flush=True)
         return

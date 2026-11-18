@@ -566,3 +566,14 @@ def test_periode_payee(app):
                      prochaine_fin=aujourdhui() + timedelta(days=180))
         db.session.add(m); db.session.commit()
         assert m.jours_avant_fin == 4
+
+
+def test_import_compresse(app, monkeypatch):
+    import base64, json, zlib
+    from app import import_initial
+    from models import Logement
+    d = {"logements": [{"batiment": "ZB", "numero": "1", "loyer": 100}]}
+    monkeypatch.setenv("IMPORT_VISAS", "z:" + base64.b64encode(zlib.compress(json.dumps(d).encode(), 9)).decode())
+    with app.app_context():
+        import_initial()
+        assert Logement.query.filter_by(batiment="ZB").count() == 1
