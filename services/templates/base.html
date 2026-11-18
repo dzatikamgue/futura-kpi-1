@@ -1,0 +1,103 @@
+{% from "_macros.html" import icon with context %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1F3F7F">
+  <meta name="sous-module" content="{% block sous_module %}{% endblock %}">
+  <title>{% block titre %}Services généraux{% endblock %} · Futura Services généraux</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo-futura.png') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1">
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=1" defer></script>
+</head>
+{% set sm = self.sous_module() | trim %}
+<body class="{{ 'sm-' ~ sm if sm }}">
+<a class="lien-evitement" href="#contenu">Aller au contenu</a>
+<div id="hors-ligne" class="bandeau-hors-ligne" hidden role="status">
+  {{ icon('alert', 16) }} Connexion perdue — vos saisies sont conservées sur cet appareil. Renvoyez le formulaire dès le retour du réseau.
+</div>
+
+{% if current_user.is_authenticated %}
+{% set ep = request.endpoint or '' %}
+{% set va = request.view_args or {} %}
+<div class="appli">
+  <aside class="sidebar" id="sidebar" aria-label="Navigation principale">
+    <a href="{{ url_for('accueil') }}" class="marque">
+      <span class="marque-logo"><img src="{{ url_for('static', filename='logo-futura.png') }}" alt="Futura"></span>
+      <span class="marque-sous">Services généraux</span>
+    </a>
+    <nav class="nav">
+      {% if PORTAIL_URL %}<a href="{{ PORTAIL_URL }}" class="nav-portail">{{ icon('grid') }} Modules Futura</a>{% endif %}
+      {% if current_user.occupant %}
+      <a href="{{ url_for('mon_logement') }}" class="{{ 'actif' if ep == 'mon_logement' }}">{{ icon('home') }} Mon logement</a>
+      <a href="{{ url_for('reparations') }}" class="{{ 'actif' if ep.startswith('reparation') and ep != 'reparation_nouvelle' }}">{{ icon('wrench') }} Mes demandes</a>
+      <a href="{{ url_for('reparation_nouvelle') }}" class="{{ 'actif' if ep == 'reparation_nouvelle' }}">{{ icon('plus') }} Signaler un problème</a>
+      {% else %}
+      <a href="{{ url_for('accueil') }}" class="{{ 'actif' if ep == 'accueil' }}">{{ icon('layers') }} Sous-modules</a>
+      <a href="{{ url_for('tableau_de_bord') }}" class="{{ 'actif' if ep == 'tableau_de_bord' }}">{{ icon('dashboard') }} Tableau de bord
+        {% if nb_alertes %}<span class="nav-compteur" aria-label="{{ nb_alertes }} point(s) à surveiller">{{ nb_alertes }}</span>{% endif %}</a>
+
+      <p class="nav-titre">Personnel</p>
+      <a href="{{ url_for('personnel') }}" class="{{ 'actif' if ep.startswith('personne') }}">{{ icon('users') }} Personnel</a>
+      <a href="{{ url_for('documents', type_doc='visa') }}" class="nav-sm nav-sm-visa {{ 'actif' if sm == 'visa' }}">{{ icon('stamp') }} Visas</a>
+      <a href="{{ url_for('documents', type_doc='carte_sejour') }}" class="nav-sm nav-sm-carte_sejour {{ 'actif' if sm == 'carte_sejour' }}">{{ icon('id') }} Cartes de séjour</a>
+      <a href="{{ url_for('billets') }}" class="nav-sm nav-sm-billets {{ 'actif' if sm == 'billets' }}">{{ icon('plane') }} Billets d'avion</a>
+
+      <p class="nav-titre">Logements</p>
+      <a href="{{ url_for('logements') }}" class="{{ 'actif' if ep.startswith('logement') }}">{{ icon('home') }} Logements</a>
+      <a href="{{ url_for('loyers') }}" class="nav-sm nav-sm-loyers {{ 'actif' if sm == 'loyers' }}">{{ icon('key') }} Loyers</a>
+      <a href="{{ url_for('factures', type_energie='electricite') }}" class="nav-sm nav-sm-electricite {{ 'actif' if sm == 'electricite' }}">{{ icon('bolt') }} Électricité</a>
+      <a href="{{ url_for('factures', type_energie='eau') }}" class="nav-sm nav-sm-eau {{ 'actif' if sm == 'eau' }}">{{ icon('drop') }} Eau</a>
+      <a href="{{ url_for('reparations') }}" class="nav-sm nav-sm-reparations {{ 'actif' if sm == 'reparations' }}">{{ icon('wrench') }} Réparations</a>
+      {% endif %}
+
+      {% if current_user.role == 'admin' %}
+      <p class="nav-titre">Administration</p>
+      <a href="{{ url_for('utilisateurs') }}" class="{{ 'actif' if ep.startswith('utilisateur') }}">{{ icon('user') }} Utilisateurs</a>
+      <a href="{{ url_for('parametres') }}" class="{{ 'actif' if ep == 'parametres' }}">{{ icon('bell') }} Réglages des alertes</a>
+      <a href="{{ url_for('journal') }}" class="{{ 'actif' if ep == 'journal' }}">{{ icon('log') }} Journal d'activité</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-pied">
+      <div class="profil">
+        <span class="avatar" aria-hidden="true">{{ current_user.nom[:1]|upper }}</span>
+        <div><strong>{{ current_user.nom }}</strong><span class="muted">{{ current_user.role_libelle }}</span></div>
+      </div>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-sm btn-bloc">{{ icon('logout', 16) }} Se déconnecter</button>
+      </form>
+    </div>
+  </aside>
+  <div class="voile" id="voile" hidden></div>
+
+  <div class="principal">
+    <header class="entete">
+      <button class="btn-icone menu-mobile" id="btn-menu" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false">{{ icon('menu') }}</button>
+      <nav class="ariane" aria-label="Fil d'Ariane">
+        <a href="{{ url_for('accueil') }}">Services généraux</a>
+        {% block ariane %}{% endblock %}
+      </nav>
+      <button class="btn-icone" id="btn-theme" aria-label="Basculer mode clair / sombre" title="Mode clair / sombre">{{ icon('moon') }}</button>
+    </header>
+
+    <main id="contenu" class="contenu" tabindex="-1">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="flashs">
+          {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="status">{{ msg }}<button class="flash-fermer" aria-label="Fermer">×</button></div>{% endfor %}
+        </div>{% endif %}
+      {% endwith %}
+      {% block contenu %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+  {% block public %}{% endblock %}
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination with context %}
+{% block titre %}Journal d'activité{% endblock %}
+{% block ariane %}<span aria-current="page">Journal d'activité</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page"><div><p class="action-sur">Administration</p><h1>Journal d'activité</h1><p class="muted">Qui a fait quoi, et quand.</p></div></div>
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table table-compacte">
+  <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Élément</th><th>Détails</th></tr></thead>
+  <tbody>{% for j in page.items %}
+  <tr><td class="nowrap">{{ j.date|dateheure }}</td><td>{{ j.user.nom if j.user else 'Système' }}</td><td>{{ j.action }}</td><td>{{ j.cible or '' }}</td><td class="muted petit">{{ j.details or '' }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">Aucune activité.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{{ pagination(page) }}
+{% endblock %}

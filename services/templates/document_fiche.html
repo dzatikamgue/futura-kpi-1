@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge_doc, entete_module with context %}
+{% block titre %}{{ d.type_libelle }} · {{ d.personne.nom }}{% endblock %}
+{% block sous_module %}{{ d.type_doc }}{% endblock %}
+{% block ariane %}<a href="{{ url_for('documents', type_doc=d.type_doc) }}">{{ d.type_libelle }}s</a><span aria-current="page">{{ d.personne.nom }}</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, d.type_libelle ~ ' — ' ~ d.personne.nom, (d.categorie or '') ~ (' · n° ' ~ d.numero if d.numero else '')) %}
+  {% if current_user.gere %}
+  <a class="btn btn-ghost" href="{{ url_for('document_modifier', did=d.id) }}">{{ icon('edit', 16) }} Modifier</a>
+  {% if not d.remplace %}<a class="btn btn-primary" href="{{ url_for('document_renouveler', did=d.id) }}">{{ icon('undo', 16) }} Saisir le renouvellement</a>{% endif %}
+  {% endif %}
+{% endcall %}
+
+{% set niv = d.niveau(seuil) %}
+{% if niv in ('expire', 'critique', 'alerte') %}
+<div class="bandeau bandeau-{{ 'ko' if niv in ('expire', 'critique') else 'alerte' }}">
+  {{ icon('alert', 20) }}
+  <p><strong>{% if niv == 'expire' %}Ce document a expiré le {{ d.date_expiration|date }}.{% else %}Ce document expire dans {{ d.jours_restants }} jour{{ 's' if d.jours_restants > 1 }}.{% endif %}</strong>
+  {% if not d.renouvellement %} Le renouvellement n'est pas encore lancé.{% else %} Renouvellement : {{ RENOUVELLEMENT[d.renouvellement]|lower }}.{% endif %}</p>
+</div>
+{% endif %}
+
+<div class="grille-detail">
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>Document</h2>{{ badge_doc(d) }}</div>
+      <div class="jauge-validite" aria-hidden="true">
+        {% if d.date_delivrance %}{% set total = (d.date_expiration - d.date_delivrance).days or 1 %}{% set ecoule = (aujourdhui - d.date_delivrance).days %}
+        <span class="jauge-validite-barre jauge-{{ niv }}" data-largeur="{{ [[ecoule / total * 100, 0]|max, 100]|min|round(1) }}"></span>{% endif %}
+      </div>
+      <dl class="fiche">
+        <dt>Titulaire</dt><dd><a class="lien" href="{{ url_for('personne_fiche', pid=d.personne.id) }}">{{ d.personne.nom }}</a></dd>
+        <dt>Numéro</dt><dd>{{ d.numero or '—' }}</dd>
+        <dt>Catégorie</dt><dd>{{ d.categorie or '—' }}</dd>
+        <dt>Pays</dt><dd>{{ d.pays or '—' }}</dd>
+        <dt>Délivré le</dt><dd>{{ d.date_delivrance|date }}</dd>
+        <dt>Expire le</dt><dd class="gros">{{ d.date_expiration|date }}</dd>
+        <dt>Coût</dt><dd>{{ d.cout|fcfa }}</dd>
+        {% if d.notes %}<dt>Notes</dt><dd class="pre">{{ d.notes }}</dd>{% endif %}
+      </dl>
+    </section>
+    {% if historique|length > 1 %}
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>{{ icon('clock', 18) }} Historique des {{ d.type_libelle|lower }}s de {{ d.personne.nom }}</h2></div>
+      <div class="table-conteneur"><table class="table table-compacte">
+        <thead><tr><th>Numéro</th><th>Délivré le</th><th>Expire le</th><th>État</th></tr></thead>
+        <tbody>{% for h in historique %}
+        <tr class="ligne-cliquable {{ 'ligne-actuelle' if h.id == d.id }}" data-href="{{ url_for('document_fiche', did=h.id) }}"><td>{{ h.numero or '—' }}</td><td>{{ h.date_delivrance|date }}</td><td>{{ h.date_expiration|date }}</td><td>{{ badge_doc(h) }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </section>
+    {% endif %}
+  </div>
+  <div class="colonne">
+    {% if not d.remplace %}
+    <section class="carte carte-action">
+      <h2>{{ icon('undo', 18) }} Renouvellement</h2>
+      <p class="muted petit mt-1">Statut actuel : <strong>{{ RENOUVELLEMENT[d.renouvellement] }}</strong>{% if d.renouvellement_note %} — {{ d.renouvellement_note }}{% endif %}</p>
+      {% if current_user.gere %}
+      <form method="post" action="{{ url_for('document_demarche', did=d.id) }}" class="formulaire mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="champ"><label for="renouvellement">Où en est le dossier ?</label>
+          <select id="renouvellement" name="renouvellement">{% for k, v in RENOUVELLEMENT.items() if k != 'obtenu' %}<option value="{{ k }}" {{ 'selected' if d.renouvellement == k }}>{{ v }}</option>{% endfor %}</select></div>
+        <div class="champ"><label for="note">Note (facultatif)</label><input id="note" name="note" maxlength="255" placeholder="Ex. dossier déposé le 12/11, récépissé n°…"></div>
+        <button class="btn btn-ghost btn-bloc">Mettre à jour</button>
+      </form>
+      <p class="muted petit mt-3">Quand le nouveau document est obtenu, cliquez sur « Saisir le renouvellement » : il remplacera celui-ci et l'alerte disparaîtra.</p>
+      {% endif %}
+    </section>
+    {% endif %}
+    {% with objet='document', oid=d.id %}{% include "_pieces.html" %}{% endwith %}
+    {% if current_user.gere %}
+    <details class="zone-danger"><summary>Supprimer ce document</summary>
+      <form method="post" action="{{ url_for('document_supprimer', did=d.id) }}" data-confirm="Supprimer définitivement ce document ?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="muted petit">À réserver aux erreurs de saisie. Pour un renouvellement, utilisez « Saisir le renouvellement ».</p>
+        <button class="btn btn-danger btn-sm mt-1">{{ icon('trash', 14) }} Supprimer</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

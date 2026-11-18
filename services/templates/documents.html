@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination, vide, onglets, badge_doc, entete_module with context %}
+{% set lib = TYPES_DOCUMENT[type_doc] %}
+{% block titre %}{{ lib }}s{% endblock %}
+{% block sous_module %}{{ type_doc }}{% endblock %}
+{% block ariane %}<span aria-current="page">{{ lib }}s</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, lib ~ 's', 'Alerte ' ~ seuil ~ ' jours avant l\'expiration. Un document renouvelé remplace l\'ancien.') %}
+  <a class="btn btn-ghost" href="{{ url_for('documents_export', type_doc=type_doc, **request.args) }}">{{ icon('download', 16) }} Excel</a>
+  {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('document_nouveau', type_doc=type_doc) }}">{{ icon('plus', 16) }} Nouveau{{ 'lle' if type_doc == 'carte_sejour' }} {{ lib|lower }}</a>{% endif %}
+{% endcall %}
+
+<div class="kpis kpis-3">
+  <a class="kpi" href="{{ url_for('documents', type_doc=type_doc, statut='valides') }}"><span class="kpi-lib">Valides</span><span class="kpi-val">{{ stats.valides }}</span><span class="kpi-sous">plus de {{ seuil }} jours</span></a>
+  <a class="kpi {{ 'kpi-alerte' if stats.alerte }}" href="{{ url_for('documents', type_doc=type_doc, statut='a_renouveler') }}"><span class="kpi-lib">À renouveler</span><span class="kpi-val">{{ stats.alerte }}</span><span class="kpi-sous">expirent sous {{ seuil }} jours</span></a>
+  <a class="kpi {{ 'kpi-ko' if stats.expires }}" href="{{ url_for('documents', type_doc=type_doc, statut='expires') }}"><span class="kpi-lib">Expirés</span><span class="kpi-val">{{ stats.expires }}</span><span class="kpi-sous">à régulariser</span></a>
+</div>
+
+<div class="filtres mt-3">
+  {{ onglets('statut', [('en_vigueur', 'En vigueur', stats.total), ('a_renouveler', 'À renouveler', stats.alerte), ('expires', 'Expirés', stats.expires), ('valides', 'Valides', stats.valides), ('historique', 'Historique complet', none)], 'en_vigueur') }}
+  <form class="recherche" method="get" role="search">
+    {% for k, v in request.args.items() if k not in ('q', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    {{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, numéro, catégorie…" aria-label="Rechercher">
+  </form>
+</div>
+
+{% if page.items %}
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Personne</th><th>Numéro / catégorie</th><th>Délivré le</th><th>Expire le</th><th>État</th><th>Renouvellement</th></tr></thead>
+  <tbody>
+  {% for d in page.items %}{% set niv = d.niveau(seuil) %}
+  <tr class="ligne-cliquable ligne-{{ niv }}" data-href="{{ url_for('document_fiche', did=d.id) }}">
+    <td class="col-fixe"><a class="lien" href="{{ url_for('document_fiche', did=d.id) }}"><strong>{{ d.personne.nom }}</strong></a><br><span class="muted petit">{{ d.personne.societe or '' }}</span></td>
+    <td>{{ d.numero or '—' }}<br><span class="muted petit">{{ d.categorie or '' }}</span></td>
+    <td>{{ d.date_delivrance|date }}</td>
+    <td><strong>{{ d.date_expiration|date }}</strong></td>
+    <td>{{ badge_doc(d) }}</td>
+    <td>
+      {% if current_user.gere and niv in ('alerte', 'critique', 'expire') %}
+      <form method="post" action="{{ url_for('document_demarche', did=d.id) }}" class="form-mini" data-stop>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="{{ request.full_path }}">
+        <select name="renouvellement" data-auto-submit aria-label="État du renouvellement de {{ d.personne.nom }}">
+          {% for k, v in RENOUVELLEMENT.items() if k != 'obtenu' %}<option value="{{ k }}" {{ 'selected' if d.renouvellement == k }}>{{ v }}</option>{% endfor %}
+        </select>
+      </form>
+      {% else %}<span class="{{ 'muted' if not d.renouvellement }}">{{ RENOUVELLEMENT[d.renouvellement] }}</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{{ pagination(page) }}
+{% else %}
+{{ vide('Aucun document ici', 'Rien ne correspond à ce filtre.' if request.args else 'Enregistrez les ' ~ (lib|lower) ~ 's du personnel pour être alerté avant leur expiration.', url_for('document_nouveau', type_doc=type_doc) if current_user.gere else '', 'Ajouter', module.icone) }}
+{% endif %}
+{% endblock %}

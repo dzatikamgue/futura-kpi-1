@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, champ, badge_reparation, entete_module with context %}
+{% block titre %}{{ r.reference }}{% endblock %}
+{% block sous_module %}reparations{% endblock %}
+{% block ariane %}<a href="{{ url_for('reparations') }}">{{ 'Mes demandes' if current_user.occupant else 'Réparations' }}</a><span aria-current="page">{{ r.reference }}</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, r.titre, r.reference ~ ' · ' ~ r.logement.libelle) %}{{ badge_reparation(r) }}{% endcall %}
+
+<ol class="frise" aria-label="Avancement">
+  {% set ordre = ['signalee', 'prise_en_charge', 'en_cours', 'terminee'] %}
+  {% set pos = ordre.index(r.statut) if r.statut in ordre else -1 %}
+  {% for s in ordre %}
+  <li class="frise-etape {{ 'fait' if loop.index0 < pos or (s == 'terminee' and pos == 3) }} {{ 'actuel' if loop.index0 == pos and s != 'terminee' }}">
+    <span class="frise-point">{% if loop.index0 < pos or (s == 'terminee' and pos == 3) %}{{ icon('check', 14) }}{% else %}{{ loop.index }}{% endif %}</span>
+    <span class="frise-lib">{{ STATUTS_REPARATION[s] }}</span>
+  </li>
+  {% endfor %}
+</ol>
+{% if r.statut == 'annulee' %}<div class="bandeau bandeau-alerte">{{ icon('x', 20) }}<p>Demande annulée le {{ r.cloturee_le|dateheure }}.</p></div>{% endif %}
+
+<div class="grille-detail">
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>Demande</h2>{% if r.urgence == 'urgente' %}<span class="badge badge-ko">Urgent</span>{% endif %}</div>
+      <dl class="fiche">
+        <dt>Logement</dt><dd>{% if current_user.occupant %}{{ r.logement.libelle }}{% else %}<a class="lien" href="{{ url_for('logement_fiche', lid=r.logement.id) }}">{{ r.logement.libelle }}</a>{% endif %}</dd>
+        <dt>Catégorie</dt><dd>{{ r.categorie }}</dd>
+        <dt>Signalé</dt><dd>le {{ r.signale_le|dateheure }}{% if r.signale_par %} par {{ r.signale_par.nom }}{% endif %}</dd>
+        <dt>Description</dt><dd class="pre">{{ r.description or '—' }}</dd>
+        <dt>Intervenant</dt><dd>{{ r.intervenant or '—' }}</dd>
+        <dt>Intervention</dt><dd>{{ r.date_intervention|date }}</dd>
+        {% if not current_user.occupant %}<dt>Coût</dt><dd class="gros">{{ r.cout|fcfa }}</dd>{% endif %}
+        <dt>Durée</dt><dd>{{ r.jours_ouverte }} jour{{ 's' if r.jours_ouverte > 1 }}{{ ' (en cours)' if r.ouverte }}</dd>
+      </dl>
+    </section>
+
+    <section class="carte" id="suivi">
+      <div class="carte-entete"><h2>{{ icon('clock', 18) }} Suivi</h2></div>
+      <ol class="historique">
+        {% for s in r.suivis|reverse %}
+        <li class="histo {{ 'histo-validation' if s.statut == 'terminee' else 'histo-retour' if s.statut == 'annulee' else 'histo-saisie' if s.statut else '' }}">
+          <span class="histo-point" aria-hidden="true"></span>
+          <div>
+            <p>{% if s.statut %}<strong>{{ STATUTS_REPARATION[s.statut] }}</strong>{% else %}<strong>Commentaire</strong>{% endif %}
+              <span class="muted petit">· {{ s.user.nom if s.user else '—' }} · {{ s.date|dateheure }}</span></p>
+            {% if s.texte %}<p class="histo-texte">{{ s.texte }}</p>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+  </div>
+
+  <div class="colonne">
+    {% if current_user.gere %}
+    <section class="carte carte-action">
+      <h2>{{ icon('wrench', 18) }} Mettre à jour</h2>
+      <form method="post" action="{{ url_for('reparation_suivi', rid=r.id) }}" class="formulaire mt-3" enctype="multipart/form-data" novalidate data-valider data-chargement-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for ch in champs %}{{ champ(ch, f, err) }}{% endfor %}
+        <div class="champ {{ 'en-erreur' if err.get('pieces') }}"><label for="pieces">Photos / devis / facture</label>
+          <input id="pieces" name="pieces" type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp">
+          <p class="champ-msg" role="alert">{{ err.get('pieces', '') }}</p></div>
+        <button class="btn btn-primary btn-bloc" data-chargement="Enregistrement…">{{ icon('check', 16) }} Enregistrer</button>
+      </form>
+    </section>
+    {% elif current_user.occupant and r.ouverte %}
+    <section class="carte carte-action">
+      <h2>{{ icon('message', 18) }} Ajouter une précision</h2>
+      <form method="post" action="{{ url_for('reparation_suivi', rid=r.id) }}" class="formulaire mt-3" enctype="multipart/form-data" data-chargement-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="champ"><label for="texte">Commentaire</label><textarea id="texte" name="texte" rows="3" placeholder="Ex. la fuite s'est aggravée, je suis absent jeudi…"></textarea></div>
+        <div class="champ"><label for="pieces">Photos</label><input id="pieces" name="pieces" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment"></div>
+        <button class="btn btn-primary btn-bloc" data-chargement="Envoi…">{{ icon('send', 16) }} Envoyer</button>
+      </form>
+    </section>
+    {% endif %}
+    {% with objet='reparation', oid=r.id %}{% include "_pieces.html" %}{% endwith %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, entete_module with context %}
+{% block titre %}Billet · {{ b.personne.nom }}{% endblock %}
+{% block sous_module %}billets{% endblock %}
+{% block ariane %}<a href="{{ url_for('billets') }}">Billets d'avion</a><span aria-current="page">{{ b.personne.nom }}</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, b.depart ~ ' → ' ~ b.arrivee, b.personne.nom ~ ' · ' ~ MOTIFS_BILLET[b.motif]) %}
+  {% if current_user.gere %}<a class="btn btn-ghost" href="{{ url_for('billet_modifier', bid=b.id) }}">{{ icon('edit', 16) }} Modifier</a>{% endif %}
+{% endcall %}
+<div class="grille-detail">
+  <div class="colonne">
+    <section class="carte carte-billet">
+      <div class="billet-trajet">
+        <div><span class="billet-ville">{{ b.depart }}</span><span class="muted petit">{{ b.date_depart|date }}</span></div>
+        <span class="billet-avion" aria-hidden="true">{{ icon('plane', 22) }}</span>
+        <div><span class="billet-ville">{{ b.arrivee }}</span><span class="muted petit">{% if b.date_retour %}retour le {{ b.date_retour|date }}{% else %}aller simple{% endif %}</span></div>
+      </div>
+      <dl class="fiche">
+        <dt>Voyageur</dt><dd><a class="lien" href="{{ url_for('personne_fiche', pid=b.personne.id) }}">{{ b.personne.nom }}</a></dd>
+        <dt>Statut</dt><dd><span class="badge badge-billet-{{ b.statut }}">{{ STATUTS_BILLET[b.statut] }}</span></dd>
+        <dt>Compagnie</dt><dd>{{ b.compagnie or '—' }}</dd>
+        <dt>Réservation (PNR)</dt><dd>{{ b.reservation or '—' }}</dd>
+        <dt>Classe</dt><dd>{{ b.classe or '—' }}</dd>
+        <dt>Prix</dt><dd class="gros">{{ b.montant|fcfa }}</dd>
+        {% if b.notes %}<dt>Notes</dt><dd class="pre">{{ b.notes }}</dd>{% endif %}
+        <dt>Saisi le</dt><dd class="muted">{{ b.created_at|dateheure }}</dd>
+      </dl>
+    </section>
+  </div>
+  <div class="colonne">
+    {% with objet='billet', oid=b.id %}{% include "_pieces.html" %}{% endwith %}
+    {% if current_user.gere %}
+    <details class="zone-danger"><summary>Supprimer ce billet</summary>
+      <form method="post" action="{{ url_for('billet_supprimer', bid=b.id) }}" data-confirm="Supprimer définitivement ce billet ?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="muted petit">Pour un voyage annulé, préférez le statut « Annulé » (le billet reste dans l'historique).</p>
+        <button class="btn btn-danger btn-sm mt-1">{{ icon('trash', 14) }} Supprimer</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

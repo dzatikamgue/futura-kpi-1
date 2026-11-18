@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titre %}Connexion{% endblock %}
+{% block sous_module %}{% endblock %}
+{% block public %}
+<div class="page-connexion">
+  <div class="carte-connexion">
+    {% if PORTAIL_URL %}<a class="lien-portail" href="{{ PORTAIL_URL }}">← Tous les modules</a>{% endif %}
+    <img class="logo-connexion" src="{{ url_for('static', filename='logo-futura.png') }}" alt="Futura">
+    <h1>Services généraux</h1>
+    <p class="muted">Visas, cartes de séjour, billets d'avion et logements du personnel.</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="alert">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+    <form method="post" novalidate data-valider>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="champ">
+        <label for="email">Adresse e-mail <span class="requis" aria-hidden="true">*</span></label>
+        <input id="email" name="email" type="email" value="{{ email }}" required autocomplete="username" autofocus aria-describedby="email-msg">
+        <p class="champ-msg" id="email-msg" role="alert"></p>
+      </div>
+      <div class="champ">
+        <label for="password">Mot de passe <span class="requis" aria-hidden="true">*</span></label>
+        <input id="password" name="password" type="password" required autocomplete="current-password" aria-describedby="password-msg">
+        <p class="champ-msg" id="password-msg" role="alert"></p>
+      </div>
+      <label class="case"><input type="checkbox" name="souvenir" value="1"> Rester connecté sur cet appareil</label>
+      <button class="btn btn-primary btn-bloc btn-lg" data-chargement="Connexion…">Se connecter</button>
+    </form>
+    <p class="muted petit">Mot de passe oublié ? Contactez l'administrateur de l'application.</p>
+  </div>
+  <p class="muted petit">© {{ maintenant.year }} Futura · Douala</p>
+</div>
+{% endblock %}

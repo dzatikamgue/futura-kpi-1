@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, vide with context %}
+{% block titre %}Tableau de bord{% endblock %}
+{% block ariane %}<span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div><h1>Tableau de bord</h1><p class="muted">Situation au {{ aujourdhui|date }} · alerte {{ seuil }} jours avant l'expiration d'un document</p></div>
+</div>
+
+<div class="kpis">
+  <a class="kpi {{ 'kpi-ko' if kpis.docs_expires else '' }}" href="{{ url_for('documents', type_doc='visa', statut='a_renouveler') }}">
+    <span class="kpi-lib">{{ icon('stamp', 16) }} Documents à renouveler</span>
+    <span class="kpi-val">{{ kpis.docs }}</span>
+    <span class="kpi-sous">{{ kpis.docs_expires }} déjà expiré{{ 's' if kpis.docs_expires > 1 }}</span>
+  </a>
+  <a class="kpi {{ 'kpi-ko' if kpis.loyers_nb else '' }}" href="{{ url_for('loyers') }}">
+    <span class="kpi-lib">{{ icon('key', 16) }} Loyers en retard</span>
+    <span class="kpi-val kpi-val-sm">{{ kpis.loyers|fcfa }}</span>
+    <span class="kpi-sous">{{ kpis.loyers_nb }} échéance{{ 's' if kpis.loyers_nb > 1 }} impayée{{ 's' if kpis.loyers_nb > 1 }}</span>
+  </a>
+  <a class="kpi" href="{{ url_for('factures', type_energie='electricite') }}">
+    <span class="kpi-lib">{{ icon('bolt', 16) }} Factures eau & électricité à payer</span>
+    <span class="kpi-val kpi-val-sm">{{ kpis.factures|fcfa }}</span>
+    <span class="kpi-sous">{{ kpis.factures_nb }} facture{{ 's' if kpis.factures_nb > 1 }}</span>
+  </a>
+  <a class="kpi {{ 'kpi-ko' if kpis.reparations_urgentes else '' }}" href="{{ url_for('reparations') }}">
+    <span class="kpi-lib">{{ icon('wrench', 16) }} Réparations en cours</span>
+    <span class="kpi-val">{{ kpis.reparations }}</span>
+    <span class="kpi-sous">{{ kpis.reparations_urgentes }} urgente{{ 's' if kpis.reparations_urgentes > 1 }}</span>
+  </a>
+</div>
+
+<div class="grille-2 mt-3">
+  <section class="carte">
+    <div class="carte-entete"><h2>{{ icon('bell', 18) }} À surveiller</h2><span class="badge">{{ items|length }}</span></div>
+    {% if items %}
+    <ul class="boite">
+      {% for it in items[:25] %}
+      <li class="boite-item boite-{{ it.niveau }}">
+        <span class="boite-ico" aria-hidden="true">{{ icon(it.icone, 18) }}</span>
+        <div class="boite-corps">
+          <a class="lien" href="{{ it.lien }}"><strong>{{ it.titre }}</strong></a>
+          <p class="muted petit">{{ it.texte }}</p>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if items|length > 25 %}<p class="muted petit mt-1">… et {{ items|length - 25 }} autre(s).</p>{% endif %}
+    {% else %}
+    <div class="etat-vide etat-vide-sm"><div class="etat-vide-ico ok">{{ icon('check', 24) }}</div><h3>Rien à signaler</h3><p class="muted">Documents valides, loyers et factures à jour.</p></div>
+    {% endif %}
+  </section>
+
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('coins', 18) }} Dépenses des 6 derniers mois</h2></div>
+      <ul class="barres barres-mois">
+        {% for c in couts %}
+        <li>
+          <span class="barre-lib">{{ c.libelle }}</span>
+          <span class="barre-piste barre-empilee" title="{{ c.total|fcfa }}">
+            {% for code, lib in postes %}{% set v = c.postes.get(code, 0) %}{% if v %}<span class="barre barre-{{ code }}" data-largeur="{{ (v / max_total * 100)|round(1) }}" title="{{ lib }} : {{ v|fcfa }}"></span>{% endif %}{% endfor %}
+          </span>
+          <span class="barre-val">{{ c.total|compact }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <ul class="legende">{% for code, lib in postes %}<li><span class="pastille-poste barre-{{ code }}"></span>{{ lib }}</li>{% endfor %}</ul>
+    </section>
+
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('plane', 18) }} Prochains voyages</h2><a class="lien petit" href="{{ url_for('billets') }}">Tous les billets</a></div>
+      {% if billets %}
+      <ul class="liste-surveiller">
+        {% for b in billets %}
+        <li><a class="lien" href="{{ url_for('billet_fiche', bid=b.id) }}"><strong>{{ b.personne.nom }}</strong></a>
+          <span class="muted petit">{{ b.depart }} → {{ b.arrivee }} · {{ MOTIFS_BILLET[b.motif] }}</span>
+          <span class="badge">{{ b.date_depart|date }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Aucun voyage prévu.</p>{% endif %}
+    </section>
+
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('calendar', 18) }} Loyers dus sous 15 jours</h2></div>
+      {% if a_venir %}
+      <ul class="liste-surveiller">
+        {% for e in a_venir %}
+        <li><a class="lien" href="{{ url_for('logement_fiche', lid=e.logement.id) }}"><strong>{{ e.logement.libelle }}</strong></a>
+          <span class="muted petit">{{ e.periode }} · {{ e.montant|fcfa }}</span><span class="badge">{{ e.limite|date }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Aucune échéance dans les 15 prochains jours.</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

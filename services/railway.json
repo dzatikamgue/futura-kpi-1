@@ -1,0 +1,8 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "deploy": {
+    "startCommand": "gunicorn \"app:create_app()\" --bind 0.0.0.0:$PORT --workers 2 --preload --timeout 60",
+    "healthcheckPath": "/sante",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

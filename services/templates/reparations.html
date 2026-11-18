@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination, vide, onglets, badge_reparation, entete_module with context %}
+{% block titre %}Réparations{% endblock %}
+{% block sous_module %}reparations{% endblock %}
+{% block ariane %}<span aria-current="page">{{ 'Mes demandes' if current_user.occupant else 'Réparations' }}</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, 'Mes demandes de réparation' if current_user.occupant else 'Réparations', 'Les occupants signalent les pannes ; le gestionnaire suit les travaux jusqu\'à la clôture.') %}
+  {% if not current_user.occupant %}<a class="btn btn-ghost" href="{{ url_for('reparations_export', **request.args) }}">{{ icon('download', 16) }} Excel</a>{% endif %}
+  {% if current_user.role != 'direction' %}<a class="btn btn-primary" href="{{ url_for('reparation_nouvelle') }}">{{ icon('plus', 16) }} Signaler un problème</a>{% endif %}
+{% endcall %}
+
+<div class="pipeline pipeline-4">
+  {% for s in ('signalee', 'prise_en_charge', 'en_cours', 'terminee') %}
+  <div class="pipeline-etape {{ 'pipeline-ko' if s == 'signalee' and compte[s] }}"><a href="{{ url_avec(statut=s, page=1) }}">
+    <span class="pipeline-num">{{ loop.index }}</span><span class="pipeline-lib">{{ STATUTS_REPARATION[s] }}</span>
+    <span class="pipeline-nb">{{ compte[s] }}</span></a></div>
+  {% endfor %}
+</div>
+
+<div class="filtres mt-3">
+  {{ onglets('statut', [('ouvertes', 'En cours', compte.signalee + compte.prise_en_charge + compte.en_cours), ('terminee', 'Terminées', compte.terminee), ('annulee', 'Annulées', compte.annulee), ('toutes', 'Toutes', none)], 'ouvertes') }}
+  {% if not current_user.occupant %}
+  <form class="filtres-form" method="get">
+    <input type="hidden" name="statut" value="{{ request.args.get('statut', 'ouvertes') }}">
+    <select name="logement" data-auto-submit aria-label="Logement"><option value="">Tous les logements</option>{% for v, l in logements %}<option value="{{ v }}" {{ 'selected' if request.args.get('logement') == v|string }}>{{ l }}</option>{% endfor %}</select>
+    <select name="categorie" data-auto-submit aria-label="Catégorie"><option value="">Toutes catégories</option>{% for c in CATEGORIES %}<option {{ 'selected' if request.args.get('categorie') == c }}>{{ c }}</option>{% endfor %}</select>
+    <span class="recherche">{{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Problème, intervenant…" aria-label="Rechercher"></span>
+  </form>
+  {% endif %}
+</div>
+
+{% if page.items %}
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Réf.</th><th>Problème</th>{% if not current_user.occupant %}<th>Logement</th>{% endif %}<th>Signalé</th><th>Statut</th><th>Intervenant</th><th class="num">Coût</th></tr></thead>
+  <tbody>
+  {% for r in page.items %}
+  <tr class="ligne-cliquable {{ 'ligne-urgente' if r.urgence == 'urgente' and r.ouverte }}" data-href="{{ url_for('reparation_fiche', rid=r.id) }}">
+    <td class="nowrap muted">{{ r.reference }}</td>
+    <td class="col-fixe"><a class="lien" href="{{ url_for('reparation_fiche', rid=r.id) }}"><strong>{{ r.titre }}</strong></a><br><span class="muted petit">{{ r.categorie }}</span></td>
+    {% if not current_user.occupant %}<td>{{ r.logement.nom }}</td>{% endif %}
+    <td class="nowrap">{{ r.signale_le|date }}{% if r.ouverte %}<br><span class="petit {{ 'texte-alerte' if r.jours_ouverte > 7 else 'muted' }}">il y a {{ r.jours_ouverte }} j</span>{% endif %}</td>
+    <td>{{ badge_reparation(r) }}</td>
+    <td>{{ r.intervenant or '—' }}</td>
+    <td class="num">{{ r.cout|fcfa }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  {% if not current_user.occupant %}<tfoot><tr><td colspan="6">{{ page.total }} réparation{{ 's' if page.total > 1 }}</td><td class="num"><strong>{{ cout|fcfa }}</strong></td></tr></tfoot>{% endif %}
+</table></div></div>
+{{ pagination(page) }}
+{% else %}
+<div class="etat-vide"><div class="etat-vide-ico ok">{{ icon('check', 28) }}</div><h3>Aucune réparation {{ 'en cours' if request.args.get('statut', 'ouvertes') == 'ouvertes' else 'ici' }}</h3>
+  <p class="muted">Un problème dans un logement ? Signalez-le avec une photo : le gestionnaire est prévenu dans son tableau de bord.</p>
+  {% if current_user.role != 'direction' %}<a class="btn btn-primary" href="{{ url_for('reparation_nouvelle') }}">{{ icon('plus', 16) }} Signaler un problème</a>{% endif %}</div>
+{% endif %}
+{% endblock %}

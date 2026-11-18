@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination, vide, onglets, entete_module with context %}
+{% block titre %}Billets d'avion{% endblock %}
+{% block sous_module %}billets{% endblock %}
+{% block ariane %}<span aria-current="page">Billets d'avion</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, "Billets d'avion", "Les billets saisis par la RH pour les employés : congés, missions, prises de poste.") %}
+  <a class="btn btn-ghost" href="{{ url_for('billets_export', **request.args) }}">{{ icon('download', 16) }} Excel</a>
+  {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('billet_nouveau') }}">{{ icon('plus', 16) }} Nouveau billet</a>{% endif %}
+{% endcall %}
+
+<div class="filtres">
+  {{ onglets('quand', [('a_venir', 'À venir', none), ('passes', 'Passés', none), ('tous', 'Tous', none)], 'a_venir') }}
+  <form class="filtres-form" method="get">
+    <input type="hidden" name="quand" value="{{ request.args.get('quand', 'a_venir') }}">
+    <select name="motif" data-auto-submit aria-label="Motif"><option value="">Tous les motifs</option>{% for k, v in MOTIFS_BILLET.items() %}<option value="{{ k }}" {{ 'selected' if request.args.get('motif') == k }}>{{ v }}</option>{% endfor %}</select>
+    <select name="annee" data-auto-submit aria-label="Année"><option value="">Toutes les années</option>{% for a in annees %}<option value="{{ a }}" {{ 'selected' if request.args.get('annee') == a|string }}>{{ a }}</option>{% endfor %}</select>
+    <span class="recherche">{{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Voyageur, destination, PNR…" aria-label="Rechercher"></span>
+  </form>
+</div>
+
+{% if page.items %}
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Voyageur</th><th>Trajet</th><th>Départ</th><th>Retour</th><th>Motif</th><th>Compagnie</th><th>Statut</th><th class="num">Prix</th></tr></thead>
+  <tbody>
+  {% for b in page.items %}
+  <tr class="ligne-cliquable" data-href="{{ url_for('billet_fiche', bid=b.id) }}">
+    <td class="col-fixe"><a class="lien" href="{{ url_for('billet_fiche', bid=b.id) }}"><strong>{{ b.personne.nom }}</strong></a></td>
+    <td class="nowrap">{{ b.depart }} → {{ b.arrivee }}{% if b.date_retour %} <span class="muted">⇄</span>{% endif %}</td>
+    <td class="nowrap">{{ b.date_depart|date }}{% if b.a_venir %}{% set j = (b.date_depart - aujourdhui).days %}<br><span class="petit {{ 'texte-alerte' if j <= 7 else 'muted' }}">{{ "aujourd'hui" if j == 0 else 'dans ' ~ j ~ ' j' }}</span>{% endif %}</td>
+    <td class="nowrap">{{ b.date_retour|date }}</td>
+    <td>{{ MOTIFS_BILLET[b.motif] }}</td>
+    <td>{{ b.compagnie or '—' }}{% if b.reservation %}<br><span class="muted petit">PNR {{ b.reservation }}</span>{% endif %}</td>
+    <td><span class="badge badge-billet-{{ b.statut }}">{{ STATUTS_BILLET[b.statut] }}</span></td>
+    <td class="num">{{ b.montant|fcfa }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td colspan="7">{{ page.total }} billet{{ 's' if page.total > 1 }} (hors annulés dans le total)</td><td class="num"><strong>{{ total|fcfa }}</strong></td></tr></tfoot>
+</table></div></div>
+{{ pagination(page) }}
+{% else %}
+{{ vide('Aucun billet', 'Aucun voyage ne correspond à ce filtre.' if request.args else 'Saisissez les billets d\'avion des employés pour suivre voyages et coûts.', url_for('billet_nouveau') if current_user.gere else '', 'Nouveau billet', 'plane') }}
+{% endif %}
+{% endblock %}

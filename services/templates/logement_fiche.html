@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge_facture, badge_reparation with context %}
+{% block titre %}{{ l.nom }}{% endblock %}
+{% block ariane %}<a href="{{ url_for('logements') }}">Logements</a><span aria-current="page">{{ l.nom }}</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div class="titre-module-g">
+    <span class="sm-ico" aria-hidden="true">{{ icon('home', 22) }}</span>
+    <div><p class="action-sur">{{ l.type_logement }} · {{ l.ville }}</p><h1>{{ l.nom }} {% if not l.actif %}<span class="badge">Rendu</span>{% endif %}</h1>
+    <p class="muted">{{ l.quartier or '' }}{% if l.adresse %} · {{ l.adresse }}{% endif %}</p></div>
+  </div>
+  {% if current_user.gere %}
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('logement_modifier', lid=l.id) }}">{{ icon('edit', 16) }} Modifier</a>
+    {% if l.loyer %}<a class="btn btn-primary" href="{{ url_for('loyer_payer', logement=l.id, retour=request.path) }}">{{ icon('key', 16) }} Enregistrer un loyer</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="kpis">
+  <div class="kpi sm-loyers"><span class="kpi-lib">{{ icon('key', 16) }} Loyers payés {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.loyers|fcfa }}</span>
+    <span class="kpi-sous">{% if dus %}<span class="texte-ko">{{ dus|length }} échéance{{ 's' if dus|length > 1 }} en retard</span>{% elif prochaine %}Prochaine : {{ prochaine[1]|date }}{% else %}—{% endif %}</span></div>
+  <div class="kpi sm-electricite"><span class="kpi-lib">{{ icon('bolt', 16) }} Électricité {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.electricite|fcfa }}</span><span class="kpi-sous">Compteur {{ l.compteur_electricite or '—' }}</span></div>
+  <div class="kpi sm-eau"><span class="kpi-lib">{{ icon('drop', 16) }} Eau {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.eau|fcfa }}</span><span class="kpi-sous">Compteur {{ l.compteur_eau or '—' }}</span></div>
+  <div class="kpi sm-reparations"><span class="kpi-lib">{{ icon('wrench', 16) }} Réparations {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.reparations|fcfa }}</span><span class="kpi-sous">{{ l.reparations|selectattr('ouverte')|list|length }} en cours</span></div>
+</div>
+
+<div class="grille-detail mt-3">
+  <div class="colonne">
+    <section class="carte carte-table sm-loyers">
+      <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('key', 16) }}</span> Loyers</h2>
+        <span class="muted petit">{{ l.montant_echeance|fcfa }} · {{ PERIODICITES[l.periodicite]|lower }}, le {{ l.jour_echeance }}</span></div>
+      {% if dus %}
+      <ul class="boite pad">
+        {% for debut, limite in dus %}
+        <li class="boite-item boite-critique"><div class="boite-corps"><strong>{{ periode_libelle(debut, l.periodicite) }}</strong><p class="muted petit">Échu le {{ limite|date }} · {{ l.montant_echeance|fcfa }}</p></div>
+          {% if current_user.gere %}<a class="btn btn-sm btn-ghost" href="{{ url_for('loyer_payer', logement=l.id, periode=debut.strftime('%Y-%m'), retour=request.path) }}">Payé</a>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if l.loyers %}
+      <div class="table-conteneur"><table class="table table-compacte">
+        <thead><tr><th>Période</th><th>Payé le</th><th>Mode</th><th class="num">Montant</th></tr></thead>
+        <tbody>{% for x in l.loyers[:12] %}<tr><td>{{ periode_libelle(x.periode_debut, x.mois) }}</td><td>{{ x.date_paiement|date }}</td><td>{{ x.mode_paiement or '—' }}{% if x.reference %} <span class="muted petit">· {{ x.reference }}</span>{% endif %}</td><td class="num">{{ x.montant|fcfa }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% elif not dus %}<p class="muted pad">{% if l.loyer %}Aucun paiement enregistré.{% else %}Renseignez le montant du loyer dans la fiche pour suivre les échéances.{% endif %}</p>{% endif %}
+    </section>
+
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>{{ icon('bolt', 18) }} Factures d'électricité et d'eau</h2>
+        {% if current_user.gere %}<span class="actions"><a class="btn btn-ghost btn-sm" href="{{ url_for('facture_nouvelle', type_energie='electricite', logement=l.id) }}">{{ icon('plus', 14) }} Électricité</a><a class="btn btn-ghost btn-sm" href="{{ url_for('facture_nouvelle', type_energie='eau', logement=l.id) }}">{{ icon('plus', 14) }} Eau</a></span>{% endif %}</div>
+      {% if l.factures %}
+      <div class="table-conteneur"><table class="table table-compacte">
+        <thead><tr><th>Mois</th><th>Type</th><th>Conso.</th><th>État</th><th class="num">Montant</th></tr></thead>
+        <tbody>{% for fe in l.factures[:12] %}<tr><td>{{ fe.periode|mois }}</td><td><span class="type-energie type-{{ fe.type_energie }}">{{ icon('bolt' if fe.type_energie == 'electricite' else 'drop', 14) }} {{ fe.type_libelle }}</span></td><td>{{ fe.consommation|decimal }} {{ UNITES[fe.type_energie] if fe.consommation is not none }}</td><td>{{ badge_facture(fe) }}</td><td class="num">{{ fe.montant|fcfa }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="muted pad">Aucune facture enregistrée.</p>{% endif %}
+    </section>
+
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>{{ icon('wrench', 18) }} Réparations</h2>
+        {% if current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('reparation_nouvelle', logement=l.id) }}">{{ icon('plus', 14) }} Signaler</a>{% endif %}</div>
+      {% if l.reparations %}
+      <div class="table-conteneur"><table class="table table-compacte">
+        <thead><tr><th>Problème</th><th>Signalé le</th><th>Statut</th><th class="num">Coût</th></tr></thead>
+        <tbody>{% for r in l.reparations[:15] %}<tr class="ligne-cliquable" data-href="{{ url_for('reparation_fiche', rid=r.id) }}"><td><a class="lien" href="{{ url_for('reparation_fiche', rid=r.id) }}">{{ r.titre }}</a><br><span class="muted petit">{{ r.categorie }}</span></td><td>{{ r.signale_le|date }}</td><td>{{ badge_reparation(r) }}</td><td class="num">{{ r.cout|fcfa }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="muted pad">Aucune réparation signalée.</p>{% endif %}
+    </section>
+  </div>
+
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('users', 18) }} Occupants</h2></div>
+      {% if l.occupants %}<ul class="liste-surveiller">{% for p in l.occupants %}<li><a class="lien" href="{{ url_for('personne_fiche', pid=p.id) }}">{{ p.nom }}</a><span class="muted petit">{{ p.poste or '' }}</span></li>{% endfor %}</ul>
+      {% else %}<p class="muted">Aucun occupant. Rattachez une personne depuis sa fiche.</p>{% endif %}
+      <p class="muted petit mt-3">{% if comptes %}Compte(s) pouvant signaler des réparations : {{ comptes|map(attribute='nom')|join(', ') }}.{% else %}Aucun compte « occupant » n'est rattaché à ce logement : l'administrateur peut en créer un pour que l'occupant signale lui-même les pannes.{% endif %}</p>
+    </section>
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('file', 18) }} Bail</h2></div>
+      <dl class="fiche">
+        <dt>Bailleur</dt><dd>{{ l.bailleur or '—' }}{% if l.bailleur_telephone %}<br><a class="lien petit" href="tel:{{ l.bailleur_telephone }}">{{ l.bailleur_telephone }}</a>{% endif %}</dd>
+        <dt>Loyer</dt><dd>{{ l.loyer|fcfa }} / mois</dd>
+        <dt>Paiement</dt><dd>{{ PERIODICITES[l.periodicite] }}, le {{ l.jour_echeance }} du mois</dd>
+        <dt>Caution</dt><dd>{{ l.caution|fcfa }}</dd>
+        <dt>Bail</dt><dd>{{ l.bail_debut|date }} → {{ l.bail_fin|date }}</dd>
+        <dt>Suivi des loyers depuis</dt><dd>{{ l.loyers_suivis_depuis|mois }}</dd>
+        {% if l.notes %}<dt>Notes</dt><dd class="pre">{{ l.notes }}</dd>{% endif %}
+      </dl>
+    </section>
+    {% with objet='logement', oid=l.id %}{% include "_pieces.html" %}{% endwith %}
+  </div>
+</div>
+{% endblock %}

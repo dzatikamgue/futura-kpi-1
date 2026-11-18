@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block titre %}Sous-modules{% endblock %}
+{% block ariane %}<span aria-current="page">Sous-modules</span>{% endblock %}
+{% block contenu %}
+<div class="espaces-tete">
+  <p class="action-sur">Services généraux</p>
+  <h1>Bonjour {{ current_user.nom.split(' ')[0] }}, que voulez-vous suivre ?</h1>
+  <p class="muted">Les documents du personnel et les logements de l'entreprise, au même endroit. Les alertes s'allument dès qu'un visa approche de son expiration ou qu'un paiement est en retard.</p>
+  {% if nb_alertes %}
+  <a class="bandeau-alertes" href="{{ url_for('tableau_de_bord') }}">
+    <span class="bandeau-alertes-ico" aria-hidden="true">{{ icon('bell', 18) }}</span>
+    <span><strong>{{ nb_alertes }} point{{ 's' if nb_alertes > 1 }} à surveiller</strong> — documents qui expirent, loyers ou factures en retard, réparations urgentes.</span>
+    <span class="espace-ouvrir">Voir {{ icon('arrow', 16) }}</span>
+  </a>
+  {% endif %}
+</div>
+
+{% for famille, cartes in familles.items() %}
+<section class="famille">
+  <h2 class="famille-titre">{{ icon('users' if famille == 'Personnel' else 'home', 18) }} {{ famille }}</h2>
+  <div class="espaces espaces-{{ cartes|length }}">
+    {% for c in cartes %}
+    <a class="espace-carte sm-{{ c.code }}" href="{{ c.lien }}">
+      <span class="espace-halo" aria-hidden="true"></span>
+      <span class="espace-ico" aria-hidden="true">{{ icon(c.icone, 26) }}</span>
+      <span class="espace-titre">{{ c.titre }}</span>
+      <span class="espace-desc">{{ c.description }}</span>
+      <span class="espace-stats">
+        {% for nb, lib, ton in c.stats %}
+        <span class="espace-stat">
+          <span class="espace-nb {{ 'texte-ko' if ton == 'ko' and nb }}{{ 'texte-alerte' if ton == 'alerte' and nb }}{{ 'texte-ok' if ton == 'ok' and nb }}" data-compteur="{{ nb }}">{{ nb }}</span>
+          <span class="espace-lib">{{ lib }}</span>
+        </span>
+        {% endfor %}
+      </span>
+      <span class="espace-montant">{{ c.pied }}</span>
+      <span class="espace-pied">
+        {% if c.alerte %}<span class="espace-badge espace-badge-alerte"><span class="pastille pastille-ko"></span>{{ c.alerte }} alerte{{ 's' if c.alerte > 1 }}</span>
+        {% elif c.info %}<span class="espace-badge espace-badge-action"><span class="pastille"></span>{{ c.info }} à traiter</span>
+        {% else %}<span class="espace-badge">{{ icon('check', 14) }} Tout est à jour</span>{% endif %}
+        <span class="espace-ouvrir">Ouvrir {{ icon('arrow', 16) }}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

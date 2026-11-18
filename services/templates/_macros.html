@@ -1,0 +1,158 @@
+{# ---------- Icônes (traits simples, aucune dépendance externe) ---------- #}
+{% macro icon(nom, taille=18) -%}
+<svg class="ico" width="{{ taille }}" height="{{ taille }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if nom == 'dashboard' %}<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
+{%- elif nom == 'grid' %}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+{%- elif nom == 'camera' %}<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>
+{%- elif nom == 'car' %}<path d="M5 17h14M3 13l2-5.5A2 2 0 0 1 6.9 6h10.2a2 2 0 0 1 1.9 1.5L21 13v4a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H6v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><circle cx="7.5" cy="13.5" r="1"/><circle cx="16.5" cy="13.5" r="1"/>
+{%- elif nom == 'wrench' %}<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/>
+{%- elif nom == 'user' %}<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>
+{%- elif nom == 'users' %}<circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0 1 14 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M22 20a7 7 0 0 0-4-6.3"/>
+{%- elif nom == 'log' %}<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+{%- elif nom == 'plus' %}<path d="M12 5v14M5 12h14"/>
+{%- elif nom == 'pause' %}<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>
+{%- elif nom == 'play' %}<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/>
+{%- elif nom == 'search' %}<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+{%- elif nom == 'download' %}<path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/>
+{%- elif nom == 'print' %}<path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>
+{%- elif nom == 'edit' %}<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m14 6 4 4"/>
+{%- elif nom == 'check' %}<path d="m5 12 5 5 9-10"/>
+{%- elif nom == 'alert' %}<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>
+{%- elif nom == 'gauge' %}<path d="M12 14l4-4"/><path d="M3.5 18a9 9 0 1 1 17 0"/>
+{%- elif nom == 'menu' %}<path d="M4 6h16M4 12h16M4 18h16"/>
+{%- elif nom == 'moon' %}<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>
+{%- elif nom == 'logout' %}<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/>
+{%- elif nom == 'clock' %}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+{%- elif nom == 'archive' %}<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>
+{%- elif nom == 'inbox' %}<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/>
+{%- elif nom == 'file' %}<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>
+{%- elif nom == 'send' %}<path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>
+{%- elif nom == 'undo' %}<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>
+{%- elif nom == 'x' %}<path d="M18 6 6 18M6 6l12 12"/>
+{%- elif nom == 'clip' %}<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>
+{%- elif nom == 'settings' %}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+{%- elif nom == 'building' %}<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"/>
+{%- elif nom == 'message' %}<path d="M21 12a8 8 0 0 1-11.8 7L3 21l2-6.2A8 8 0 1 1 21 12z"/>
+{%- elif nom == 'coins' %}<circle cx="8" cy="8" r="5"/><path d="M18.1 10.4A5 5 0 1 1 11 17.5M7 6h1v4M16.7 13.9l.7.7-2.8 2.8"/>
+{%- elif nom == 'globe' %}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+{%- elif nom == 'pen' %}<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>
+{%- elif nom == 'swap' %}<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>
+{%- elif nom == 'layers' %}<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>
+{%- elif nom == 'arrow' %}<path d="M5 12h14M13 6l6 6-6 6"/>
+{%- elif nom == 'stamp' %}<path d="M9 13V8a3 3 0 1 1 6 0v5"/><path d="M4 13h16v4H4z"/><path d="M6 21h12"/>
+{%- elif nom == 'id' %}<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16a3.4 3.4 0 0 1 6.4 0M14 10h4M14 14h3"/>
+{%- elif nom == 'plane' %}<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>
+{%- elif nom == 'key' %}<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2 2"/>
+{%- elif nom == 'bolt' %}<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>
+{%- elif nom == 'drop' %}<path d="M12 2.7S5 10 5 15a7 7 0 0 0 14 0c0-5-7-12.3-7-12.3z"/>
+{%- elif nom == 'home' %}<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"/>
+{%- elif nom == 'calendar' %}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>
+{%- elif nom == 'trash' %}<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+{%- elif nom == 'upload' %}<path d="M12 16V4m0 0-4 4m4-4 4 4M5 20h14"/>
+{%- elif nom == 'bell' %}<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>
+{%- endif %}
+</svg>
+{%- endmacro %}
+
+{# ---------- Champ de formulaire générique (voir formulaires.py) ---------- #}
+{% macro champ(ch, f, err, listes={}) -%}
+{% set n = ch.nom %}{% set v = f.get(n, '') %}
+{% if ch.type == 'case' %}
+<div class="champ {{ 'champ-plein' if ch.plein }}">
+  <label class="case"><input type="checkbox" name="{{ n }}" value="1" {{ 'checked' if v }}> {{ ch.label }}</label>
+</div>
+{% else %}
+<div class="champ {{ 'en-erreur' if err.get(n) }} {{ 'champ-plein' if ch.plein }}">
+  <label for="{{ n }}">{{ ch.label }}{% if ch.requis %} <span class="requis" aria-hidden="true">*</span>{% endif %}</label>
+  {% if ch.type == 'zone' %}
+  <textarea id="{{ n }}" name="{{ n }}" rows="3" {% if ch.requis %}required aria-required="true"{% endif %} aria-describedby="{{ n }}-msg" {{ (ch.attrs or '')|safe }}>{{ v }}</textarea>
+  {% elif ch.type == 'choix' %}
+  <select id="{{ n }}" name="{{ n }}" {% if ch.requis %}required aria-required="true"{% endif %} aria-describedby="{{ n }}-msg">
+    {% if ch.get('vide', '— Choisir —') is not none %}<option value="">{{ ch.get('vide', '— Choisir —') }}</option>{% endif %}
+    {% for val, lib in options_de(ch) %}<option value="{{ val }}" {{ 'selected' if v|string == val|string }}>{{ lib }}</option>{% endfor %}
+  </select>
+  {% else %}
+  {% set types = {'date': 'date', 'mois': 'month', 'email': 'email', 'tel': 'tel'} %}
+  <input id="{{ n }}" name="{{ n }}" type="{{ types.get(ch.type, 'text') }}" value="{{ v }}"
+         {% if ch.requis %}required aria-required="true"{% endif %}
+         {% if ch.type in ('montant', 'entier') %}inputmode="numeric" {% if ch.type == 'montant' %}data-montant{% endif %}{% endif %}
+         {% if ch.type == 'decimal' %}inputmode="decimal"{% endif %}
+         {% if ch.type == 'mois' %}placeholder="AAAA-MM"{% endif %}
+         {% if ch.liste %}list="liste-{{ ch.liste }}" autocomplete="off"{% endif %}
+         {% if ch.max_long %}maxlength="{{ ch.max_long }}"{% endif %}
+         aria-describedby="{{ n }}-msg" {{ (ch.attrs or '')|safe }}>
+  {% if ch.liste and listes.get(ch.liste) %}<datalist id="liste-{{ ch.liste }}">{% for x in listes[ch.liste] %}<option value="{{ x }}">{% endfor %}</datalist>{% endif %}
+  {% endif %}
+  <p class="champ-msg" id="{{ n }}-msg" role="alert">{{ err.get(n, '') }}</p>
+  {% if ch.aide %}<p class="champ-aide">{{ ch.aide }}</p>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{# ---------- Tableaux ---------- #}
+{% macro pagination(page) -%}
+{% if page.pages > 1 %}
+<nav class="pagination" aria-label="Pagination">
+  <span class="muted">{{ (page.page - 1) * page.per_page + 1 }}–{{ [page.page * page.per_page, page.total]|min }} sur {{ page.total }}</span>
+  <div class="pages">
+    {% if page.has_prev %}<a class="btn btn-ghost btn-sm" href="{{ url_avec(page=page.prev_num) }}">← Précédent</a>{% endif %}
+    {% for n in page.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+      {% if n %}<a class="btn btn-sm {{ 'btn-primary' if n == page.page else 'btn-ghost' }}" href="{{ url_avec(page=n) }}" {% if n == page.page %}aria-current="page"{% endif %}>{{ n }}</a>
+      {% else %}<span class="muted">…</span>{% endif %}
+    {% endfor %}
+    {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="{{ url_avec(page=page.next_num) }}">Suivant →</a>{% endif %}
+  </div>
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro vide(titre, texte, lien='', libelle='', ico='file') -%}
+<div class="etat-vide">
+  <div class="etat-vide-ico">{{ icon(ico, 28) }}</div>
+  <h3>{{ titre }}</h3>
+  <p class="muted">{{ texte }}</p>
+  {% if lien %}<a href="{{ lien }}" class="btn btn-primary">{{ icon('plus', 16) }} {{ libelle }}</a>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Onglets de filtre : liste de (valeur, libellé, compteur ou None) #}
+{% macro onglets(param, items, defaut) -%}
+<nav class="onglets" aria-label="Filtrer">
+  {% for val, lib, nb in items %}
+  <a href="{{ url_avec(**{param: val, 'page': 1}) }}" class="{{ 'actif' if request.args.get(param, defaut) == val }}"
+     {% if request.args.get(param, defaut) == val %}aria-current="page"{% endif %}>{{ lib }}{% if nb is not none %} <span class="onglet-nb">{{ nb }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{# ---------- Badges d'état ---------- #}
+{% macro badge_doc(d) -%}
+{% set niv = d.niveau(seuil) %}
+{% set j = d.jours_restants %}
+{% if niv == 'remplace' %}<span class="badge">Remplacé</span>
+{% elif niv == 'expire' %}<span class="badge badge-ko">Expiré depuis {{ -j }} j</span>
+{% elif niv == 'critique' %}<span class="badge badge-ko">{{ "Expire aujourd'hui" if j == 0 else 'J-' ~ j }}</span>
+{% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ j }} · à renouveler</span>
+{% else %}<span class="badge badge-ok">Valide · {{ j }} j</span>{% endif %}
+{%- endmacro %}
+
+{% macro badge_reparation(r) -%}
+<span class="badge badge-rep badge-rep-{{ r.statut }}">{{ r.statut_libelle }}</span>{% if r.urgence == 'urgente' and r.ouverte %} <span class="badge badge-ko">Urgent</span>{% endif %}
+{%- endmacro %}
+
+{% macro badge_facture(fe) -%}
+{% if fe.niveau == 'payee' %}<span class="badge badge-ok">Payée le {{ fe.date_paiement|date }}</span>
+{% elif fe.niveau == 'retard' %}<span class="badge badge-ko">En retard · {{ (aujourdhui - fe.date_echeance).days }} j</span>
+{% else %}<span class="badge badge-alerte">À payer{% if fe.date_echeance %} avant le {{ fe.date_echeance|date }}{% endif %}</span>{% endif %}
+{%- endmacro %}
+
+{# En-tête de sous-module : icône colorée, titre, sous-titre et actions #}
+{% macro entete_module(module, titre, sous_titre='') -%}
+<div class="titre-page titre-module">
+  <div class="titre-module-g">
+    <span class="sm-ico" aria-hidden="true">{{ icon(module.icone, 22) }}</span>
+    <div><p class="action-sur">{{ module.famille }}</p><h1>{{ titre }}</h1>{% if sous_titre %}<p class="muted">{{ sous_titre }}</p>{% endif %}</div>
+  </div>
+  <div class="actions">{{ caller() if caller }}</div>
+</div>
+{%- endmacro %}

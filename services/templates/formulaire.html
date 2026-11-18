@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, champ with context %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block sous_module %}{{ sous_module or '' }}{% endblock %}
+{% block ariane %}
+  {% for lib, lien in ariane %}{% if lien %}<a href="{{ lien }}">{{ lib }}</a>{% else %}<span>{{ lib }}</span>{% endif %}{% endfor %}
+  <span aria-current="page">{{ titre }}</span>
+{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div><h1>{{ titre }}</h1>{% if aide %}<p class="muted">{{ aide }}</p>{% endif %}</div>
+</div>
+{% if err %}<div class="flash flash-erreur" role="alert">Le formulaire contient {{ err|length }} erreur{{ 's' if err|length > 1 }} : corrigez les champs signalés en rouge.</div>{% endif %}
+<form method="post" class="carte formulaire" novalidate data-valider data-autosave="{{ request.path }}"
+      {% if pieces_form %}enctype="multipart/form-data"{% endif %} data-chargement-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grille-champs">
+    {% for ch in champs %}{{ champ(ch, f, err, listes or {}) }}{% endfor %}
+    {% if doublon %}
+    <div class="champ champ-plein"><label class="case"><input type="checkbox" name="confirmer_doublon" value="1"> Oui, c'est une seconde facture pour ce mois</label></div>
+    {% endif %}
+    {% if pieces_form %}
+    <div class="champ champ-plein {{ 'en-erreur' if err.get('pieces') }}">
+      <label for="pieces">{{ 'Photos du problème' if photos else 'Pièces jointes (scan, photo, PDF)' }}</label>
+      <label class="zone-photos">
+        <span class="zone-photos__icone" aria-hidden="true">{{ icon('camera' if photos else 'upload', 22) }}</span>
+        <span><strong>{{ 'Prendre ou choisir des photos' if photos else 'Ajouter des fichiers' }}</strong><br><span class="muted petit">PDF, JPG, PNG — 6 fichiers de 10 Mo maximum</span></span>
+        <input id="pieces" name="pieces" type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" {% if photos %}capture="environment"{% endif %} data-apercu-photos>
+      </label>
+      <ul class="apercu-photos" data-apercu-liste></ul>
+      <p class="champ-msg" role="alert">{{ err.get('pieces', '') }}</p>
+    </div>
+    {% endif %}
+  </div>
+  <div class="form-actions">
+    <a class="btn btn-ghost" href="{{ retour }}">Annuler</a>
+    <button class="btn btn-primary" data-chargement="Enregistrement…">{{ icon('check', 16) }} {{ bouton or 'Enregistrer' }}</button>
+  </div>
+</form>
+{% endblock %}

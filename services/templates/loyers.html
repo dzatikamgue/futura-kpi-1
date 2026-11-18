@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination, vide, onglets, entete_module with context %}
+{% block titre %}Loyers{% endblock %}
+{% block sous_module %}loyers{% endblock %}
+{% block ariane %}<span aria-current="page">Loyers</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, 'Loyers', 'Les échéances se calculent seules à partir de chaque bail : il suffit d\'enregistrer les paiements.') %}
+  <a class="btn btn-ghost" href="{{ url_for('loyers_export') }}">{{ icon('download', 16) }} Excel</a>
+  {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('loyer_payer') }}">{{ icon('plus', 16) }} Enregistrer un paiement</a>{% endif %}
+{% endcall %}
+
+<div class="kpis kpis-3">
+  <div class="kpi {{ 'kpi-ko' if dus }}"><span class="kpi-lib">En retard</span><span class="kpi-val kpi-val-sm">{{ dus|sum(attribute='montant')|fcfa }}</span><span class="kpi-sous">{{ dus|length }} échéance{{ 's' if dus|length > 1 }}</span></div>
+  <div class="kpi"><span class="kpi-lib">Dus sous 45 jours</span><span class="kpi-val kpi-val-sm">{{ a_venir|sum(attribute='montant')|fcfa }}</span><span class="kpi-sous">{{ a_venir|length }} échéance{{ 's' if a_venir|length > 1 }}</span></div>
+  <div class="kpi"><span class="kpi-lib">Payés en {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ paye_an|fcfa }}</span><span class="kpi-sous">tous logements</span></div>
+</div>
+
+<div class="filtres mt-3">{{ onglets('onglet', [('suivi', 'Échéances', dus|length + a_venir|length), ('paiements', 'Paiements enregistrés', page.total)], 'suivi') }}</div>
+
+{% if onglet == 'suivi' %}
+  {% if dus or a_venir %}
+  <div class="carte carte-table"><div class="table-conteneur">
+  <table class="table">
+    <thead><tr><th>Logement</th><th>Période</th><th>Échéance</th><th>État</th><th class="num">Montant</th>{% if current_user.gere %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for e in dus + a_venir %}{% set retard = e.limite < aujourdhui %}
+    <tr class="{{ 'ligne-expire' if retard }}">
+      <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=e.logement.id) }}"><strong>{{ e.logement.nom }}</strong></a><br><span class="muted petit">{{ e.logement.bailleur or '' }}</span></td>
+      <td>{{ e.periode }}</td>
+      <td>{{ e.limite|date }}</td>
+      <td>{% if retard %}<span class="badge badge-ko">En retard · {{ e.jours }} j</span>{% else %}<span class="badge badge-alerte">Dans {{ e.jours }} j</span>{% endif %}</td>
+      <td class="num">{{ e.montant|fcfa }}</td>
+      {% if current_user.gere %}<td class="num"><a class="btn btn-sm {{ 'btn-primary' if retard else 'btn-ghost' }}" href="{{ url_for('loyer_payer', logement=e.logement.id, periode=e.debut.strftime('%Y-%m')) }}">{{ icon('check', 14) }} Payé</a></td>{% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+  {% else %}
+  <div class="etat-vide"><div class="etat-vide-ico ok">{{ icon('check', 28) }}</div><h3>Tous les loyers sont à jour</h3><p class="muted">Aucune échéance en retard ni due dans les 45 prochains jours.</p>
+  {% if current_user.gere %}<a class="btn btn-ghost" href="{{ url_for('logements') }}">Voir les logements</a>{% endif %}</div>
+  {% endif %}
+{% else %}
+  <form class="filtres-form mb-3" method="get"><input type="hidden" name="onglet" value="paiements">
+    <select name="logement" data-auto-submit aria-label="Logement"><option value="">Tous les logements</option>{% for v, lib in logements %}<option value="{{ v }}" {{ 'selected' if request.args.get('logement') == v|string }}>{{ lib }}</option>{% endfor %}</select>
+  </form>
+  {% if page.items %}
+  <div class="carte carte-table"><div class="table-conteneur">
+  <table class="table">
+    <thead><tr><th>Logement</th><th>Période</th><th>Payé le</th><th>Mode / référence</th><th>Saisi par</th><th class="num">Montant</th>{% if current_user.gere %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for x in page.items %}
+    <tr>
+      <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=x.logement.id) }}">{{ x.logement.nom }}</a></td>
+      <td>{{ periode_libelle(x.periode_debut, x.mois) }}</td>
+      <td>{{ x.date_paiement|date }}</td>
+      <td>{{ x.mode_paiement or '—' }}{% if x.reference %}<br><span class="muted petit">{{ x.reference }}</span>{% endif %}</td>
+      <td class="muted petit">{{ x.cree_par.nom if x.cree_par else '' }}</td>
+      <td class="num">{{ x.montant|fcfa }}</td>
+      {% if current_user.gere %}<td class="num">
+        <form method="post" action="{{ url_for('loyer_supprimer', xid=x.id) }}" data-confirm="Supprimer ce paiement ? L'échéance redeviendra due.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-icone" aria-label="Supprimer ce paiement" title="Supprimer">{{ icon('trash', 16) }}</button></form></td>{% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+  {{ pagination(page) }}
+  {% else %}{{ vide('Aucun paiement', 'Les paiements de loyer enregistrés apparaîtront ici.', url_for('loyer_payer') if current_user.gere else '', 'Enregistrer un paiement', 'key') }}{% endif %}
+{% endif %}
+{% endblock %}

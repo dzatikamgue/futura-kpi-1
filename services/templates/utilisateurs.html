@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block titre %}Utilisateurs{% endblock %}
+{% block ariane %}<span aria-current="page">Utilisateurs</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div><p class="action-sur">Administration</p><h1>Utilisateurs</h1><p class="muted">Avec le portail Futura, les accès se donnent depuis le portail ; cette liste les reprend automatiquement.</p></div>
+  <div class="actions"><a class="btn btn-primary" href="{{ url_for('utilisateur_nouveau') }}">{{ icon('plus', 16) }} Nouveau compte</a></div>
+</div>
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Logement</th><th>Dernière connexion</th><th>État</th></tr></thead>
+  <tbody>
+  {% for u in liste %}
+  <tr class="ligne-cliquable {{ 'inactif' if not u.actif }}" data-href="{{ url_for('utilisateur_modifier', uid=u.id) }}">
+    <td class="col-fixe"><a class="lien" href="{{ url_for('utilisateur_modifier', uid=u.id) }}"><strong>{{ u.nom }}</strong></a></td>
+    <td>{{ u.email }}</td>
+    <td><span class="badge badge-role">{{ u.role_libelle }}</span></td>
+    <td>{{ u.logement.libelle if u.logement else '—' }}</td>
+    <td>{{ u.derniere_connexion|dateheure }}</td>
+    <td>{% if u.actif %}<span class="badge badge-ok">Actif</span>{% else %}<span class="badge">Désactivé</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

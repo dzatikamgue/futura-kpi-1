@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination, vide, onglets, badge_doc with context %}
+{% block titre %}Personnel{% endblock %}
+{% block ariane %}<span aria-current="page">Personnel</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div><p class="action-sur">Personnel</p><h1>Personnel suivi</h1><p class="muted">Une fiche par personne : passeport, visa, carte de séjour, billets et logement.</p></div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('personnel_export') }}">{{ icon('download', 16) }} Excel</a>
+    {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('personne_nouvelle') }}">{{ icon('plus', 16) }} Nouvelle personne</a>{% endif %}
+  </div>
+</div>
+<div class="filtres">
+  {{ onglets('statut', [('actifs', 'En poste', none), ('inactifs', 'Partis', none), ('tous', 'Tous', none)], 'actifs') }}
+  <form class="recherche" method="get" role="search">
+    {% for k, v in request.args.items() if k not in ('q', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    {{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, matricule, société…" aria-label="Rechercher">
+  </form>
+</div>
+{% if page.items %}
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Nom</th><th>Poste / société</th><th>Nationalité</th><th>Visa</th><th>Carte de séjour</th><th>Passeport</th><th>Logement</th></tr></thead>
+  <tbody>
+  {% for p in page.items %}{% set v = doc_courant(p, 'visa') %}{% set c = doc_courant(p, 'carte_sejour') %}
+  <tr class="ligne-cliquable" data-href="{{ url_for('personne_fiche', pid=p.id) }}">
+    <td class="col-fixe"><a class="lien" href="{{ url_for('personne_fiche', pid=p.id) }}"><strong>{{ p.nom }}</strong></a>{% if p.matricule %}<br><span class="muted petit">{{ p.matricule }}</span>{% endif %}</td>
+    <td>{{ p.poste or '—' }}<br><span class="muted petit">{{ p.societe or '' }}</span></td>
+    <td>{{ p.nationalite or '—' }}</td>
+    <td>{% if v %}{{ badge_doc(v) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if c %}{{ badge_doc(c) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if p.passeport_expiration %}{% set j = (p.passeport_expiration - aujourdhui).days %}<span class="{{ 'texte-ko' if j < 0 else 'texte-alerte' if j <= seuil else '' }}">{{ p.passeport_expiration|date }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if p.logement %}{{ p.logement.libelle }}{% else %}<span class="muted">—</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{{ pagination(page) }}
+{% else %}
+{{ vide('Aucune personne', 'Enregistrez le personnel pour suivre ses visas, cartes de séjour et billets.' if not request.args.get('q') else 'Aucun résultat pour cette recherche.', url_for('personne_nouvelle') if current_user.gere and not request.args.get('q') else '', 'Nouvelle personne', 'users') }}
+{% endif %}
+{% endblock %}

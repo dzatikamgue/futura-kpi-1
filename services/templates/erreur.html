@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titre %}Erreur {{ code }}{% endblock %}
+{% block sous_module %}{% endblock %}
+{% macro corps() %}
+<div class="etat-vide etat-erreur">
+  <p class="code-erreur">{{ code }}</p>
+  <h1>{{ {403: 'Accès refusé', 404: 'Introuvable', 500: 'Erreur serveur'}.get(code, 'Erreur') }}</h1>
+  <p class="muted">{{ message }}</p>
+  {% if PORTAIL_URL and not current_user.is_authenticated %}<a class="btn btn-primary" href="{{ PORTAIL_URL }}">Retour aux modules Futura</a>
+  {% else %}<a class="btn btn-primary" href="{{ url_for('accueil') }}">Retour à l'accueil</a>{% endif %}
+</div>
+{% endmacro %}
+{% block ariane %}<span>Erreur</span>{% endblock %}
+{% block contenu %}{{ corps() }}{% endblock %}
+{% block public %}<div class="page-connexion">{{ corps() }}</div>{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge_doc with context %}
+{% block titre %}{{ p.nom }}{% endblock %}
+{% block ariane %}<a href="{{ url_for('personnel') }}">Personnel</a><span aria-current="page">{{ p.nom }}</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div class="titre-module-g">
+    <span class="avatar avatar-xl" aria-hidden="true">{{ p.nom[:1]|upper }}</span>
+    <div><h1>{{ p.nom }} {% if not p.actif %}<span class="badge">Parti(e)</span>{% endif %}</h1>
+      <p class="muted">{{ p.poste or 'Poste non renseigné' }}{% if p.societe %} · {{ p.societe }}{% endif %}{% if p.nationalite %} · {{ p.nationalite }}{% endif %}</p></div>
+  </div>
+  {% if current_user.gere %}<div class="actions"><a class="btn btn-ghost" href="{{ url_for('personne_modifier', pid=p.id) }}">{{ icon('edit', 16) }} Modifier</a></div>{% endif %}
+</div>
+
+<div class="grille-detail">
+  <div class="colonne">
+    {% for code in ('visa', 'carte_sejour') %}{% set d = doc_courant(p, code) %}
+    <section class="carte carte-doc sm-{{ code }}">
+      <div class="carte-entete">
+        <h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon(SOUS_MODULES[code].icone, 16) }}</span> {{ TYPES_DOCUMENT[code] }}</h2>
+        {% if d %}{{ badge_doc(d) }}{% endif %}
+      </div>
+      {% if d %}
+      <dl class="fiche">
+        <dt>Numéro</dt><dd>{{ d.numero or '—' }}</dd>
+        <dt>Catégorie</dt><dd>{{ d.categorie or '—' }}</dd>
+        <dt>Validité</dt><dd>{{ d.date_delivrance|date }} → <strong>{{ d.date_expiration|date }}</strong></dd>
+        <dt>Renouvellement</dt><dd>{{ RENOUVELLEMENT[d.renouvellement] }}{% if d.renouvellement_note %}<br><span class="muted petit">{{ d.renouvellement_note }}</span>{% endif %}</dd>
+      </dl>
+      <div class="actions mt-1"><a class="btn btn-ghost btn-sm" href="{{ url_for('document_fiche', did=d.id) }}">Voir le détail</a>
+        {% if current_user.gere and d.niveau(seuil) != 'ok' %}<a class="btn btn-primary btn-sm" href="{{ url_for('document_renouveler', did=d.id) }}">{{ icon('undo', 14) }} Saisir le renouvellement</a>{% endif %}</div>
+      {% else %}
+      <p class="muted">Aucun{{ 'e' if code == 'carte_sejour' }} {{ TYPES_DOCUMENT[code]|lower }} enregistré{{ 'e' if code == 'carte_sejour' }}.</p>
+      {% if current_user.gere %}<a class="btn btn-ghost btn-sm mt-1" href="{{ url_for('document_nouveau', type_doc=code, personne=p.id) }}">{{ icon('plus', 14) }} Ajouter</a>{% endif %}
+      {% endif %}
+    </section>
+    {% endfor %}
+
+    <section class="carte carte-table sm-billets">
+      <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('plane', 16) }}</span> Billets d'avion</h2>
+        <span class="muted petit">{{ cout_billets|fcfa }} au total</span>
+        {% if current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('billet_nouveau', personne=p.id) }}">{{ icon('plus', 14) }} Billet</a>{% endif %}</div>
+      {% if p.billets %}
+      <div class="table-conteneur"><table class="table table-compacte">
+        <thead><tr><th>Départ</th><th>Trajet</th><th>Motif</th><th>Statut</th><th class="num">Prix</th></tr></thead>
+        <tbody>{% for b in p.billets %}
+        <tr class="ligne-cliquable" data-href="{{ url_for('billet_fiche', bid=b.id) }}"><td>{{ b.date_depart|date }}</td><td>{{ b.trajet }}</td><td>{{ MOTIFS_BILLET[b.motif] }}</td><td><span class="badge badge-billet-{{ b.statut }}">{{ STATUTS_BILLET[b.statut] }}</span></td><td class="num">{{ b.montant|fcfa }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="muted pad">Aucun billet.</p>{% endif %}
+    </section>
+  </div>
+
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('user', 18) }} Informations</h2></div>
+      <dl class="fiche">
+        <dt>Matricule</dt><dd>{{ p.matricule or '—' }}</dd>
+        <dt>Téléphone</dt><dd>{% if p.telephone %}<a class="lien" href="tel:{{ p.telephone }}">{{ p.telephone }}</a>{% else %}—{% endif %}</dd>
+        <dt>E-mail</dt><dd>{% if p.email %}<a class="lien" href="mailto:{{ p.email }}">{{ p.email }}</a>{% else %}—{% endif %}</dd>
+        <dt>Passeport</dt><dd>{{ p.passeport_numero or '—' }}{% if p.passeport_expiration %}<br>{% set j = (p.passeport_expiration - aujourdhui).days %}<span class="petit {{ 'texte-ko' if j < 0 else 'texte-alerte' if j <= seuil else 'muted' }}">expire le {{ p.passeport_expiration|date }}{% if j < 0 %} (expiré){% elif j <= seuil %} (dans {{ j }} j){% endif %}</span>{% endif %}</dd>
+        <dt>Logement</dt><dd>{% if p.logement %}<a class="lien" href="{{ url_for('logement_fiche', lid=p.logement.id) }}">{{ p.logement.libelle }}</a>{% else %}—{% endif %}</dd>
+        {% if p.notes %}<dt>Notes</dt><dd class="pre">{{ p.notes }}</dd>{% endif %}
+      </dl>
+    </section>
+    {% with objet='personne', oid=p.id %}{% include "_pieces.html" %}{% endwith %}
+  </div>
+</div>
+{% endblock %}

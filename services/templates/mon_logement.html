@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge_reparation with context %}
+{% block titre %}Mon logement{% endblock %}
+{% block sous_module %}reparations{% endblock %}
+{% block ariane %}<span aria-current="page">Mon logement</span>{% endblock %}
+{% block contenu %}
+{% if not l %}
+<div class="etat-vide"><div class="etat-vide-ico">{{ icon('home', 28) }}</div><h3>Aucun logement rattaché</h3>
+  <p class="muted">Votre compte n'est pas encore relié à un logement. Contactez le gestionnaire (RH / services généraux).</p></div>
+{% else %}
+<div class="espaces-tete">
+  <p class="action-sur">Mon logement</p>
+  <h1>Bonjour {{ current_user.nom.split(' ')[0] }}</h1>
+  <p class="muted">{{ l.libelle }}{% if l.adresse %} · {{ l.adresse }}{% endif %}</p>
+</div>
+<a class="grand-bouton" href="{{ url_for('reparation_nouvelle') }}">
+  <span class="grand-bouton-ico" aria-hidden="true">{{ icon('wrench', 26) }}</span>
+  <span><strong>Signaler un problème</strong><span class="muted">Fuite, panne, climatisation, serrure… ajoutez une photo, le gestionnaire est prévenu.</span></span>
+  <span class="espace-ouvrir">{{ icon('arrow', 18) }}</span>
+</a>
+<section class="carte carte-table mt-3">
+  <div class="carte-entete pad"><h2>{{ icon('clock', 18) }} Mes demandes</h2><span class="badge">{{ liste|length }}</span></div>
+  {% if liste %}
+  <ul class="boite pad">
+    {% for r in liste %}
+    <li class="boite-item {{ 'boite-critique' if r.urgence == 'urgente' and r.ouverte else 'boite-alerte' if r.ouverte else '' }}">
+      <div class="boite-corps"><a class="lien" href="{{ url_for('reparation_fiche', rid=r.id) }}"><strong>{{ r.titre }}</strong></a>
+        <p class="muted petit">{{ r.reference }} · signalé le {{ r.signale_le|date }}{% if r.intervenant %} · {{ r.intervenant }}{% endif %}</p></div>
+      <div>{{ badge_reparation(r) }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted pad">Aucune demande pour le moment.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

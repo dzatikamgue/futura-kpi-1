@@ -1,0 +1,32 @@
+{% from "_macros.html" import icon with context %}
+{# Paramètres : pieces, objet, oid #}
+<section class="carte" id="pieces">
+  <div class="carte-entete"><h2>{{ icon('clip', 18) }} Pièces jointes</h2><span class="badge">{{ pieces|length }}</span></div>
+  {% if pieces %}
+  <ul class="pieces">
+    {% for p in pieces %}
+    <li class="piece">
+      {% if p.est_image %}<a class="piece-apercu" href="{{ url_for('piece_voir', pid=p.id) }}" target="_blank" rel="noopener"><img src="{{ url_for('piece_voir', pid=p.id) }}" alt="" loading="lazy"></a>
+      {% else %}<span class="piece-ico" aria-hidden="true">{{ icon('file', 20) }}</span>{% endif %}
+      <div class="piece-corps">
+        <a href="{{ url_for('piece_voir', pid=p.id) }}" target="_blank" rel="noopener">{{ p.nom_fichier }}</a>
+        <span class="muted petit">{{ p.taille|taille }} · {{ p.ajoute_le|dateheure }}{% if p.ajoute_par %} · {{ p.ajoute_par.nom }}{% endif %}</span>
+      </div>
+      {% if current_user.gere %}
+      <form method="post" action="{{ url_for('piece_supprimer', pid=p.id) }}" data-confirm="Supprimer « {{ p.nom_fichier }} » ?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="{{ request.path }}">
+        <button class="btn-icone" aria-label="Supprimer {{ p.nom_fichier }}" title="Supprimer">{{ icon('trash', 16) }}</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">Aucune pièce jointe.</p>{% endif %}
+  {% if current_user.gere and objet %}
+  <form method="post" action="{{ url_for('piece_ajouter', objet=objet, oid=oid) }}" enctype="multipart/form-data" class="form-pieces" data-chargement-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="{{ request.path }}">
+    <input name="pieces" type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" aria-label="Fichiers à ajouter" required>
+    <button class="btn btn-ghost btn-sm" data-chargement="Envoi…">{{ icon('upload', 16) }} Ajouter</button>
+  </form>
+  {% endif %}
+</section>

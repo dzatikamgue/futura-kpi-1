@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pagination, vide, onglets, badge_facture, entete_module with context %}
+{% set lib = TYPES_ENERGIE[type_energie] %}
+{% block titre %}{{ lib }}{% endblock %}
+{% block sous_module %}{{ type_energie }}{% endblock %}
+{% block ariane %}<span aria-current="page">{{ lib }}</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, 'Factures d\'' ~ lib|lower, FOURNISSEURS[type_energie] ~ ' · une facture par logement et par mois') %}
+  <a class="btn btn-ghost" href="{{ url_for('factures_export', type_energie=type_energie, **request.args) }}">{{ icon('download', 16) }} Excel</a>
+  {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('facture_nouvelle', type_energie=type_energie) }}">{{ icon('plus', 16) }} Nouvelle facture</a>{% endif %}
+{% endcall %}
+
+<div class="kpis kpis-3">
+  <a class="kpi" href="{{ url_avec(statut='a_payer', page=1) }}"><span class="kpi-lib">À payer</span><span class="kpi-val kpi-val-sm">{{ a_payer|fcfa }}</span><span class="kpi-sous">{{ nb_a_payer }} facture{{ 's' if nb_a_payer > 1 }}</span></a>
+  <a class="kpi {{ 'kpi-ko' if en_retard }}" href="{{ url_avec(statut='retard', page=1) }}"><span class="kpi-lib">En retard</span><span class="kpi-val">{{ en_retard }}</span><span class="kpi-sous">échéance dépassée</span></a>
+  <div class="kpi {{ 'kpi-alerte' if manquantes and current_user.gere }}"><span class="kpi-lib">Non saisies — {{ mois_dernier|mois }}</span><span class="kpi-val">{{ manquantes|length }}</span>
+    <span class="kpi-sous" title="{{ manquantes|map(attribute='nom')|join(', ') }}">{{ (manquantes|map(attribute='nom')|join(', '))|truncate(48) if manquantes else 'Tous les logements sont saisis' }}</span></div>
+</div>
+
+<div class="filtres mt-3">
+  {{ onglets('statut', [('a_payer', 'À payer', nb_a_payer), ('retard', 'En retard', en_retard), ('payees', 'Payées', none), ('toutes', 'Toutes', none)], 'a_payer') }}
+  <form class="filtres-form" method="get">
+    <input type="hidden" name="statut" value="{{ request.args.get('statut', 'a_payer') }}">
+    <select name="logement" data-auto-submit aria-label="Logement"><option value="">Tous les logements</option>{% for v, l in logements %}<option value="{{ v }}" {{ 'selected' if request.args.get('logement') == v|string }}>{{ l }}</option>{% endfor %}</select>
+  </form>
+</div>
+
+{% if page.items %}
+<div class="carte carte-table"><div class="table-conteneur">
+<table class="table">
+  <thead><tr><th>Logement</th><th>Mois</th><th>N° facture</th><th class="num">Consommation</th><th>État</th><th class="num">Montant</th>{% if current_user.gere %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for fe in page.items %}
+  <tr class="ligne-{{ fe.niveau }}">
+    <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=fe.logement.id) }}"><strong>{{ fe.logement.nom }}</strong></a><br><span class="muted petit">{{ fe.logement.quartier or '' }}</span></td>
+    <td class="nowrap">{{ fe.periode|mois }}</td>
+    <td>{{ fe.numero or '—' }}</td>
+    <td class="num">{% if fe.consommation is not none %}{{ fe.consommation|decimal }} {{ UNITES[type_energie] }}{% else %}—{% endif %}</td>
+    <td>{{ badge_facture(fe) }}</td>
+    <td class="num"><strong>{{ fe.montant|fcfa }}</strong></td>
+    {% if current_user.gere %}
+    <td class="num nowrap">
+      {% if not fe.payee %}
+      <form method="post" action="{{ url_for('facture_payer', fid=fe.id) }}" class="form-mini">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-success">{{ icon('check', 14) }} Payée</button>
+      </form>
+      {% endif %}
+      <a class="btn-icone" href="{{ url_for('facture_modifier', fid=fe.id) }}" aria-label="Modifier" title="Modifier">{{ icon('edit', 16) }}</a>
+      <a class="btn-icone" href="{{ url_for('facture_piece', fid=fe.id) }}" aria-label="Voir la facture" title="Voir la facture scannée" target="_blank" rel="noopener">{{ icon('clip', 16) }}</a>
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td colspan="5">{{ page.total }} facture{{ 's' if page.total > 1 }}</td><td class="num"><strong>{{ total|fcfa }}</strong></td>{% if current_user.gere %}<td></td>{% endif %}</tr></tfoot>
+</table></div></div>
+{{ pagination(page) }}
+{% else %}
+{% if request.args.get('statut', 'a_payer') in ('a_payer', 'retard') %}
+<div class="etat-vide"><div class="etat-vide-ico ok">{{ icon('check', 28) }}</div><h3>Aucune facture à payer</h3><p class="muted">Toutes les factures {{ "d'eau" if type_energie == 'eau' else "d'électricité" }} enregistrées sont réglées.</p>
+{% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('facture_nouvelle', type_energie=type_energie) }}">{{ icon('plus', 16) }} Nouvelle facture</a>{% endif %}</div>
+{% else %}{{ vide('Aucune facture', 'Rien ne correspond à ce filtre.', '', '', module.icone) }}{% endif %}
+{% endif %}
+{% endblock %}
