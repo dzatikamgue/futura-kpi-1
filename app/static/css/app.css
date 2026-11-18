@@ -811,3 +811,10 @@ html.js:not(.anime) .bars__fill, html.js:not(.anime) .progress > span { width: 0
   .bulle { max-width: 85%; }
   .chat__panneau-corps { position: fixed; left: 12px !important; right: 12px !important; top: 80px; width: auto; }
 }
+
+/* Portail : chaque module a sa couleur (la même que dans le module lui-même) */
+.module--flotte { --mc: #16a34a; } .module--factures { --mc: #d97706; } .module--services { --mc: #9333ea; }
+.module[class*="module--"]:not(.module--kpi) { border-left: 4px solid var(--mc); }
+.module[class*="module--"]:not(.module--kpi) .module__icone { background: color-mix(in srgb, var(--mc) 15%, transparent); color: var(--mc); }
+.module[class*="module--"]:not(.module--kpi):hover, .module[class*="module--"]:not(.module--kpi):focus-visible { border-color: var(--mc); }
+.module[class*="module--"]:not(.module--kpi):hover .module__fleche { color: var(--mc); }

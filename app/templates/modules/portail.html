@@ -11,7 +11,7 @@
 
 <div class="modules">
   {% for m in modules %}
-  <a class="card module" href="{{ url_for('modules.ouvrir', code=m.code) }}">
+  <a class="card module module--{{ m.code }}" href="{{ url_for('modules.ouvrir', code=m.code) }}">
     <span class="module__icone" aria-hidden="true">{{ icon(m.icone) }}</span>
     <span class="module__texte">
       <strong>{{ m.nom }}</strong>
