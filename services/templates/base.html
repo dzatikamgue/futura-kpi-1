@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=9">
   <script src="{{ url_for('static', filename='theme.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}?v=1" defer></script>
 </head>
@@ -44,8 +44,8 @@
 
       <p class="nav-titre">Personnel</p>
       <a href="{{ url_for('personnel') }}" class="{{ 'actif' if ep.startswith('personne') }}">{{ icon('users') }} Personnel</a>
-      <a href="{{ url_for('documents', type_doc='visa') }}" class="nav-sm nav-sm-visa {{ 'actif' if sm == 'visa' }}">{{ icon('stamp') }} Visas</a>
-      <a href="{{ url_for('documents', type_doc='carte_sejour') }}" class="nav-sm nav-sm-carte_sejour {{ 'actif' if sm == 'carte_sejour' }}">{{ icon('id') }} Cartes de séjour</a>
+      <a href="{{ url_for('documents') }}" class="nav-sm nav-sm-documents {{ 'actif' if sm == 'documents' }}">{{ icon('id') }} Visas et cartes de séjour
+        {% if docs_notif %}<span class="nav-compteur" aria-label="{{ docs_notif.total }} à renouveler">{{ docs_notif.total }}</span>{% endif %}</a>
       <a href="{{ url_for('billets') }}" class="nav-sm nav-sm-billets {{ 'actif' if sm == 'billets' }}">{{ icon('plane') }} Billets d'avion</a>
 
       <p class="nav-titre">Logements</p>
@@ -92,6 +92,15 @@
           {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="status">{{ msg }}<button class="flash-fermer" aria-label="Fermer">×</button></div>{% endfor %}
         </div>{% endif %}
       {% endwith %}
+      {% if docs_notif and request.endpoint not in ('documents', 'document_fiche', 'document_renouveler') %}
+      <a class="notif-docs {{ 'notif-docs-ko' if docs_notif.expires }}" href="{{ url_for('documents', statut='a_traiter') }}" role="status">
+        <span class="notif-docs-ico" aria-hidden="true">{{ icon('bell', 18) }}</span>
+        <span><strong>{{ docs_notif.total }} visa{{ 's' if docs_notif.total > 1 }} / carte{{ 's' if docs_notif.total > 1 }} de séjour expire{{ 'nt' if docs_notif.total > 1 }} dans moins de {{ seuil }} jours{% if docs_notif.expires %} ({{ docs_notif.expires }} déjà expiré{{ 's' if docs_notif.expires > 1 }}){% endif %}.</strong>
+          Commencez les procédures de renouvellement{% if docs_notif.a_lancer %} — {{ docs_notif.a_lancer }} sans démarche lancée{% endif %}.
+          <span class="muted petit">Le plus proche : {{ docs_notif.premier.type_libelle|lower }} de {{ docs_notif.premier.personne.nom }}, fin le {{ docs_notif.premier.date_expiration|date }}.</span></span>
+        <span class="espace-ouvrir">Voir {{ icon('arrow', 16) }}</span>
+      </a>
+      {% endif %}
       {% block contenu %}{% endblock %}
     </main>
   </div>

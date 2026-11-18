@@ -66,7 +66,7 @@ STATUTS_REPARATION = {"signalee": "Signalée", "prise_en_charge": "Prise en char
 REPARATIONS_OUVERTES = ("signalee", "prise_en_charge", "en_cours")
 
 MIMES_AUTORISES = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
-ALERTE_DOC_JOURS = 60          # alerte avant l'expiration d'un visa / d'une carte de séjour (réglable)
+ALERTE_DOC_JOURS = 30          # alerte avant l'expiration d'un visa / d'une carte de séjour (réglable)
 ALERTE_BAIL_JOURS = 60         # alerte avant la fin d'un bail
 
 SQL_ROLES = "role IN (" + ",".join(f"'{r}'" for r in ROLES) + ")"

@@ -67,13 +67,22 @@ def test_document_alerte_et_renouvellement(app):
     pid = personne(rh)
     from models import aujourdhui
     exp = aujourdhui() + timedelta(days=20)
+    # Date de début obligatoire
+    r = rh.post("/documents/visa/nouveau", data={"personne_id": pid, "numero": "V1", "date_expiration": exp.isoformat()})
+    assert r.status_code == 200 and "obligatoire" in r.get_data(as_text=True)
     r = rh.post("/documents/visa/nouveau", data={"personne_id": pid, "numero": "V1", "date_expiration": exp.isoformat(),
                                                  "date_delivrance": (exp - timedelta(days=365)).isoformat()})
     assert r.status_code == 302
     with app.app_context():
         d = Document.query.one()
-        assert d.niveau(60) == "alerte" and not d.remplace
+        assert d.niveau(30) == "alerte" and not d.remplace
         did = d.id
+    # Notification sur toutes les pages, et page unique visas + cartes avec début et fin
+    accueil = rh.get("/").get_data(as_text=True)
+    assert "expire dans moins de 30 jours" in accueil and "Commencez les procédures de renouvellement" in accueil
+    liste = rh.get("/documents").get_data(as_text=True)
+    assert "Visas et cartes de séjour" in liste and exp.strftime("%d/%m/%Y") in liste
+    assert (exp - timedelta(days=365)).strftime("%d/%m/%Y") in liste
     page = rh.get("/tableau-de-bord").get_data(as_text=True)
     assert "Visa de Anoop Kumar" in page and "Expire dans 20 jours" in page
     # Date d'expiration avant la délivrance : refusée
@@ -83,12 +92,13 @@ def test_document_alerte_et_renouvellement(app):
     # Démarche puis renouvellement : l'ancien est remplacé, l'alerte disparaît
     rh.post(f"/document/{did}/demarche", data={"renouvellement": "en_cours", "note": "Dossier déposé"})
     nouv = aujourdhui() + timedelta(days=400)
-    r = rh.post(f"/document/{did}/renouveler", data={"personne_id": pid, "numero": "V2", "date_expiration": nouv.isoformat()},
+    r = rh.post(f"/document/{did}/renouveler", data={"personne_id": pid, "numero": "V2", "date_expiration": nouv.isoformat(),
+                                                    "date_delivrance": aujourdhui().isoformat()},
                 content_type="multipart/form-data")
     assert r.status_code == 302
     with app.app_context():
         ancien, nouveau = db.session.get(Document, did), Document.query.filter_by(numero="V2").one()
-        assert ancien.remplace and ancien.renouvellement == "obtenu" and nouveau.niveau(60) == "ok"
+        assert ancien.remplace and ancien.renouvellement == "obtenu" and nouveau.niveau(30) == "ok"
     rh.get("/")  # consomme le message flash
     assert "Expire dans" not in rh.get("/tableau-de-bord").get_data(as_text=True)
 
@@ -98,10 +108,13 @@ def test_document_expire_et_filtres(app):
     rh = client(app, "rh")
     pid = personne(rh)
     rh.post("/documents/carte_sejour/nouveau", data={"personne_id": pid, "numero": "CS9",
+                                                     "date_delivrance": (aujourdhui() - timedelta(days=700)).isoformat(),
                                                      "date_expiration": (aujourdhui() - timedelta(days=3)).isoformat()})
     assert "CS9" in rh.get("/documents/carte_sejour?statut=expires").get_data(as_text=True)
     assert "CS9" not in rh.get("/documents/carte_sejour?statut=valides").get_data(as_text=True)
     assert "Expiré depuis 3 j" in rh.get("/documents/carte_sejour").get_data(as_text=True)
+    assert "CS9" in rh.get("/documents?statut=a_traiter").get_data(as_text=True)
+    assert "CS9" not in rh.get("/documents?type=visa").get_data(as_text=True)
     r = rh.get("/documents/carte_sejour/export")
     assert r.status_code == 200 and r.mimetype.endswith("sheet")
 
@@ -264,7 +277,7 @@ def test_utilisateur_occupant_exige_logement(app):
 
 def test_accueil_toutes_pages(app):
     rh = client(app, "rh")
-    for url in ["/", "/tableau-de-bord", "/personnel", "/documents/visa", "/documents/carte_sejour", "/billets",
+    for url in ["/", "/tableau-de-bord", "/personnel", "/documents", "/documents/visa", "/documents/carte_sejour", "/billets",
                 "/logements", "/loyers", "/loyers?onglet=paiements", "/factures/electricite", "/factures/eau",
                 "/reparations", "/loyers/payer", "/billets/nouveau", "/logements/nouveau"]:
         assert rh.get(url).status_code == 200, url

@@ -888,3 +888,19 @@ body[class*="sm-"] .entete { box-shadow: inset 0 3px 0 var(--esp); }
 .entete { box-shadow: inset 0 3px 0 #7e22ce; }
 .page-connexion { background: linear-gradient(160deg, var(--mod-1), var(--mod-2)); }
 .page-connexion > .muted, .page-connexion > p { color: rgba(255,255,255,.75); }
+
+/* Visas et cartes de séjour : sous-module unique, notification de renouvellement */
+.sm-documents { --esp: var(--sm-visa); }
+.type-doc { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.type-doc-visa .ico { color: var(--sm-visa); } .type-doc-carte_sejour .ico { color: var(--sm-carte_sejour); }
+.col-jauge { min-width: 90px; }
+.jauge-mini { display: block; margin: 0; height: 6px; width: 90px; }
+.notif-docs { display: flex; align-items: center; gap: var(--e3); margin-bottom: var(--e5); padding: var(--e3) var(--e4); border-radius: var(--r2);
+  background: var(--alerte-doux); border: 1px solid color-mix(in srgb, var(--alerte) 35%, transparent); color: var(--texte); }
+.notif-docs:hover { text-decoration: none; box-shadow: var(--ombre-2); }
+.notif-docs > span:nth-child(2) { display: flex; flex-direction: column; gap: 2px; }
+.notif-docs .espace-ouvrir { margin-left: auto; color: var(--alerte); white-space: nowrap; }
+.notif-docs-ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--alerte); color: #fff; flex: none; animation: onde-alerte 2s ease-out infinite; }
+.notif-docs-ko { background: var(--ko-doux); border-color: color-mix(in srgb, var(--ko) 35%, transparent); }
+.notif-docs-ko .notif-docs-ico { background: var(--ko); } .notif-docs-ko .espace-ouvrir { color: var(--ko); }
+@media (prefers-reduced-motion: reduce) { .notif-docs-ico { animation: none; } }

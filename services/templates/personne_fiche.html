@@ -15,16 +15,17 @@
 <div class="grille-detail">
   <div class="colonne">
     {% for code in ('visa', 'carte_sejour') %}{% set d = doc_courant(p, code) %}
-    <section class="carte carte-doc sm-{{ code }}">
+    <section class="carte carte-doc sm-documents">
       <div class="carte-entete">
-        <h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon(SOUS_MODULES[code].icone, 16) }}</span> {{ TYPES_DOCUMENT[code] }}</h2>
+        <h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('stamp' if code == 'visa' else 'id', 16) }}</span> {{ TYPES_DOCUMENT[code] }}</h2>
         {% if d %}{{ badge_doc(d) }}{% endif %}
       </div>
       {% if d %}
       <dl class="fiche">
         <dt>Numéro</dt><dd>{{ d.numero or '—' }}</dd>
         <dt>Catégorie</dt><dd>{{ d.categorie or '—' }}</dd>
-        <dt>Validité</dt><dd>{{ d.date_delivrance|date }} → <strong>{{ d.date_expiration|date }}</strong></dd>
+        <dt>Début</dt><dd>{{ d.date_delivrance|date }}</dd>
+        <dt>Fin</dt><dd><strong>{{ d.date_expiration|date }}</strong></dd>
         <dt>Renouvellement</dt><dd>{{ RENOUVELLEMENT[d.renouvellement] }}{% if d.renouvellement_note %}<br><span class="muted petit">{{ d.renouvellement_note }}</span>{% endif %}</dd>
       </dl>
       <div class="actions mt-1"><a class="btn btn-ghost btn-sm" href="{{ url_for('document_fiche', did=d.id) }}">Voir le détail</a>

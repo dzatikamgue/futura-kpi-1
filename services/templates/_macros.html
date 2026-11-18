@@ -132,7 +132,7 @@
 {% if niv == 'remplace' %}<span class="badge">Remplacé</span>
 {% elif niv == 'expire' %}<span class="badge badge-ko">Expiré depuis {{ -j }} j</span>
 {% elif niv == 'critique' %}<span class="badge badge-ko">{{ "Expire aujourd'hui" if j == 0 else 'J-' ~ j }}</span>
-{% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ j }} · à renouveler</span>
+{% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ j }} · lancer le renouvellement</span>
 {% else %}<span class="badge badge-ok">Valide · {{ j }} j</span>{% endif %}
 {%- endmacro %}
 

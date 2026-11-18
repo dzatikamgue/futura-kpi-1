@@ -44,10 +44,9 @@ MOIS_COURTS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août
 
 # Sous-modules affichés à l'accueil (code, titre, icône, couleur, famille)
 SOUS_MODULES = {
-    "visa": dict(titre="Visas", icone="stamp", famille="Personnel",
-                 description="Visas du personnel : validité, expiration et renouvellement."),
-    "carte_sejour": dict(titre="Cartes de séjour", icone="id", famille="Personnel",
-                         description="Titres de séjour : dates d'expiration et dossiers de renouvellement."),
+    "documents": dict(titre="Visas et cartes de séjour", icone="id", famille="Personnel",
+                      description="Visa et carte de séjour en cours de chaque personne : début, fin, alerte 30 jours "
+                                  "avant l'expiration et suivi du renouvellement."),
     "billets": dict(titre="Billets d'avion", icone="plane", famille="Personnel",
                     description="Billets des employés : congés, missions, prises de poste et coûts."),
     "loyers": dict(titre="Loyers", icone="key", famille="Logements",
@@ -402,7 +401,7 @@ def a_surveiller():
                           texte=(f"Expiré depuis {-j} jour{'s' if -j > 1 else ''}" if j < 0 else
                                  "Expire aujourd'hui" if j == 0 else f"Expire dans {j} jour{'s' if j > 1 else ''}")
                           + f" ({d.date_expiration:%d/%m/%Y})"
-                          + (f" · {RENOUVELLEMENT[d.renouvellement]}" if d.renouvellement else " · renouvellement non lancé"),
+                          + (f" · {RENOUVELLEMENT[d.renouvellement]}" if d.renouvellement else " · commencer les procédures de renouvellement"),
                           lien=url_for("document_fiche", did=d.id), tri=j))
     for p in Personne.query.filter(Personne.actif.is_(True), Personne.passeport_expiration.isnot(None),
                                    Personne.passeport_expiration <= aujourdhui() + timedelta(days=s)):
@@ -444,6 +443,7 @@ def a_surveiller():
 # --------------------------------------------------------------------------- #
 
 def register_filters(app):
+    app.jinja_env.globals["timedelta_jours"] = lambda n: timedelta(days=n)
     app.jinja_env.filters["fcfa"] = lambda v: "—" if v is None else f"{_milliers(v)} FCFA"
     app.jinja_env.filters["nombre"] = lambda v: "" if v is None else _milliers(v)
     app.jinja_env.filters["compact"] = lambda v: "0" if not v else (
@@ -460,16 +460,22 @@ def register_filters(app):
             args = request.args.to_dict()
             args.update(kw)
             return url_for(request.endpoint, **(request.view_args or {}), **args)
-        nb_alertes = 0
+        nb_alertes, docs_notif = 0, None
         if current_user.is_authenticated and not current_user.occupant and request.endpoint not in ("static", None):
             nb_alertes = len(a_surveiller())
+            proches = documents_en_vigueur().filter(
+                Document.date_expiration <= aujourdhui() + timedelta(days=seuil_docs())).all()
+            if proches:
+                docs_notif = dict(total=len(proches), expires=sum(1 for d in proches if d.jours_restants < 0),
+                                  a_lancer=sum(1 for d in proches if d.renouvellement in ("", "a_lancer")),
+                                  premier=min(proches, key=lambda d: d.date_expiration))
         return dict(ROLES=ROLES, SOUS_MODULES=SOUS_MODULES, TYPES_DOCUMENT=TYPES_DOCUMENT,
                     RENOUVELLEMENT=RENOUVELLEMENT, MOTIFS_BILLET=MOTIFS_BILLET, STATUTS_BILLET=STATUTS_BILLET,
                     TYPES_ENERGIE=TYPES_ENERGIE, UNITES=UNITES, FOURNISSEURS=FOURNISSEURS,
                     STATUTS_REPARATION=STATUTS_REPARATION, URGENCES=URGENCES, PERIODICITES=PERIODICITES,
                     PORTAIL_URL=(os.environ.get("PORTAIL_URL") or "").strip() or None,
                     url_avec=url_avec, maintenant=now(), aujourdhui=aujourdhui(), seuil=seuil_docs(),
-                    nb_alertes=nb_alertes, periode_libelle=periode_libelle, options_de=F.options_de)
+                    nb_alertes=nb_alertes, docs_notif=docs_notif, periode_libelle=periode_libelle, options_de=F.options_de)
 
 
 # --------------------------------------------------------------------------- #
@@ -635,13 +641,12 @@ def register_routes(app):
         if current_user.occupant:
             return redirect(url_for("mon_logement"))
         cartes = {}
-        for code in ("visa", "carte_sejour"):
-            s = stats_documents(code)
-            cartes[code] = dict(stats=[(s["valides"], "valides", ""), (s["alerte"], "à renouveler", "alerte"),
-                                       (s["expires"], "expirés", "ko")],
-                                pied=f"{s['total']} en vigueur · alerte {seuil_docs()} jours avant l'expiration",
-                                alerte=s["alerte"] + s["expires"],
-                                lien=url_for("documents", type_doc=code))
+        s = stats_documents(None)
+        sv, sc = stats_documents("visa"), stats_documents("carte_sejour")
+        cartes["documents"] = dict(stats=[(s["valides"], "valides", ""), (s["alerte"], "à renouveler", "alerte"),
+                                          (s["expires"], "expirés", "ko")],
+                                   pied=f"{sv['total']} visa(s) · {sc['total']} carte(s) de séjour · alerte {seuil_docs()} j avant la fin",
+                                   alerte=s["alerte"] + s["expires"], lien=url_for("documents"))
         a_venir = Billet.query.filter(Billet.date_depart >= aujourdhui(), Billet.statut.in_(("reserve", "emis")))
         debut_annee = aujourdhui().replace(month=1, day=1)
         ce_mois = Billet.query.filter(Billet.date_depart >= aujourdhui().replace(day=1),
@@ -691,7 +696,7 @@ def register_routes(app):
         max_total = max([c["total"] for c in couts] + [1])
         dus = loyers_dus()
         imp = factures_impayees().all()
-        s_visa, s_carte = stats_documents("visa"), stats_documents("carte_sejour")
+        s_visa, s_carte = stats_documents("visa"), stats_documents("carte_sejour")  # noqa
         kpis = dict(
             docs=s_visa["alerte"] + s_visa["expires"] + s_carte["alerte"] + s_carte["expires"],
             docs_expires=s_visa["expires"] + s_carte["expires"],
@@ -790,20 +795,23 @@ def register_routes(app):
     # ---------------- Visas et cartes de séjour ---------------- #
 
     def type_doc_ou_404(type_doc):
-        if type_doc not in TYPES_DOCUMENT:
+        if type_doc not in TYPES_DOCUMENT and type_doc != "tous":
             abort(404)
         return type_doc
 
     def requete_documents(type_doc):
         s = seuil_docs()
-        q = Document.query.options(selectinload(Document.personne)).join(Personne) \
-            .filter(Document.type_doc == type_doc)
+        q = Document.query.options(selectinload(Document.personne)).join(Personne)
+        if type_doc in TYPES_DOCUMENT:
+            q = q.filter(Document.type_doc == type_doc)
         statut = request.args.get("statut", "en_vigueur")
         j = aujourdhui()
         if statut != "historique":
             q = q.filter(Document.remplace.is_(False), Personne.actif.is_(True))
         if statut == "a_renouveler":
             q = q.filter(Document.date_expiration >= j, Document.date_expiration <= j + timedelta(days=s))
+        elif statut == "a_traiter":
+            q = q.filter(Document.date_expiration <= j + timedelta(days=s))
         elif statut == "expires":
             q = q.filter(Document.date_expiration < j)
         elif statut == "valides":
@@ -817,28 +825,34 @@ def register_routes(app):
                              Personne.societe.ilike(like)))
         return q.order_by(Document.date_expiration.asc(), Document.id)
 
+    @app.route("/documents")
     @app.route("/documents/<type_doc>")
     @lecture
-    def documents(type_doc):
+    def documents(type_doc="tous"):
+        type_doc = request.args.get("type") or type_doc
         type_doc_ou_404(type_doc)
         page = requete_documents(type_doc).paginate(page=args_page(), per_page=PAR_PAGE, error_out=False)
-        return render_template("documents.html", page=page, type_doc=type_doc, stats=stats_documents(type_doc),
-                               module=SOUS_MODULES[type_doc])
+        t = type_doc if type_doc in TYPES_DOCUMENT else None
+        return render_template("documents.html", page=page, type_doc=type_doc, stats=stats_documents(t),
+                               nb_type={k: stats_documents(k)["total"] for k in TYPES_DOCUMENT},
+                               module=SOUS_MODULES["documents"])
 
+    @app.route("/documents/export")
     @app.route("/documents/<type_doc>/export")
     @lecture
-    def documents_export(type_doc):
+    def documents_export(type_doc="tous"):
+        type_doc = request.args.get("type") or type_doc
         type_doc_ou_404(type_doc)
         s = seuil_docs()
         etats = {"ok": "Valide", "alerte": "À renouveler", "critique": "À renouveler d'urgence", "expire": "Expiré",
                  "remplace": "Remplacé"}
-        lignes = [[d.personne.nom, d.personne.societe, d.numero, d.categorie, d.pays, d.date_delivrance,
+        lignes = [[d.personne.nom, d.personne.societe, d.type_libelle, d.numero, d.categorie, d.pays, d.date_delivrance,
                    d.date_expiration, d.jours_restants, etats[d.niveau(s)], RENOUVELLEMENT.get(d.renouvellement, ""),
                    d.renouvellement_note, d.cout] for d in requete_documents(type_doc)]
-        return exporter_excel(f"{type_doc}s", TYPES_DOCUMENT[type_doc] + "s", [
-            "Personne", "Société", "Numéro", "Catégorie", "Pays", "Délivré le", "Expire le", "Jours restants",
-            "État", "Renouvellement", "Note", "Coût"], lignes, formats={5: "date", 6: "date", 11: "fcfa"},
-            largeurs=[28, 18, 16, 22, 12, 12, 12, 10, 18, 22, 32, 14], total_col=11)
+        return exporter_excel("visas_cartes_sejour", "Visas et cartes de séjour", [
+            "Personne", "Société", "Type", "Numéro", "Catégorie", "Pays", "Début", "Fin", "Jours restants",
+            "État", "Renouvellement", "Note", "Coût"], lignes, formats={6: "date", 7: "date", 12: "fcfa"},
+            largeurs=[28, 18, 16, 16, 22, 12, 12, 12, 10, 22, 22, 32, 14], total_col=12)
 
     def formulaire_document(type_doc, d=None, renouveler=None):
         champs = F.champs_document(options_personnes)
@@ -887,9 +901,9 @@ def register_routes(app):
         return render_template("formulaire.html", champs=champs, f=f, err=err, objet=d, titre=titre, pieces_form=True,
                                aide=("Saisissez le nouveau document : l'ancien passera automatiquement à « remplacé »."
                                      if renouveler else None),
-                               ariane=[(lib + "s", url_for("documents", type_doc=type_doc))],
+                               ariane=[("Visas et cartes de séjour", url_for("documents"))],
                                retour=url_for("document_fiche", did=(d or renouveler).id) if (d or renouveler)
-                               else url_for("documents", type_doc=type_doc))
+                               else url_for("documents"))
 
     @app.route("/documents/<type_doc>/nouveau", methods=["GET", "POST"])
     @gestion
@@ -903,7 +917,7 @@ def register_routes(app):
         historique = Document.query.filter(Document.personne_id == d.personne_id, Document.type_doc == d.type_doc) \
             .order_by(Document.date_expiration.desc()).all()
         return render_template("document_fiche.html", d=d, historique=historique, pieces=pieces_de("document", d.id),
-                               module=SOUS_MODULES[d.type_doc])
+                               module=SOUS_MODULES["documents"])
 
     @app.route("/document/<int:did>/modifier", methods=["GET", "POST"])
     @gestion
@@ -945,7 +959,7 @@ def register_routes(app):
         journaliser(f"{TYPES_DOCUMENT[type_doc]} supprimé", nom)
         db.session.commit()
         flash("Document supprimé.", "succes")
-        return redirect(url_for("documents", type_doc=type_doc))
+        return redirect(url_for("documents"))
 
     # ---------------- Billets d'avion ---------------- #
 
@@ -1635,7 +1649,7 @@ def register_routes(app):
     @roles("admin")
     def parametres():
         champs = [F.C("alerte_documents_jours", "Alerte avant l'expiration d'un visa, d'une carte de séjour ou d'un passeport",
-                      "entier", requis=True, min=7, max=365, aide="En jours. Recommandé : 60 à 90 jours, le temps de monter le dossier."),
+                      "entier", requis=True, min=7, max=365, aide="En jours. Par défaut : 30 jours."),
                   F.C("alerte_bail_jours", "Alerte avant la fin d'un bail", "entier", requis=True, min=7, max=365,
                       aide="En jours.")]
         if request.method == "POST":

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, badge_doc, entete_module with context %}
 {% block titre %}{{ d.type_libelle }} · {{ d.personne.nom }}{% endblock %}
-{% block sous_module %}{{ d.type_doc }}{% endblock %}
-{% block ariane %}<a href="{{ url_for('documents', type_doc=d.type_doc) }}">{{ d.type_libelle }}s</a><span aria-current="page">{{ d.personne.nom }}</span>{% endblock %}
+{% block sous_module %}documents{% endblock %}
+{% block ariane %}<a href="{{ url_for('documents') }}">Visas et cartes de séjour</a><span aria-current="page">{{ d.personne.nom }}</span>{% endblock %}
 {% block contenu %}
 {% call entete_module(module, d.type_libelle ~ ' — ' ~ d.personne.nom, (d.categorie or '') ~ (' · n° ' ~ d.numero if d.numero else '')) %}
   {% if current_user.gere %}
@@ -33,8 +33,9 @@
         <dt>Numéro</dt><dd>{{ d.numero or '—' }}</dd>
         <dt>Catégorie</dt><dd>{{ d.categorie or '—' }}</dd>
         <dt>Pays</dt><dd>{{ d.pays or '—' }}</dd>
-        <dt>Délivré le</dt><dd>{{ d.date_delivrance|date }}</dd>
-        <dt>Expire le</dt><dd class="gros">{{ d.date_expiration|date }}</dd>
+        <dt>Début de validité</dt><dd class="gros">{{ d.date_delivrance|date }}</dd>
+        <dt>Fin de validité</dt><dd class="gros">{{ d.date_expiration|date }}{% if not d.remplace %} <span class="petit {{ 'texte-ko' if d.jours_restants < 0 else 'texte-alerte' if d.jours_restants <= seuil else 'muted' }}">({{ 'expiré depuis ' ~ (-d.jours_restants) ~ ' j' if d.jours_restants < 0 else 'encore ' ~ d.jours_restants ~ ' j' }})</span>{% endif %}</dd>
+        <dt>Notification</dt><dd>{% if d.remplace %}—{% else %}{% set notif = d.date_expiration - timedelta_jours(seuil) %}le {{ notif|date }} ({{ seuil }} jours avant la fin){% if notif <= aujourdhui %} · <strong class="texte-alerte">active</strong>{% endif %}{% endif %}</dd>
         <dt>Coût</dt><dd>{{ d.cout|fcfa }}</dd>
         {% if d.notes %}<dt>Notes</dt><dd class="pre">{{ d.notes }}</dd>{% endif %}
       </dl>
@@ -43,7 +44,7 @@
     <section class="carte carte-table">
       <div class="carte-entete pad"><h2>{{ icon('clock', 18) }} Historique des {{ d.type_libelle|lower }}s de {{ d.personne.nom }}</h2></div>
       <div class="table-conteneur"><table class="table table-compacte">
-        <thead><tr><th>Numéro</th><th>Délivré le</th><th>Expire le</th><th>État</th></tr></thead>
+        <thead><tr><th>Numéro</th><th>Début</th><th>Fin</th><th>État</th></tr></thead>
         <tbody>{% for h in historique %}
         <tr class="ligne-cliquable {{ 'ligne-actuelle' if h.id == d.id }}" data-href="{{ url_for('document_fiche', did=h.id) }}"><td>{{ h.numero or '—' }}</td><td>{{ h.date_delivrance|date }}</td><td>{{ h.date_expiration|date }}</td><td>{{ badge_doc(h) }}</td></tr>
         {% endfor %}</tbody>

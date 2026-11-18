@@ -27,8 +27,8 @@
     <td class="col-fixe"><a class="lien" href="{{ url_for('personne_fiche', pid=p.id) }}"><strong>{{ p.nom }}</strong></a>{% if p.matricule %}<br><span class="muted petit">{{ p.matricule }}</span>{% endif %}</td>
     <td>{{ p.poste or '—' }}<br><span class="muted petit">{{ p.societe or '' }}</span></td>
     <td>{{ p.nationalite or '—' }}</td>
-    <td>{% if v %}{{ badge_doc(v) }}{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td>{% if c %}{{ badge_doc(c) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if v %}<span class="petit nowrap">{{ v.date_delivrance|date }} → <strong>{{ v.date_expiration|date }}</strong></span><br>{{ badge_doc(v) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if c %}<span class="petit nowrap">{{ c.date_delivrance|date }} → <strong>{{ c.date_expiration|date }}</strong></span><br>{{ badge_doc(c) }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{% if p.passeport_expiration %}{% set j = (p.passeport_expiration - aujourdhui).days %}<span class="{{ 'texte-ko' if j < 0 else 'texte-alerte' if j <= seuil else '' }}">{{ p.passeport_expiration|date }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{% if p.logement %}{{ p.logement.libelle }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>
