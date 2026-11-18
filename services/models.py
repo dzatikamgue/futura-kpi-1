@@ -291,6 +291,7 @@ class Logement(Tracable, db.Model):
     batiment = db.Column(db.String(120), index=True)      # nom du bâtiment (ex. ENERGY CLUB)
     numero = db.Column(db.String(30))                     # n° d'appartement / étage-bloc (ex. 1A)
     residents = db.Column(db.Text)                        # noms des résidents, tels que communiqués
+    date_entree = db.Column(db.Date)                      # entrée dans le logement
     mode_paiement = db.Column(db.String(30))
     type_logement = db.Column(db.String(30), default="Appartement")
     ville = db.Column(db.String(40))
@@ -581,7 +582,7 @@ def migrer():
         "documents": [("note_le", "TIMESTAMP"), ("note_par_id", "INTEGER")],
         "logements": [("charges_mode", "VARCHAR(10) NOT NULL DEFAULT 'aucune'"), ("charges", "BIGINT"),
                       ("batiment", "VARCHAR(120)"), ("numero", "VARCHAR(30)"), ("residents", "TEXT"),
-                      ("mode_paiement", "VARCHAR(30)")],
+                      ("mode_paiement", "VARCHAR(30)"), ("date_entree", "DATE")],
         "loyers": [("montant_charges", "BIGINT")],
     }
     insp = inspect(db.engine)

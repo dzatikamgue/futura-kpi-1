@@ -88,6 +88,7 @@
         <dt>Bâtiment</dt><dd>{{ l.batiment or '—' }}</dd>
         <dt>N° d'appartement</dt><dd>{{ l.numero or '—' }}</dd>
         <dt>Résident(s)</dt><dd>{{ l.residents or '—' }}</dd>
+        <dt>Date d'entrée</dt><dd>{{ l.date_entree|date }}</dd>
         <dt>Bailleur</dt><dd>{{ l.bailleur or '—' }}{% if l.bailleur_telephone %}<br><a class="lien petit" href="tel:{{ l.bailleur_telephone }}">{{ l.bailleur_telephone }}</a>{% endif %}</dd>
         <dt>Loyer</dt><dd>{{ l.loyer|fcfa }} / mois</dd>
         <dt>Charges communes</dt><dd>{% if l.charges_mode == 'en_sus' %}<span class="badge badge-charges">En plus</span> {{ l.charges|fcfa }} / mois<br><span class="muted petit">Total mensuel : {{ l.mensuel_total|fcfa }}</span>

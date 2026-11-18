@@ -511,7 +511,7 @@ def test_logement_residents_et_notification(app, monkeypatch):
     r = rh.post("/logements/nouveau", data={"batiment": "BAT TEST", "numero": "2B", "residents": "Agent A, Agent B",
                                             "loyer": "300 000", "periodicite": "6", "jour_echeance": "5",
                                             "charges_mode": "en_sus", "charges": "50 000",
-                                            "bail_debut": (fin - timedelta(days=180)).isoformat(), "bail_fin": fin.isoformat()})
+                                            "date_entree": "2024-08-15", "bail_debut": (fin - timedelta(days=180)).isoformat(), "bail_fin": fin.isoformat()})
     assert r.status_code == 302
     with app.app_context():
         l = Logement.query.filter_by(numero="2B").one()

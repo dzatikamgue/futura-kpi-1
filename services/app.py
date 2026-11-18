@@ -294,7 +294,7 @@ def import_initial():
                                                        func.lower(Logement.numero) == num.lower()).first():
             continue
         l = Logement(nom=f"{bat} — {num}"[:120], **{k: x[k] for k in champs_l if x.get(k) is not None})
-        for k in ("bail_debut", "bail_fin"):
+        for k in ("bail_debut", "bail_fin", "date_entree"):
             if x.get(k):
                 setattr(l, k, date.fromisoformat(x[k]))
         if "ville" in x and x["ville"] is None:

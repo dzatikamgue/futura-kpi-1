@@ -223,6 +223,7 @@ def champs_logement():
         C("batiment", "Nom du bâtiment", aide="Ex. ENERGY CLUB", attrs="autofocus", liste="batiments"),
         C("numero", "N° d'appartement", max_long=30, aide="Ex. 1A (étage / bloc)"),
         C("residents", "Résident(s)", "zone", plein=True, aide="Noms des personnes logées, séparés par des virgules."),
+        C("date_entree", "Date d'entrée", "date"),
         C("nom", "Nom du logement", aide="Facultatif si le bâtiment et le n° d'appartement sont remplis."),
         C("type_logement", "Type", "choix", options=paires(TYPES_LOGEMENT), vide=None, defaut="Appartement"),
         C("ville", "Ville", "choix", options=paires(VILLES), vide="— Non précisée —", defaut="Douala"),
