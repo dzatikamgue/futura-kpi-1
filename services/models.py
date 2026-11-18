@@ -289,13 +289,13 @@ class Logement(Tracable, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(120), nullable=False)
     batiment = db.Column(db.String(120), index=True)      # nom du bâtiment (ex. ENERGY CLUB)
-    numero = db.Column(db.String(30))                     # n° d'appartement / étage-bloc (ex. 1A)
+    numero = db.Column(db.String(120))                    # n° d'appartement / étage-bloc (ex. 1A)
     residents = db.Column(db.Text)                        # noms des résidents, tels que communiqués
     date_entree = db.Column(db.Date)                      # entrée dans le logement
     montant_periode = db.Column(db.BigInteger)            # montant TTC de la période (tel que facturé)
     prochaine_debut = db.Column(db.Date)                  # prochaine période, PAS ENCORE PAYÉE
     prochaine_fin = db.Column(db.Date)
-    mode_paiement = db.Column(db.String(30))
+    mode_paiement = db.Column(db.String(60))
     type_logement = db.Column(db.String(30), default="Appartement")
     ville = db.Column(db.String(40))
     quartier = db.Column(db.String(120))
@@ -612,8 +612,8 @@ def migrer():
         "personnes": [("entreprise_id", "INTEGER REFERENCES entreprises(id) ON DELETE SET NULL")],
         "documents": [("note_le", "TIMESTAMP"), ("note_par_id", "INTEGER")],
         "logements": [("charges_mode", "VARCHAR(10) NOT NULL DEFAULT 'aucune'"), ("charges", "BIGINT"),
-                      ("batiment", "VARCHAR(120)"), ("numero", "VARCHAR(30)"), ("residents", "TEXT"),
-                      ("mode_paiement", "VARCHAR(30)"), ("date_entree", "DATE"), ("montant_periode", "BIGINT"),
+                      ("batiment", "VARCHAR(120)"), ("numero", "VARCHAR(120)"), ("residents", "TEXT"),
+                      ("mode_paiement", "VARCHAR(60)"), ("date_entree", "DATE"), ("montant_periode", "BIGINT"),
                       ("prochaine_debut", "DATE"), ("prochaine_fin", "DATE")],
         "loyers": [("montant_charges", "BIGINT")],
     }
@@ -624,6 +624,10 @@ def migrer():
             for nom, ddl in colonnes:
                 if nom not in existantes:
                     cx.execute(text(f"ALTER TABLE {table} ADD COLUMN {nom} {ddl}"))
+        # Élargissement de colonnes texte (PostgreSQL applique la longueur ; SQLite non)
+        if db.engine.dialect.name == "postgresql":
+            for table, nom, ddl in (("logements", "numero", "VARCHAR(120)"), ("logements", "mode_paiement", "VARCHAR(60)")):
+                cx.execute(text(f"ALTER TABLE {table} ALTER COLUMN {nom} TYPE {ddl}"))
 
     # Reprise des anciennes « sociétés » saisies en texte libre : une entreprise par nom
     orphelins = Personne.query.filter(Personne.entreprise_id.is_(None), Personne.societe.isnot(None),

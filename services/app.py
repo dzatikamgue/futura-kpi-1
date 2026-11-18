@@ -107,9 +107,13 @@ def create_app():
         try:
             migrer()
             bootstrap_admin()
-            import_initial()
         except IntegrityError:
             db.session.rollback()
+        try:                       # un import défaillant ne doit jamais empêcher l'application de démarrer
+            import_initial()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Import initial : échec, rien n'est importé ({type(e).__name__}: {str(e)[:300]})", flush=True)
 
     register_filters(app)
     register_routes(app)
