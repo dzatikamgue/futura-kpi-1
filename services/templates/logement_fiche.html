@@ -34,23 +34,36 @@
 
 <div class="grille-detail mt-3">
   <div class="colonne">
-    <section class="carte carte-table sm-loyers">
-      <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('key', 16) }}</span> Loyers</h2>
-        <span class="muted petit">{{ l.montant_echeance|fcfa }} · {{ PERIODICITES.get(l.periodicite, '')|lower }} · {{ l.charges_libelle }}</span></div>
+    <section class="carte carte-table sm-loyers" id="historique">
+      <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('key', 16) }}</span> Historique des paiements</h2>
+        <span class="actions">
+          {% if l.loyers %}<a class="btn btn-ghost btn-sm" href="{{ url_for('logement_paiements_export', lid=l.id) }}">{{ icon('download', 14) }} Excel</a>{% endif %}
+          {% if current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('logement_periode_payee', lid=l.id) }}">{{ icon('plus', 14) }} Ajouter un paiement</a>{% endif %}
+        </span></div>
       {% if dus %}
       <ul class="boite pad">
         {% for debut, limite in dus %}
-        <li class="boite-item boite-critique"><div class="boite-corps"><strong>{{ periode_libelle(debut, l.periodicite) }}</strong><p class="muted petit">Échu le {{ limite|date }} · {{ l.montant_echeance|fcfa }}</p></div>
-          {% if current_user.gere %}<a class="btn btn-sm btn-ghost" href="{{ url_for('loyer_payer', logement=l.id, periode=debut.strftime('%Y-%m'), retour=request.path) }}">Payé</a>{% endif %}</li>
+        <li class="boite-item boite-critique"><div class="boite-corps"><strong>Non payé depuis le {{ debut|date }}</strong><p class="muted petit">La période en cours s'est terminée le {{ l.fin_payee|date }}{% if l.montant_a_payer %} · {{ l.montant_a_payer|fcfa }}{% endif %}</p></div>
+          {% if current_user.gere %}<a class="btn btn-sm btn-ghost" href="{{ url_for('logement_periode_payee', lid=l.id) }}">Payé</a>{% endif %}</li>
         {% endfor %}
       </ul>
       {% endif %}
-      {% if l.loyers %}
+      {% set hist = l.loyers|sort(attribute='periode_debut', reverse=True) %}
+      {% if hist %}
       <div class="table-conteneur"><table class="table table-compacte">
-        <thead><tr><th>Période</th><th>Payé le</th><th>Mode</th><th class="num">Montant</th></tr></thead>
-        <tbody>{% for x in l.loyers[:12] %}<tr><td>{{ periode_libelle(x.periode_debut, x.mois) }}</td><td>{{ x.date_paiement|date }}</td><td>{{ x.mode_paiement or '—' }}{% if x.reference %} <span class="muted petit">· {{ x.reference }}</span>{% endif %}</td><td class="num">{{ x.montant|fcfa }}{% if x.montant_charges %}<br><span class="muted petit">dont charges {{ x.montant_charges|fcfa }}</span>{% endif %}</td></tr>{% endfor %}</tbody>
+        <thead><tr><th>Période payée</th><th>Payé le</th><th class="num">Montant</th>{% if current_user.gere %}<th class="num"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+        <tbody>{% for x in hist %}
+          <tr><td><span class="nowrap">{{ x.periode_texte }}</span>{% if x.au == l.bail_fin %} <span class="badge badge-ok">En cours</span>{% endif %}{% if x.notes %}<br><span class="muted petit">{{ x.notes }}</span>{% endif %}</td>
+            <td>{% if x.date_paiement %}{{ x.date_paiement|date }}{% else %}<span class="muted">à compléter</span>{% endif %}
+              {% if x.mode_paiement or x.reference %}<br><span class="muted petit">{{ x.mode_paiement or '' }}{{ ' · ' if x.mode_paiement and x.reference }}{{ x.reference or '' }}</span>{% endif %}</td>
+            <td class="num nowrap">{{ x.montant|fcfa }}{% if x.montant_charges %}<br><span class="muted petit">dont charges {{ x.montant_charges|fcfa }}</span>{% endif %}</td>
+            {% if current_user.gere %}<td class="num nowrap"><a class="btn btn-sm btn-ghost" href="{{ url_for('loyer_modifier', xid=x.id) }}" title="Modifier">{{ icon('edit', 14) }}<span class="sr-only">Modifier</span></a>
+              <form method="post" action="{{ url_for('loyer_supprimer', xid=x.id) }}" class="en-ligne" onsubmit="return confirm('Supprimer ce paiement de l\'historique ?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost" title="Supprimer">{{ icon('trash', 14) }}<span class="sr-only">Supprimer</span></button></form></td>{% endif %}</tr>
+        {% endfor %}</tbody>
+        <tfoot><tr><th colspan="2">Total payé ({{ hist|length }} paiement{{ 's' if hist|length > 1 }})</th><th class="num">{{ hist|sum(attribute='montant')|fcfa }}</th>{% if current_user.gere %}<th></th>{% endif %}</tr></tfoot>
       </table></div>
-      {% elif not dus %}<p class="muted pad">{% if l.loyer %}Aucun paiement enregistré.{% else %}Renseignez le montant du loyer dans la fiche pour suivre les échéances.{% endif %}</p>{% endif %}
+      {% elif not dus %}<p class="muted pad">Aucun paiement enregistré.{% if current_user.gere %} <a class="lien" href="{{ url_for('logement_periode_payee', lid=l.id) }}">Ajouter le premier paiement</a>{% endif %}</p>{% endif %}
     </section>
 
     <section class="carte carte-table">

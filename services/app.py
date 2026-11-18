@@ -1605,7 +1605,7 @@ def register_routes(app):
                   F.C("fin", "Période payée : fin", "date", requis=True),
                   F.C("montant", "Montant payé", "montant", requis=True),
                   F.C("date_paiement", "Payé le", "date", requis=True),
-                  F.C("mode_paiement", "Mode de paiement", max_long=30, liste="modes"),
+                  F.C("mode_paiement", "Mode de paiement", max_long=60, liste="modes"),
                   F.C("reference", "Référence (reçu, virement…)", max_long=80)]
         if request.method == "POST":
             val, err, f = F.lire(champs)
@@ -1619,20 +1619,24 @@ def register_routes(app):
                 nb_mois = max(1, round(((fn - d).days + 1) / 30.4))
                 x = None
                 if not Loyer.query.filter_by(logement_id=l.id, periode_debut=d.replace(day=1)).first():
-                    x = Loyer(logement_id=l.id, periode_debut=d.replace(day=1), mois=nb_mois, montant=val["montant"],
+                    x = Loyer(logement_id=l.id, periode_debut=d.replace(day=1), du=d, au=fn, mois=nb_mois, montant=val["montant"],
                               date_paiement=val["date_paiement"], mode_paiement=val.get("mode_paiement"),
-                              reference=val.get("reference"), notes=f"Période du {d:%d/%m/%Y} au {fn:%d/%m/%Y}",
+                              reference=val.get("reference"),
                               montant_charges=(l.charges_en_sus * nb_mois) or None, cree_par_id=current_user.id)
                     db.session.add(x)
                     db.session.flush()
                     rattacher(pieces, "loyer", x.id)
-                l.bail_debut, l.bail_fin = d, fn
-                if val.get("mode_paiement"):
-                    l.mode_paiement = val["mode_paiement"]
+                if not l.bail_fin or fn >= l.bail_fin:          # un paiement plus ancien n'avance pas la période en cours
+                    l.bail_debut, l.bail_fin = d, fn
+                    if val.get("mode_paiement"):
+                        l.mode_paiement = val["mode_paiement"]
+                if not l.loyers_suivis_depuis or d.replace(day=1) < l.loyers_suivis_depuis:
+                    l.loyers_suivis_depuis = d.replace(day=1)
                 journaliser("Période de loyer payée", l.libelle,
                             f"{d:%d/%m/%Y} → {fn:%d/%m/%Y} · {_milliers(val['montant'])} FCFA")
                 db.session.commit()
-                flash(f"Paiement enregistré : {l.libelle} payé jusqu'au {fn:%d/%m/%Y}.", "succes")
+                flash(f"Paiement enregistré : {l.libelle}, période du {d:%d/%m/%Y} au {fn:%d/%m/%Y}."
+                      if x else "Cette période était déjà dans l'historique : la période en cours a été mise à jour.", "succes")
                 return redirect(url_for("logement_fiche", lid=l.id))
         else:
             err = {}
@@ -1642,7 +1646,7 @@ def register_routes(app):
         return render_template("formulaire.html", champs=champs, f=f, err=err, objet=None, pieces_form=True,
                                listes={"modes": MODES_PAIEMENT + ["Versement bancaire"]},
                                titre=f"Paiement du loyer — {l.libelle}", bouton="Enregistrer le paiement",
-                               aide="La période saisie devient la période en cours (payée).",
+                               aide="La période saisie est ajoutée à l'historique ; si c'est la plus récente, elle devient la période en cours.",
                                ariane=[("Logements", url_for("logements")), (l.libelle, url_for("logement_fiche", lid=l.id))],
                                retour=url_for("logement_fiche", lid=l.id))
 
@@ -1652,7 +1656,7 @@ def register_routes(app):
         l = ou_404(Logement, lid)
         debut_an = aujourdhui().replace(month=1, day=1)
         couts = dict(
-            loyers=sum(x.montant for x in l.loyers if x.date_paiement >= debut_an),
+            loyers=sum(x.montant for x in l.loyers if (x.date_paiement or x.du or x.periode_debut) >= debut_an),
             electricite=sum(x.montant for x in l.factures if x.type_energie == "electricite" and x.periode >= debut_an),
             eau=sum(x.montant for x in l.factures if x.type_energie == "eau" and x.periode >= debut_an),
             reparations=sum(x.cout or 0 for x in l.reparations if x.signale_le.date() >= debut_an),
@@ -1670,7 +1674,7 @@ def register_routes(app):
         q = Loyer.query.options(selectinload(Loyer.logement), selectinload(Loyer.cree_par))
         if (request.args.get("logement") or "").isdigit():
             q = q.filter(Loyer.logement_id == int(request.args["logement"]))
-        page = q.order_by(Loyer.date_paiement.desc(), Loyer.id.desc()) \
+        page = q.order_by(Loyer.date_paiement.desc().nullslast(), Loyer.id.desc()) \
             .paginate(page=args_page(), per_page=PAR_PAGE, error_out=False)
         debut_an = aujourdhui().replace(month=1, day=1)
         paye_an = db.session.query(func.coalesce(func.sum(Loyer.montant), 0)).filter(Loyer.date_paiement >= debut_an).scalar()
@@ -1682,7 +1686,7 @@ def register_routes(app):
     def loyers_export():
         lignes = [[x.logement.nom, x.logement.quartier, x.logement.bailleur, periode_libelle(x.periode_debut, x.mois),
                    x.montant, x.montant_charges, x.date_paiement, x.mode_paiement, x.reference, x.cree_par.nom if x.cree_par else ""]
-                  for x in Loyer.query.options(selectinload(Loyer.logement)).order_by(Loyer.date_paiement.desc())]
+                  for x in Loyer.query.options(selectinload(Loyer.logement)).order_by(Loyer.date_paiement.desc().nullslast())]
         return exporter_excel("loyers", "Loyers payés", [
             "Logement", "Quartier", "Bailleur", "Période", "Montant total", "dont charges communes", "Payé le", "Mode",
             "Référence", "Saisi par"],
@@ -1734,15 +1738,87 @@ def register_routes(app):
                                aide="Pour un loyer trimestriel ou annuel, indiquez le premier mois de la période payée.",
                                ariane=[("Loyers", url_for("loyers"))], retour=url_for("loyers"))
 
+    def recaler_periode(l):
+        """La période en cours suit le paiement le plus récent de l'historique (s'il y en a)."""
+        dernier = max((p for p in l.loyers if p.du and p.au), key=lambda p: p.au, default=None)
+        if dernier:
+            l.bail_debut, l.bail_fin = dernier.du, dernier.au
+
+    @app.route("/loyer/<int:xid>/modifier", methods=["GET", "POST"])
+    @gestion
+    def loyer_modifier(xid):
+        x = ou_404(Loyer, xid)
+        l = x.logement
+        champs = [F.C("du", "Période payée : début", "date", requis=True),
+                  F.C("au", "Période payée : fin", "date", requis=True),
+                  F.C("montant", "Montant payé", "montant", requis=True),
+                  F.C("date_paiement", "Payé le", "date"),
+                  F.C("mode_paiement", "Mode de paiement", max_long=60, liste="modes"),
+                  F.C("reference", "Référence (reçu, virement…)", max_long=80),
+                  F.C("notes", "Notes", max_long=255)]
+        if request.method == "POST":
+            val, err, f = F.lire(champs)
+            if val.get("du") and val.get("au") and val["au"] < val["du"]:
+                err["au"] = "La fin doit suivre le début."
+            if val.get("du"):
+                autre = Loyer.query.filter(Loyer.logement_id == l.id, Loyer.periode_debut == val["du"].replace(day=1),
+                                           Loyer.id != x.id).first()
+                if autre:
+                    err["du"] = "Un autre paiement de l'historique commence déjà ce mois-ci."
+            pieces, e = lire_pieces()
+            if e:
+                err["pieces"] = e
+            if not err:
+                for k in ("du", "au", "montant", "date_paiement", "mode_paiement", "reference", "notes"):
+                    setattr(x, k, val.get(k) or None)
+                x.periode_debut = x.du.replace(day=1)
+                x.mois = max(1, round(((x.au - x.du).days + 1) / 30.4))
+                rattacher(pieces, "loyer", x.id)
+                db.session.flush()
+                db.session.expire(l, ["loyers"])
+                recaler_periode(l)
+                journaliser("Paiement de loyer modifié", l.libelle, f"{x.periode_texte} · {_milliers(x.montant)} FCFA")
+                db.session.commit()
+                flash("Paiement modifié.", "succes")
+                return redirect(url_for("logement_fiche", lid=l.id) + "#historique")
+        else:
+            err = {}
+            f = {"du": (x.du or x.periode_debut).isoformat(),
+                 "au": (x.au or (x.periode_fin - timedelta(days=1))).isoformat(),
+                 "montant": _milliers(x.montant), "date_paiement": x.date_paiement.isoformat() if x.date_paiement else "",
+                 "mode_paiement": x.mode_paiement or "", "reference": x.reference or "", "notes": x.notes or ""}
+        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=x, pieces_form=True,
+                               listes={"modes": MODES_PAIEMENT + ["Versement bancaire"]},
+                               titre=f"Modifier un paiement — {l.libelle}", bouton="Enregistrer",
+                               ariane=[("Logements", url_for("logements")), (l.libelle, url_for("logement_fiche", lid=l.id))],
+                               retour=url_for("logement_fiche", lid=l.id) + "#historique")
+
+    @app.route("/logement/<int:lid>/paiements/export")
+    @lecture
+    def logement_paiements_export(lid):
+        l = ou_404(Logement, lid)
+        lignes = [[x.du or x.periode_debut, x.au or (x.periode_fin - timedelta(days=1)), x.montant, x.montant_charges,
+                   x.date_paiement, x.mode_paiement, x.reference, x.notes, x.cree_par.nom if x.cree_par else ""]
+                  for x in sorted(l.loyers, key=lambda p: p.du or p.periode_debut, reverse=True)]
+        return exporter_excel(f"paiements_logement_{l.id}", f"Paiements {l.libelle}"[:31], [
+            "Du", "Au", "Montant payé", "dont charges communes", "Payé le", "Mode", "Référence", "Notes", "Saisi par"],
+            lignes, formats={0: "date", 1: "date", 2: "fcfa", 3: "fcfa", 4: "date"},
+            largeurs=[12, 12, 16, 16, 12, 18, 18, 40, 18], total_col=2)
+
     @app.route("/loyer/<int:xid>/supprimer", methods=["POST"])
     @gestion
     def loyer_supprimer(xid):
         x = ou_404(Loyer, xid)
+        l = x.logement
         supprimer_pieces("loyer", x.id)
-        journaliser("Paiement de loyer supprimé", x.logement.nom, periode_libelle(x.periode_debut, x.mois))
+        journaliser("Paiement de loyer supprimé", l.libelle, x.periode_texte)
         db.session.delete(x)
+        db.session.flush()
+        db.session.expire(l, ["loyers"])
+        recaler_periode(l)
         db.session.commit()
-        flash("Paiement supprimé : l'échéance redevient due.", "succes")
+        flash("Paiement supprimé de l'historique.", "succes")
+
         return redirect(request.referrer if (request.referrer or "").startswith(request.host_url) else url_for("loyers"))
 
     @app.route("/loyer/<int:xid>/pieces")

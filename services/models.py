@@ -446,8 +446,10 @@ class Loyer(Tracable, db.Model):
     mois = db.Column(db.Integer, nullable=False, default=1)
     montant = db.Column(db.BigInteger, nullable=False)       # total payé (loyer + charges en sus)
     montant_charges = db.Column(db.BigInteger)               # dont charges communes payées en plus
-    date_paiement = db.Column(db.Date, nullable=False)
-    mode_paiement = db.Column(db.String(30))
+    date_paiement = db.Column(db.Date)                       # vide si inconnue (reprise d'un fichier)
+    du = db.Column(db.Date)                                  # dates exactes de la période payée
+    au = db.Column(db.Date)
+    mode_paiement = db.Column(db.String(60))
     reference = db.Column(db.String(80))
     notes = db.Column(db.String(255))
     cree_par_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id"))
@@ -458,6 +460,13 @@ class Loyer(Tracable, db.Model):
     @property
     def periode_fin(self):
         return mois_ajoutes(self.periode_debut, self.mois or 1)
+
+    @property
+    def periode_texte(self):
+        if self.du and self.au:
+            return f"{self.du:%d/%m/%Y} → {self.au:%d/%m/%Y}"
+        from datetime import timedelta
+        return f"{self.periode_debut:%d/%m/%Y} → {(self.periode_fin - timedelta(days=1)):%d/%m/%Y}"
 
 
 class FactureEnergie(Tracable, db.Model):
@@ -619,7 +628,7 @@ def migrer():
                       ("batiment", "VARCHAR(120)"), ("numero", "VARCHAR(120)"), ("residents", "TEXT"),
                       ("mode_paiement", "VARCHAR(60)"), ("date_entree", "DATE"), ("montant_periode", "BIGINT"),
                       ("prochaine_debut", "DATE"), ("prochaine_fin", "DATE")],
-        "loyers": [("montant_charges", "BIGINT")],
+        "loyers": [("montant_charges", "BIGINT"), ("du", "DATE"), ("au", "DATE")],
     }
     insp = inspect(db.engine)
     with db.engine.begin() as cx:
@@ -630,8 +639,10 @@ def migrer():
                     cx.execute(text(f"ALTER TABLE {table} ADD COLUMN {nom} {ddl}"))
         # Élargissement de colonnes texte (PostgreSQL applique la longueur ; SQLite non)
         if db.engine.dialect.name == "postgresql":
-            for table, nom, ddl in (("logements", "numero", "VARCHAR(120)"), ("logements", "mode_paiement", "VARCHAR(60)")):
+            for table, nom, ddl in (("logements", "numero", "VARCHAR(120)"), ("logements", "mode_paiement", "VARCHAR(60)"),
+                                    ("loyers", "mode_paiement", "VARCHAR(60)")):
                 cx.execute(text(f"ALTER TABLE {table} ALTER COLUMN {nom} TYPE {ddl}"))
+            cx.execute(text("ALTER TABLE loyers ALTER COLUMN date_paiement DROP NOT NULL"))
 
     # Reprise des anciennes « sociétés » saisies en texte libre : une entreprise par nom
     orphelins = Personne.query.filter(Personne.entreprise_id.is_(None), Personne.societe.isnot(None),
@@ -655,4 +666,23 @@ def migrer():
                 l.bail_fin = l.prochaine_debut - timedelta(days=1)
             l.prochaine_debut = l.prochaine_fin = None
         db.session.add(Parametre(cle="prochaines_supprimees", valeur="1"))
+        db.session.commit()
+
+    # Historique de départ : la période en cours (payée d'après le fichier) devient le premier paiement connu.
+    # La date de paiement n'étant pas dans le fichier, elle reste vide (à compléter).
+    if not db.session.get(Parametre, "historique_initial"):
+        from datetime import timedelta
+        for l in Logement.query.filter(Logement.bail_debut.isnot(None), Logement.bail_fin.isnot(None)):
+            montant = l.montant_periode or (l.montant_echeance if l.loyer else None)
+            pd = l.bail_debut.replace(day=1)
+            if not montant or Loyer.query.filter_by(logement_id=l.id, periode_debut=pd).first():
+                continue
+            nb = max(1, round(((l.bail_fin - l.bail_debut).days + 1) / 30.4))
+            db.session.add(Loyer(logement_id=l.id, periode_debut=pd, du=l.bail_debut, au=l.bail_fin, mois=nb,
+                                 montant=montant, montant_charges=(l.charges_en_sus * nb) or None,
+                                 mode_paiement=l.mode_paiement,
+                                 notes="Repris du fichier SUIVI_LOYERS — date de paiement à compléter"))
+            if not l.loyers_suivis_depuis or pd < l.loyers_suivis_depuis:
+                l.loyers_suivis_depuis = pd
+        db.session.add(Parametre(cle="historique_initial", valeur="1"))
         db.session.commit()

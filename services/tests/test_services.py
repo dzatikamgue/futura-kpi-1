@@ -1,7 +1,7 @@
 """Tests — Futura Services généraux."""
 import os
 import sys
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -609,3 +609,38 @@ def test_supprimer_logement(app):
         assert db.session.get(Logement, lid) is None and Loyer.query.count() == 0
         assert Personne.query.filter_by(nom="AGENT TEST").one().logement_id is None
     assert client(app, "dg").post(f"/logement/{lid}/supprimer", data={"confirmation": "SUPPRIMER"}).status_code in (302, 403, 404)
+
+
+def test_historique_paiements(app):
+    from models import Logement, Loyer, Parametre, aujourdhui, db, migrer
+    with app.app_context():
+        l = Logement(nom="H — 1", batiment="H", numero="1", loyer=300000, charges=50000, charges_mode="en_sus",
+                     periodicite=6, montant_periode=2100000, bail_debut=date(2026, 10, 16), bail_fin=date(2027, 4, 15))
+        db.session.add(l)
+        db.session.query(Parametre).filter_by(cle="historique_initial").delete()
+        db.session.commit()
+        migrer()                                     # reprise : la période en cours devient le 1er paiement
+        x = Loyer.query.filter_by(logement_id=l.id).one()
+        assert x.du == date(2026, 10, 16) and x.au == date(2027, 4, 15) and x.date_paiement is None and x.montant == 2100000
+        lid, xid = l.id, x.id
+    rh = client(app, "rh")
+    page = rh.get(f"/logement/{lid}").get_data(as_text=True)
+    assert "Historique des paiements" in page and "16/10/2026 → 15/04/2027" in page and "à compléter" in page
+    # paiement plus ancien : ajouté à l'historique sans changer la période en cours
+    r = rh.post(f"/logement/{lid}/periode-payee", data={"debut": "2026-04-16", "fin": "2026-10-15", "montant": "2 100 000",
+                                                        "date_paiement": "2026-04-10"})
+    assert r.status_code == 302
+    with app.app_context():
+        l = db.session.get(Logement, lid)
+        assert len(l.loyers) == 2 and l.bail_fin == date(2027, 4, 15)
+    # compléter la date de paiement de la reprise
+    r = rh.post(f"/loyer/{xid}/modifier", data={"du": "2026-10-16", "au": "2027-04-15", "montant": "2 100 000",
+                                                "date_paiement": "2026-10-12", "mode_paiement": "Versement bancaire"})
+    assert r.status_code == 302
+    with app.app_context():
+        assert db.session.get(Loyer, xid).date_paiement == date(2026, 10, 12)
+    assert rh.get(f"/logement/{lid}/paiements/export").status_code == 200
+    # supprimer le dernier paiement : la période en cours revient au précédent
+    rh.post(f"/loyer/{xid}/supprimer")
+    with app.app_context():
+        assert db.session.get(Logement, lid).bail_fin == date(2026, 10, 15)
