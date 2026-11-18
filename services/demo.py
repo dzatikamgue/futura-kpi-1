@@ -34,7 +34,9 @@ def charger():
                      jour_echeance=5, caution=loyer * 3, bail_debut=j - timedelta(days=400),
                      bail_fin=j + timedelta(days=40 if quartier == "Akwa" else 400),
                      loyers_suivis_depuis=mois_ajoutes(m0, -5), compteur_electricite="ENEO-" + quartier[:3].upper() + "-0412",
-                     compteur_eau="CDE-" + quartier[:3].upper() + "-77")
+                     compteur_eau="CDE-" + quartier[:3].upper() + "-77",
+                     charges_mode={"Bonapriso": "en_sus", "Bonanjo": "incluses"}.get(quartier, "aucune"),
+                     charges={"Bonapriso": 50_000, "Bonanjo": 100_000}.get(quartier))
         db.session.add(l)
         L.append(l)
     db.session.flush()

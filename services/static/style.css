@@ -931,3 +931,5 @@ body[class*="sm-"] .entete { box-shadow: inset 0 3px 0 var(--esp); }
 .form-note { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
 .form-note input { flex: 1; min-width: 0; padding: 5px 8px; font-size: 13px; }
 .note-doc { margin: 4px 0 0; padding: 4px 8px; font-size: 13px; background: var(--surface-2); border-radius: var(--r1); display: flex; gap: 6px; align-items: flex-start; }
+.badge-charges { background: var(--alerte-doux); color: var(--alerte); }
+.carte-charges { display: block; font-weight: 400; font-size: 12px; margin-top: 2px; }

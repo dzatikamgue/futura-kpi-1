@@ -29,7 +29,7 @@
       <td>{{ e.periode }}</td>
       <td>{{ e.limite|date }}</td>
       <td>{% if retard %}<span class="badge badge-ko">En retard · {{ e.jours }} j</span>{% else %}<span class="badge badge-alerte">Dans {{ e.jours }} j</span>{% endif %}</td>
-      <td class="num">{{ e.montant|fcfa }}</td>
+      <td class="num">{{ e.montant|fcfa }}{% if e.logement.charges_en_sus %}<br><span class="muted petit">dont charges {{ (e.logement.charges_en_sus * e.logement.periodicite)|fcfa }}</span>{% elif e.logement.charges_mode == 'incluses' %}<br><span class="muted petit">charges incluses</span>{% endif %}</td>
       {% if current_user.gere %}<td class="num"><a class="btn btn-sm {{ 'btn-primary' if retard else 'btn-ghost' }}" href="{{ url_for('loyer_payer', logement=e.logement.id, periode=e.debut.strftime('%Y-%m')) }}">{{ icon('check', 14) }} Payé</a></td>{% endif %}
     </tr>
     {% endfor %}
@@ -55,7 +55,7 @@
       <td>{{ x.date_paiement|date }}</td>
       <td>{{ x.mode_paiement or '—' }}{% if x.reference %}<br><span class="muted petit">{{ x.reference }}</span>{% endif %}</td>
       <td class="muted petit">{{ x.cree_par.nom if x.cree_par else '' }}</td>
-      <td class="num">{{ x.montant|fcfa }}</td>
+      <td class="num">{{ x.montant|fcfa }}{% if x.montant_charges %}<br><span class="muted petit">dont charges {{ x.montant_charges|fcfa }}</span>{% endif %}</td>
       {% if current_user.gere %}<td class="num">
         <form method="post" action="{{ url_for('loyer_supprimer', xid=x.id) }}" data-confirm="Supprimer ce paiement ? L'échéance redeviendra due.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-icone" aria-label="Supprimer ce paiement" title="Supprimer">{{ icon('trash', 16) }}</button></form></td>{% endif %}

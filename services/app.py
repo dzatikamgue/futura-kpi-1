@@ -1445,7 +1445,7 @@ def register_routes(app):
                              Logement.adresse.ilike(like)))
         liste = q.order_by(Logement.ville, Logement.nom).all()
         return render_template("logements.html", liste=liste,
-                               total_loyers=sum(l.loyer or 0 for l in liste if l.actif))
+                               total_loyers=sum(l.mensuel_total for l in liste if l.actif))
 
     def formulaire_logement(l=None):
         champs = F.champs_logement()
@@ -1455,6 +1455,8 @@ def register_routes(app):
             val, err, f = F.lire(champs)
             if val.get("bail_debut") and val.get("bail_fin") and val["bail_fin"] < val["bail_debut"]:
                 err["bail_fin"] = "La fin du bail doit suivre son début."
+            if val.get("charges_mode") == "en_sus" and not val.get("charges"):
+                err["charges"] = "Indiquez le montant des charges communes payées en plus du loyer."
             if val.get("loyer") and not val.get("loyers_suivis_depuis"):
                 val["loyers_suivis_depuis"] = aujourdhui().replace(day=1)
             if not err:
@@ -1464,6 +1466,9 @@ def register_routes(app):
                     db.session.add(l)
                 F.appliquer(champs, l, val)
                 l.jour_echeance = val.get("jour_echeance") or 5
+                l.charges_mode = val.get("charges_mode") or "aucune"
+                if l.charges_mode == "aucune":
+                    l.charges = None
                 l.periodicite = val.get("periodicite") or 1
                 db.session.flush()
                 journaliser(f"Logement {'créé' if nouveau else 'modifié'}", l.nom)
@@ -1524,11 +1529,12 @@ def register_routes(app):
     @lecture
     def loyers_export():
         lignes = [[x.logement.nom, x.logement.quartier, x.logement.bailleur, periode_libelle(x.periode_debut, x.mois),
-                   x.montant, x.date_paiement, x.mode_paiement, x.reference, x.cree_par.nom if x.cree_par else ""]
+                   x.montant, x.montant_charges, x.date_paiement, x.mode_paiement, x.reference, x.cree_par.nom if x.cree_par else ""]
                   for x in Loyer.query.options(selectinload(Loyer.logement)).order_by(Loyer.date_paiement.desc())]
         return exporter_excel("loyers", "Loyers payés", [
-            "Logement", "Quartier", "Bailleur", "Période", "Montant", "Payé le", "Mode", "Référence", "Saisi par"],
-            lignes, formats={4: "fcfa", 5: "date"}, largeurs=[28, 18, 24, 24, 16, 12, 14, 18, 20], total_col=4)
+            "Logement", "Quartier", "Bailleur", "Période", "Montant total", "dont charges communes", "Payé le", "Mode",
+            "Référence", "Saisi par"],
+            lignes, formats={4: "fcfa", 5: "fcfa", 6: "date"}, largeurs=[28, 18, 24, 24, 16, 16, 12, 14, 18, 20], total_col=4)
 
     @app.route("/loyers/payer", methods=["GET", "POST"])
     @gestion
@@ -1540,6 +1546,8 @@ def register_routes(app):
             if l and val.get("periode_debut"):
                 if Loyer.query.filter_by(logement_id=l.id, periode_debut=val["periode_debut"]).first():
                     err["periode_debut"] = "Cette échéance est déjà enregistrée comme payée pour ce logement."
+            if val.get("montant_charges") and val.get("montant") and val["montant_charges"] > val["montant"]:
+                err["montant_charges"] = "Les charges ne peuvent pas dépasser le montant total payé."
             pieces, e = lire_pieces()
             if e:
                 err["pieces"] = e
@@ -1563,6 +1571,8 @@ def register_routes(app):
             if lid.isdigit() and (l := db.session.get(Logement, int(lid))):
                 f["logement_id"] = lid
                 f["montant"] = _milliers(l.montant_echeance) if l.loyer else ""
+                if l.charges_en_sus:
+                    f["montant_charges"] = _milliers(l.charges_en_sus * (l.periodicite or 1))
                 p = request.args.get("periode") or ((l.echeances_dues() or [None])[0] or l.prochaine_echeance() or [None])[0]
                 if isinstance(p, date):
                     p = p.strftime("%Y-%m")

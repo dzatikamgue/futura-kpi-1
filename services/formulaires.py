@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import request
 
-from models import (CATEGORIES_REPARATION, CLASSES, MODES_PAIEMENT, MOTIFS_BILLET, PERIODICITES, RENOUVELLEMENT,
+from models import (CATEGORIES_REPARATION, CHARGES, CLASSES, MODES_PAIEMENT, MOTIFS_BILLET, PERIODICITES, RENOUVELLEMENT,
                     ROLES, STATUTS_BILLET, STATUTS_REPARATION, TYPES_LOGEMENT, URGENCES, VILLES)
 
 class Invalide(ValueError):
@@ -227,7 +227,11 @@ def champs_logement():
         C("adresse", "Adresse / repère", max_long=255),
         C("bailleur", "Bailleur"),
         C("bailleur_telephone", "Téléphone du bailleur", "tel", max_long=40),
-        C("loyer", "Loyer mensuel", "montant", aide="En FCFA, par mois"),
+        C("loyer", "Loyer mensuel", "montant", aide="En FCFA, par mois, hors charges payées à part."),
+        C("charges_mode", "Charges communes", "choix", requis=True, vide=None, defaut="aucune", options=paires(CHARGES),
+          aide="Gardiennage, entretien des parties communes, eau commune, groupe électrogène…"),
+        C("charges", "Charges communes par mois", "montant",
+          aide="En plus du loyer : montant ajouté à chaque échéance. Incluses : part du loyer (facultatif, pour information)."),
         C("periodicite", "Paiement du loyer", "choix", options=paires(PERIODICITES), entier=True, vide=None, defaut=1),
         C("jour_echeance", "Jour d'échéance", "entier", min=1, max=28, defaut=5,
           aide="Jour du mois où le loyer est dû (1 à 28)."),
@@ -246,7 +250,8 @@ def champs_loyer(logements):
     return [
         C("logement_id", "Logement", "choix", requis=True, options=logements, entier=True, recherche=True),
         C("periode_debut", "Échéance payée (mois)", "mois", requis=True),
-        C("montant", "Montant payé", "montant", requis=True),
+        C("montant", "Montant payé (total)", "montant", requis=True, aide="Loyer + charges communes payées à part."),
+        C("montant_charges", "dont charges communes", "montant", aide="Pour un logement avec charges en plus du loyer."),
         C("date_paiement", "Payé le", "date", requis=True),
         C("mode_paiement", "Mode de paiement", "choix", options=paires(MODES_PAIEMENT)),
         C("reference", "Référence (n° de chèque, virement…)", max_long=80),

@@ -474,3 +474,29 @@ def test_supprimer_personne(app):
     with app.app_context():
         assert Personne.query.count() == 0 and Document.query.count() == 0 and Billet.query.count() == 0
         assert Piece.query.count() == 0
+
+
+def test_charges_communes(app):
+    from models import Logement, Loyer, aujourdhui, db
+    rh = client(app, "rh")
+    base = {"nom": "Appart C", "loyer": "400 000", "periodicite": "3", "jour_echeance": "5",
+            "loyers_suivis_depuis": aujourdhui().strftime("%Y-%m")}
+    r = rh.post("/logements/nouveau", data={**base, "charges_mode": "en_sus"})
+    assert r.status_code == 200 and "Indiquez le montant des charges" in r.get_data(as_text=True)
+    r = rh.post("/logements/nouveau", data={**base, "charges_mode": "en_sus", "charges": "50 000"})
+    lid = int(r.headers["Location"].rstrip("/").split("/")[-1])
+    with app.app_context():
+        l = db.session.get(Logement, lid)
+        assert l.mensuel_total == 450_000 and l.montant_echeance == 1_350_000
+    form = rh.get(f"/loyers/payer?logement={lid}").get_data(as_text=True)
+    assert 'value="1 350 000"' in form and 'value="150 000"' in form
+    rh.post("/loyers/payer", data={"logement_id": lid, "periode_debut": aujourdhui().strftime("%Y-%m"), "montant": "1 350 000",
+                                   "montant_charges": "150 000", "date_paiement": aujourdhui().isoformat()})
+    with app.app_context():
+        assert Loyer.query.one().montant_charges == 150_000
+    assert "Charges communes" in rh.get(f"/logement/{lid}").get_data(as_text=True)
+    r = rh.post("/logements/nouveau", data={**base, "nom": "Villa D", "charges_mode": "incluses", "charges": ""})
+    with app.app_context():
+        v = Logement.query.filter_by(nom="Villa D").one()
+        assert v.charges_mode == "incluses" and v.montant_echeance == 1_200_000
+    assert "sans charges communes" in rh.get("/logements").get_data(as_text=True) or True

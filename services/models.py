@@ -51,6 +51,8 @@ CLASSES = ["Économique", "Premium", "Affaires", "Première"]
 
 TYPES_LOGEMENT = ["Appartement", "Studio", "Villa", "Chambre", "Autre"]
 VILLES = ["Douala", "Yaoundé", "Kribi", "Bafoussam", "Autre"]
+CHARGES = {"aucune": "Sans charges communes", "incluses": "Charges communes incluses dans le loyer",
+           "en_sus": "Charges communes en plus du loyer"}
 PERIODICITES = {1: "Mensuel", 3: "Trimestriel", 6: "Semestriel", 12: "Annuel"}
 MODES_PAIEMENT = ["Virement", "Chèque", "Espèces", "Mobile money", "Prélèvement"]
 
@@ -292,7 +294,9 @@ class Logement(Tracable, db.Model):
     adresse = db.Column(db.String(255))
     bailleur = db.Column(db.String(160))
     bailleur_telephone = db.Column(db.String(40))
-    loyer = db.Column(db.BigInteger)                     # montant par mois
+    loyer = db.Column(db.BigInteger)                     # montant par mois (hors charges si « en sus »)
+    charges_mode = db.Column(db.String(10), nullable=False, default="aucune")   # aucune / incluses / en_sus
+    charges = db.Column(db.BigInteger)                   # charges communes par mois (montant ou part incluse)
     periodicite = db.Column(db.Integer, nullable=False, default=1)   # mois couverts par échéance
     jour_echeance = db.Column(db.Integer, nullable=False, default=5)
     caution = db.Column(db.BigInteger)
@@ -313,8 +317,26 @@ class Logement(Tracable, db.Model):
                                   order_by="Reparation.signale_le.desc()")
 
     @property
+    def charges_en_sus(self):
+        """Charges communes à payer en plus du loyer, par mois."""
+        return (self.charges or 0) if self.charges_mode == "en_sus" else 0
+
+    @property
+    def mensuel_total(self):
+        """Ce que coûte le logement chaque mois : loyer + charges communes payées à part."""
+        return (self.loyer or 0) + self.charges_en_sus
+
+    @property
     def montant_echeance(self):
-        return (self.loyer or 0) * (self.periodicite or 1)
+        return self.mensuel_total * (self.periodicite or 1)
+
+    @property
+    def charges_libelle(self):
+        if self.charges_mode == "en_sus":
+            return f"+ charges communes {self.charges or 0:,} FCFA/mois".replace(",", " ")
+        if self.charges_mode == "incluses":
+            return "charges communes incluses" + (f" (dont {self.charges:,} FCFA)".replace(",", " ") if self.charges else "")
+        return "sans charges communes"
 
     @property
     def libelle(self):
@@ -365,7 +387,8 @@ class Loyer(Tracable, db.Model):
     logement_id = db.Column(db.Integer, db.ForeignKey("logements.id", ondelete="CASCADE"), nullable=False, index=True)
     periode_debut = db.Column(db.Date, nullable=False)
     mois = db.Column(db.Integer, nullable=False, default=1)
-    montant = db.Column(db.BigInteger, nullable=False)
+    montant = db.Column(db.BigInteger, nullable=False)       # total payé (loyer + charges en sus)
+    montant_charges = db.Column(db.BigInteger)               # dont charges communes payées en plus
     date_paiement = db.Column(db.Date, nullable=False)
     mode_paiement = db.Column(db.String(30))
     reference = db.Column(db.String(80))
@@ -535,6 +558,8 @@ def migrer():
     COLONNES_AJOUTEES = {
         "personnes": [("entreprise_id", "INTEGER REFERENCES entreprises(id) ON DELETE SET NULL")],
         "documents": [("note_le", "TIMESTAMP"), ("note_par_id", "INTEGER")],
+        "logements": [("charges_mode", "VARCHAR(10) NOT NULL DEFAULT 'aucune'"), ("charges", "BIGINT")],
+        "loyers": [("montant_charges", "BIGINT")],
     }
     insp = inspect(db.engine)
     with db.engine.begin() as cx:

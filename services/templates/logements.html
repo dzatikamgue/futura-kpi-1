@@ -24,7 +24,8 @@
     </div>
     <div class="carte-logement-occ">{{ icon('users', 14) }} {% if l.occupants %}{{ l.occupants|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">Aucun occupant</span>{% endif %}</div>
     <div class="carte-logement-pied">
-      <span class="gros-montant">{{ l.loyer|fcfa }}<small>/mois</small></span>
+      <span class="gros-montant">{{ l.mensuel_total|fcfa }}<small>/mois</small>
+        <span class="petit muted carte-charges">{% if l.charges_mode == 'en_sus' %}dont {{ l.charges|fcfa }} de charges communes{% elif l.charges_mode == 'incluses' %}charges communes incluses{% else %}sans charges communes{% endif %}</span></span>
       <span class="carte-logement-badges">
         {% if dus %}<span class="badge badge-ko">{{ dus|length }} loyer{{ 's' if dus|length > 1 }} en retard</span>{% elif l.loyer %}<span class="badge badge-ok">Loyers à jour</span>{% endif %}
         {% if rep %}<span class="badge badge-alerte">{{ rep|length }} réparation{{ 's' if rep|length > 1 }}</span>{% endif %}

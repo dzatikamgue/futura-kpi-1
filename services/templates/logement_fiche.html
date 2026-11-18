@@ -29,7 +29,7 @@
   <div class="colonne">
     <section class="carte carte-table sm-loyers">
       <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('key', 16) }}</span> Loyers</h2>
-        <span class="muted petit">{{ l.montant_echeance|fcfa }} · {{ PERIODICITES[l.periodicite]|lower }}, le {{ l.jour_echeance }}</span></div>
+        <span class="muted petit">{{ l.montant_echeance|fcfa }} · {{ PERIODICITES[l.periodicite]|lower }}, le {{ l.jour_echeance }} · {{ l.charges_libelle }}</span></div>
       {% if dus %}
       <ul class="boite pad">
         {% for debut, limite in dus %}
@@ -41,7 +41,7 @@
       {% if l.loyers %}
       <div class="table-conteneur"><table class="table table-compacte">
         <thead><tr><th>Période</th><th>Payé le</th><th>Mode</th><th class="num">Montant</th></tr></thead>
-        <tbody>{% for x in l.loyers[:12] %}<tr><td>{{ periode_libelle(x.periode_debut, x.mois) }}</td><td>{{ x.date_paiement|date }}</td><td>{{ x.mode_paiement or '—' }}{% if x.reference %} <span class="muted petit">· {{ x.reference }}</span>{% endif %}</td><td class="num">{{ x.montant|fcfa }}</td></tr>{% endfor %}</tbody>
+        <tbody>{% for x in l.loyers[:12] %}<tr><td>{{ periode_libelle(x.periode_debut, x.mois) }}</td><td>{{ x.date_paiement|date }}</td><td>{{ x.mode_paiement or '—' }}{% if x.reference %} <span class="muted petit">· {{ x.reference }}</span>{% endif %}</td><td class="num">{{ x.montant|fcfa }}{% if x.montant_charges %}<br><span class="muted petit">dont charges {{ x.montant_charges|fcfa }}</span>{% endif %}</td></tr>{% endfor %}</tbody>
       </table></div>
       {% elif not dus %}<p class="muted pad">{% if l.loyer %}Aucun paiement enregistré.{% else %}Renseignez le montant du loyer dans la fiche pour suivre les échéances.{% endif %}</p>{% endif %}
     </section>
@@ -81,6 +81,9 @@
       <dl class="fiche">
         <dt>Bailleur</dt><dd>{{ l.bailleur or '—' }}{% if l.bailleur_telephone %}<br><a class="lien petit" href="tel:{{ l.bailleur_telephone }}">{{ l.bailleur_telephone }}</a>{% endif %}</dd>
         <dt>Loyer</dt><dd>{{ l.loyer|fcfa }} / mois</dd>
+        <dt>Charges communes</dt><dd>{% if l.charges_mode == 'en_sus' %}<span class="badge badge-charges">En plus</span> {{ l.charges|fcfa }} / mois<br><span class="muted petit">Total mensuel : {{ l.mensuel_total|fcfa }}</span>
+          {% elif l.charges_mode == 'incluses' %}<span class="badge badge-ok">Incluses</span>{% if l.charges %} dont {{ l.charges|fcfa }} / mois{% endif %}
+          {% else %}<span class="muted">Aucune</span>{% endif %}</dd>
         <dt>Paiement</dt><dd>{{ PERIODICITES[l.periodicite] }}, le {{ l.jour_echeance }} du mois</dd>
         <dt>Caution</dt><dd>{{ l.caution|fcfa }}</dd>
         <dt>Bail</dt><dd>{{ l.bail_debut|date }} → {{ l.bail_fin|date }}</dd>
