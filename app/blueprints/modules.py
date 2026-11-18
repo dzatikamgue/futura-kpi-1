@@ -48,6 +48,17 @@ def acces():
     comptes = list(db.session.scalars(select(Utilisateur).where(Utilisateur.actif.is_(True))
                                       .order_by(Utilisateur.email)))
     actuel = M.acces_centraux()
+    # Comptes déjà créés dans chaque module (rôle géré localement), pour les afficher et les recopier
+    locaux = {m["code"]: M.comptes_module(m["code"]) for m in externes if all(M._conf(m["code"]))}
+
+    def role_source(u, code):
+        """Rôle d'un compte dans un module : celui choisi au portail, sinon celui du module lui-même."""
+        r = actuel.get(u.id, {}).get(code)
+        if r:
+            return r
+        c = (locaux.get(code) or {}).get(u.email.strip().lower())
+        return c["role"] if c and c.get("actif") else None
+
     if request.method == "POST":
         nouveau, changes = {}, []
         for u in comptes:
@@ -57,9 +68,39 @@ def acces():
                     continue
                 if r:
                     nouveau.setdefault(u.id, {})[m["code"]] = r
-                avant = actuel.get(u.id, {}).get(m["code"], "")
-                if avant != r:
-                    changes.append(f"{u.email} · {m['nom']} : {m['roles'].get(avant, 'aucun')} → {m['roles'].get(r, 'aucun')}")
+        # Recopie : mêmes accès d'un module vers un autre pour les comptes cochés
+        copie = None
+        if request.form.get("action") == "copier":
+            src, cible = request.form.get("source", ""), request.form.get("cible", "")
+            noms = {m["code"]: m["nom"] for m in externes}
+            roles_de = {m["code"]: m["roles"] for m in externes}
+            ids = {int(x) for x in request.form.getlist("sel") if x.isdigit()}
+            if src not in noms or cible not in noms or src == cible:
+                flash("Choisissez deux modules différents pour recopier les accès.", "erreur")
+                return redirect(request.path)
+            if not ids:
+                flash("Cochez au moins un compte à recopier.", "erreur")
+                return redirect(request.path)
+            copies, sans_acces, sans_equiv = [], [], []
+            for u in comptes:
+                if u.id not in ids:
+                    continue
+                r_src = nouveau.get(u.id, {}).get(src) or role_source(u, src)
+                if not r_src:
+                    sans_acces.append(u.nom_affiche)
+                    continue
+                r_cible = M.role_equivalent(r_src, cible)
+                if not r_cible:
+                    sans_equiv.append(f"{u.nom_affiche} ({roles_de[src].get(r_src, r_src)})")
+                    continue
+                nouveau.setdefault(u.id, {})[cible] = r_cible
+                copies.append(u.nom_affiche)
+            copie = (noms[src], noms[cible], copies, sans_acces, sans_equiv)
+        for u in comptes:
+            for m in externes:
+                avant, apres = actuel.get(u.id, {}).get(m["code"], ""), nouveau.get(u.id, {}).get(m["code"], "")
+                if avant != apres:
+                    changes.append(f"{u.email} · {m['nom']} : {m['roles'].get(avant, 'aucun')} → {m['roles'].get(apres, 'aucun')}")
         # Les comptes désactivés gardent leur réglage (au cas où ils seraient réactivés)
         ids_actifs = {u.id for u in comptes}
         for uid, v in actuel.items():
@@ -69,10 +110,19 @@ def acces():
         for c in changes:
             journaliser("acces_module", c)
         db.session.commit()
-        flash(f"Accès aux modules enregistrés ({len(changes)} changement(s)). Ils s'appliquent à la prochaine "
-              "ouverture du module depuis le portail.", "succes")
+        if copie:
+            src, cible, copies, sans_acces, sans_equiv = copie
+            msg = f"Accès recopiés de {src} vers {cible} : {len(copies)} compte(s)."
+            if sans_acces:
+                msg += f" Sans accès dans {src} (non recopiés) : {', '.join(sans_acces)}."
+            if sans_equiv:
+                msg += f" Rôle sans équivalent dans {cible}, à choisir à la main : {', '.join(sans_equiv)}."
+            flash(msg, "succes" if copies else "info")
+        else:
+            flash(f"Accès aux modules enregistrés ({len(changes)} changement(s)). Ils s'appliquent à la prochaine "
+                  "ouverture du module depuis le portail.", "succes")
         return redirect(request.path)
-    return render_template("modules/acces.html", modules=externes, comptes=comptes, actuel=actuel)
+    return render_template("modules/acces.html", modules=externes, comptes=comptes, actuel=actuel, locaux=locaux)
 
 
 @bp.post("/api/ia")

@@ -268,3 +268,14 @@ def test_accueil_toutes_pages(app):
                 "/logements", "/loyers", "/loyers?onglet=paiements", "/factures/electricite", "/factures/eau",
                 "/reparations", "/loyers/payer", "/billets/nouveau", "/logements/nouveau"]:
         assert rh.get(url).status_code == 200, url
+
+
+def test_sso_comptes(app):
+    from itsdangerous import URLSafeTimedSerializer
+    s = URLSafeTimedSerializer(SECRET, salt="futura-sso")
+    r = app.test_client().get("/sso/comptes?jeton=" + s.dumps({"email": "portail@futura", "q": "comptes", "m": "services"}))
+    comptes = {c["email"]: c["role"] for c in r.get_json()["comptes"]}
+    assert comptes["rh@futura.cm"] == "gestionnaire" and comptes["occ@futura.cm"] == "occupant"
+    # Sans le bon type de question, ou pour un autre module : refusé
+    assert app.test_client().get("/sso/comptes?jeton=" + s.dumps({"email": "x", "m": "services"})).status_code == 403
+    assert app.test_client().get("/sso/comptes?jeton=" + s.dumps({"email": "x", "q": "comptes", "m": "flotte"})).status_code == 403

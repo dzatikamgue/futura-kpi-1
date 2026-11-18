@@ -144,6 +144,38 @@ def a_acces(code: str, email: str) -> bool | None:
     return ok
 
 
+# ---------------------------------------------------------------------------
+# Recopie des accès d'un module vers un autre
+# ---------------------------------------------------------------------------
+# Rôle « équivalent » quand le même code n'existe pas dans le module cible.
+EQUIVALENCES = {"consultation": "direction", "direction": "consultation"}
+
+
+def role_equivalent(role: str | None, cible: str) -> str | None:
+    """Même rôle dans le module cible (même code, sinon équivalence) ; None s'il n'y en a pas."""
+    m = next((x for x in MODULES if x["code"] == cible), None)
+    if not role or not m:
+        return None
+    roles = m.get("roles", {})
+    if role in roles:
+        return role
+    return EQUIVALENCES.get(role) if EQUIVALENCES.get(role) in roles else None
+
+
+def comptes_module(code: str) -> dict | None:
+    """Comptes existant dans le module et leur rôle : {email: {"role", "nom", "actif"}} (None si injoignable)."""
+    url, _s = _conf(code)
+    if not url:
+        return None
+    jeton = _signer(code, {"email": "portail@futura", "q": "comptes"})
+    try:
+        with urllib.request.urlopen(f"{url}/sso/comptes?{urllib.parse.urlencode({'jeton': jeton})}", timeout=5) as r:
+            donnees = json.loads(r.read().decode("utf-8")).get("comptes") or []
+    except Exception:
+        return None
+    return {c["email"].strip().lower(): c for c in donnees if isinstance(c, dict) and c.get("email")}
+
+
 def modules_pour(email: str, utilisateur=None) -> list[dict]:
     """Modules proposés à l'utilisateur : KPI + modules externes où il a un compte (ou injoignables)."""
     res = []

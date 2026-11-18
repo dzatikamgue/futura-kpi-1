@@ -611,6 +611,15 @@ def register_routes(app):
         u = User.query.filter(func.lower(User.email) == d["email"].strip().lower()).first()
         return {"acces": bool(u and u.actif)}
 
+    @app.route("/sso/comptes")
+    def sso_comptes():
+        """Le portail lit les comptes de ce module et leur rôle (question signée), pour recopier les accès."""
+        d = _sso_lire(request.args.get("jeton"))
+        if not d or d.get("q") != "comptes":
+            return {"erreur": "jeton invalide"}, 403
+        return {"comptes": [{"email": u.email.lower(), "nom": u.nom, "role": u.role, "actif": bool(u.actif)}
+                            for u in User.query.order_by(User.email)]}
+
     @app.route("/deconnexion", methods=["POST"])
     @login_required
     def logout():

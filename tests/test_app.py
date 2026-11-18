@@ -2299,3 +2299,43 @@ def test_portail_module_services(app, monkeypatch):
     d = URLSafeTimedSerializer("secret-services", salt="futura-sso").loads(
         parse_qs(urlparse(r.location).query)["jeton"][0], max_age=60)
     assert d["m"] == "services"
+
+
+def test_recopie_acces_modules(app, monkeypatch):
+    """Recopier les accès d'un module vers un autre : même rôle, équivalence, rôle lu dans le module."""
+    from app.services import modules as M
+    from app.models import Utilisateur
+    from app.extensions import db
+    for code in ("FLOTTE", "FACTURES", "SERVICES"):
+        monkeypatch.setenv(f"MODULE_{code}_URL", f"https://{code.lower()}.exemple.cm")
+        monkeypatch.setenv(f"MODULE_{code}_SECRET", "s")
+    with app.app_context():
+        ids = {n: db.session.scalar(db.select(Utilisateur.id).where(Utilisateur.email == email_de(n).lower()))
+               for n in ("NGUEMA", "MBALLA")}
+        e_nguema = email_de("NGUEMA").lower()
+    # NGUEMA : administrateur dans Flotte, mais réglé dans le module lui-même (pas au portail)
+    monkeypatch.setattr(M, "comptes_module", lambda code: {e_nguema: {"role": "admin", "actif": True}}
+                        if code == "flotte" else {})
+    rh = app.test_client()
+    login(rh, email_de("MBALLA"))
+    page = rh.get("/modules/acces").get_data(as_text=True)
+    assert "Recopier les mêmes accès" in page and "Dans le module : Administrateur" in page
+    # MBALLA : consultation dans Factures (réglé au portail)
+    rh.post("/modules/acces", data={f"r_{ids['MBALLA']}_factures": "consultation"})
+    r = rh.post("/modules/acces", data={f"r_{ids['MBALLA']}_factures": "consultation", "action": "copier",
+                                        "source": "flotte", "cible": "services", "sel": [ids["NGUEMA"]]}, follow_redirects=True)
+    assert "1 compte(s)" in r.get_data(as_text=True)
+    rh.post("/modules/acces", data={f"r_{ids['MBALLA']}_factures": "consultation",
+                                    f"r_{ids['NGUEMA']}_services": "admin", "action": "copier",
+                                    "source": "factures", "cible": "services", "sel": [ids["MBALLA"], ids["NGUEMA"]]})
+    with app.app_context():
+        a = M.acces_centraux()
+    assert a[ids["NGUEMA"]] == {"services": "admin"}
+    assert a[ids["MBALLA"]] == {"factures": "consultation", "services": "direction"}
+    # Rôle sans équivalent : signalé, rien n'est recopié
+    rh.post("/modules/acces", data={f"r_{ids['MBALLA']}_factures": "chef_projet"})
+    r = rh.post("/modules/acces", data={f"r_{ids['MBALLA']}_factures": "chef_projet", "action": "copier",
+                                        "source": "factures", "cible": "flotte", "sel": [ids["MBALLA"]]}, follow_redirects=True)
+    assert "sans équivalent" in r.get_data(as_text=True)
+    assert M.role_equivalent("gestionnaire", "services") == "gestionnaire"
+    assert M.role_equivalent("occupant", "flotte") is None

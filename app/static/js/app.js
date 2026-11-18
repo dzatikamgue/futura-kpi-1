@@ -799,4 +799,12 @@
       tr.hidden = !!t && tr.getAttribute("data-ligne-acces").indexOf(t) === -1;
     });
   });
+
+  // Tout cocher : seulement les comptes visibles (après filtre)
+  var toutCocher = document.querySelector("[data-tout-cocher]");
+  if (toutCocher) toutCocher.addEventListener("change", function () {
+    document.querySelectorAll("[data-coche-acces]").forEach(function (c) {
+      if (!c.closest("tr").hidden) c.checked = toutCocher.checked;
+    });
+  });
 })();

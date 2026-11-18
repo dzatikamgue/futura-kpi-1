@@ -14,11 +14,27 @@
     <label class="sr-only" for="filtre-acces">Filtrer</label>
     <input class="input" id="filtre-acces" type="search" placeholder="Filtrer par e-mail ou nom…" data-filtre-acces style="max-width:360px">
   </div>
+  <div class="card__body" style="border-top:1px solid var(--line, #e5e7eb);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+    <strong>{{ icon('users') }} Recopier les mêmes accès</strong>
+    <span class="small ink-2">pour les comptes cochés, de</span>
+    <label class="sr-only" for="copie-source">Module source</label>
+    <select class="select select--sm" id="copie-source" name="source" style="width:auto">
+      {% for m in modules %}<option value="{{ m.code }}">{{ m.nom }}</option>{% endfor %}
+    </select>
+    <span class="small ink-2">vers</span>
+    <label class="sr-only" for="copie-cible">Module cible</label>
+    <select class="select select--sm" id="copie-cible" name="cible" style="width:auto">
+      {% for m in modules %}<option value="{{ m.code }}" {% if loop.last %}selected{% endif %}>{{ m.nom }}</option>{% endfor %}
+    </select>
+    <button class="btn btn--secondary btn--sm" type="submit" name="action" value="copier">Recopier</button>
+    <span class="small muted" style="flex-basis:100%">Même rôle quand il existe dans le module cible (Administrateur, Direction, Gestionnaire…). Les comptes déjà créés dans un module sont repris avec le rôle qu'ils y ont.</span>
+  </div>
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Compte</th>{% for m in modules %}<th>{{ m.nom }}</th>{% endfor %}</tr></thead>
+    <thead><tr><th style="width:36px"><label class="sr-only" for="tout-cocher">Tout cocher</label><input type="checkbox" id="tout-cocher" data-tout-cocher></th><th>Compte</th>{% for m in modules %}<th>{{ m.nom }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for u in comptes %}
     <tr data-ligne-acces="{{ (u.email ~ ' ' ~ u.nom_affiche)|lower }}">
+      <td><label class="sr-only" for="sel-{{ u.id }}">Cocher {{ u.email }}</label><input type="checkbox" id="sel-{{ u.id }}" name="sel" value="{{ u.id }}" data-coche-acces></td>
       <td><div class="cell-main"><div><strong>{{ u.nom_affiche }}</strong><span>{{ u.email }}</span></div></div></td>
       {% for m in modules %}
       {% set r = actuel.get(u.id, {}).get(m.code, '') %}
@@ -28,6 +44,8 @@
           <option value="">— Géré dans le module —</option>
           {% for k, l in m.roles.items() %}<option value="{{ k }}" {% if r == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
         </select>
+        {% set loc = (locaux.get(m.code) or {}).get(u.email|lower) %}
+        {% if not r and loc %}<div class="small muted" style="margin-top:4px">Dans le module : {{ m.roles.get(loc.role, loc.role) }}{% if not loc.actif %} (désactivé){% endif %}</div>{% endif %}
       </td>
       {% endfor %}
     </tr>
