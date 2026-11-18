@@ -56,7 +56,8 @@
     {% if not d.remplace %}
     <section class="carte carte-action">
       <h2>{{ icon('undo', 18) }} Renouvellement</h2>
-      <p class="muted petit mt-1">Statut actuel : <strong>{{ RENOUVELLEMENT[d.renouvellement] }}</strong>{% if d.renouvellement_note %} — {{ d.renouvellement_note }}{% endif %}</p>
+      <p class="muted petit mt-1">Statut actuel : <strong>{{ RENOUVELLEMENT[d.renouvellement] }}</strong></p>
+      {% if d.renouvellement_note %}<p class="note-doc mt-1">{{ icon('message', 14) }} {{ d.renouvellement_note }}{% if d.note_le %} <span class="muted petit">· {{ d.note_par.nom if d.note_par else '' }}, {{ d.note_le|dateheure }}</span>{% endif %}</p>{% endif %}
       {% if current_user.gere %}
       <form method="post" action="{{ url_for('document_demarche', did=d.id) }}" class="formulaire mt-3">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

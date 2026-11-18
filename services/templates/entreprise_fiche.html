@@ -42,7 +42,7 @@
         <td>{% if c %}<a href="{{ url_for('document_fiche', did=c.id) }}" class="petit nowrap lien">{{ c.date_delivrance|date }} → <strong>{{ c.date_expiration|date }}</strong></a><br>{{ badge_doc(c) }}
             {% elif current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('document_nouveau', type_doc='carte_sejour', personne=p.id) }}">{{ icon('plus', 14) }} Carte</a>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="nowrap">{% if p.passeport_expiration %}{% set j = (p.passeport_expiration - aujourdhui).days %}<span class="{{ 'texte-ko' if j < 0 else 'texte-alerte' if j <= seuil else '' }}">{{ p.passeport_expiration|date }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        {% if current_user.gere %}<td class="num"><a class="btn-icone" href="{{ url_for('personne_modifier', pid=p.id) }}" aria-label="Modifier {{ p.nom }}" title="Modifier">{{ icon('edit', 16) }}</a></td>{% endif %}
+        {% if current_user.gere %}<td class="num nowrap"><a class="btn-icone" href="{{ url_for('personne_modifier', pid=p.id) }}" aria-label="Modifier {{ p.nom }}" title="Modifier">{{ icon('edit', 16) }}</a><a class="btn-icone" href="{{ url_for('personne_fiche', pid=p.id) }}#supprimer" aria-label="Supprimer {{ p.nom }}" title="Supprimer">{{ icon('trash', 16) }}</a></td>{% endif %}
       </tr>
       {% endfor %}
       </tbody>

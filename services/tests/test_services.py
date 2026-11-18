@@ -432,3 +432,45 @@ def test_import_initial_par_variable(app, monkeypatch):
         import_initial()                       # rejoué : rien de plus
         assert Entreprise.query.filter_by(nom="Futura").count() == 1
         assert Personne.query.count() == 3 and Document.query.count() == 3
+
+
+def test_note_document_expire(app):
+    from models import Document, aujourdhui
+    rh = client(app, "rh")
+    pid = personne(rh)
+    rh.post("/documents/visa/nouveau", data={"personne_id": pid, "numero": "VX1", "date_delivrance": "2025-01-01",
+                                             "date_expiration": (aujourdhui() - timedelta(days=5)).isoformat()})
+    with app.app_context():
+        did = Document.query.one().id
+    page = rh.get("/documents").get_data(as_text=True)
+    assert f'action="/document/{did}/note"' in page and "Pourquoi est-il expiré" in page
+    rh.post(f"/document/{did}/note", data={"note": "  Passeport en renouvellement   à l'ambassade ", "retour": "/documents"})
+    with app.app_context():
+        d = Document.query.one()
+        assert d.renouvellement_note == "Passeport en renouvellement à l'ambassade" and d.note_le and d.note_par.nom == "RH"
+    assert "Passeport en renouvellement" in client(app, "dg").get("/documents").get_data(as_text=True)
+    assert client(app, "dg").post(f"/document/{did}/note", data={"note": "x"}).status_code == 403
+    rh.post(f"/document/{did}/note", data={"note": ""})
+    with app.app_context():
+        assert Document.query.one().renouvellement_note is None
+
+
+def test_supprimer_personne(app):
+    import io
+    from models import Billet, Document, Personne, Piece, aujourdhui
+    rh = client(app, "rh")
+    pid = personne(rh)
+    rh.post("/documents/visa/nouveau", data={"personne_id": pid, "date_delivrance": "2025-01-01",
+                                             "date_expiration": (aujourdhui() + timedelta(days=90)).isoformat(),
+                                             "pieces": (io.BytesIO(PDF), "visa.pdf")}, content_type="multipart/form-data")
+    rh.post("/billets/nouveau", data={"personne_id": pid, "motif": "conge", "depart": "Douala", "arrivee": "Beyrouth",
+                                      "date_depart": "2026-12-20", "statut": "emis"})
+    assert client(app, "dg").post(f"/personnel/{pid}/supprimer", data={"confirmation": "SUPPRIMER"}).status_code == 403
+    rh.post(f"/personnel/{pid}/supprimer", data={"confirmation": "non"})
+    with app.app_context():
+        assert Personne.query.count() == 1
+    r = rh.post(f"/personnel/{pid}/supprimer", data={"confirmation": "supprimer"})
+    assert r.status_code == 302
+    with app.app_context():
+        assert Personne.query.count() == 0 and Document.query.count() == 0 and Billet.query.count() == 0
+        assert Piece.query.count() == 0

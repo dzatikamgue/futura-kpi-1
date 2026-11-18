@@ -948,6 +948,27 @@ def register_routes(app):
     def personne_modifier(pid):
         return formulaire_personne(ou_404(Personne, pid))
 
+    @app.route("/personnel/<int:pid>/supprimer", methods=["POST"])
+    @gestion
+    def personne_supprimer(pid):
+        """Supprime une personne avec ses visas, cartes de séjour, billets et pièces jointes."""
+        p = ou_404(Personne, pid)
+        nom, eid = p.nom, p.entreprise_id
+        if request.form.get("confirmation", "").strip().upper() != "SUPPRIMER":
+            flash("Tapez SUPPRIMER pour confirmer la suppression.", "erreur")
+            return redirect(url_for("personne_fiche", pid=p.id) + "#supprimer")
+        nb_docs, nb_billets = len(p.documents), len(p.billets)
+        for d in p.documents:
+            supprimer_pieces("document", d.id)
+        for b in p.billets:
+            supprimer_pieces("billet", b.id)
+        supprimer_pieces("personne", p.id)
+        db.session.delete(p)
+        journaliser("Personne supprimée", nom, f"{nb_docs} visa(s) / carte(s), {nb_billets} billet(s) supprimé(s)")
+        db.session.commit()
+        flash(f"{nom} a été supprimé(e), avec {nb_docs} visa(s) / carte(s) et {nb_billets} billet(s).", "succes")
+        return redirect(url_for("entreprise_fiche", eid=eid) if eid else url_for("personnel"))
+
     @app.route("/personnel/<int:pid>")
     @lecture
     def personne_fiche(pid):
@@ -1262,12 +1283,28 @@ def register_routes(app):
             abort(400)
         d.renouvellement = etat
         note = (request.form.get("note") or "").strip()[:255]
-        if note:
-            d.renouvellement_note = note
+        if note and note != d.renouvellement_note:
+            d.renouvellement_note, d.note_le, d.note_par_id = note, now(), current_user.id
         journaliser("Renouvellement mis à jour", f"{d.type_libelle} · {d.personne.nom}", RENOUVELLEMENT[etat])
         db.session.commit()
         flash(f"Renouvellement : {RENOUVELLEMENT[etat].lower()}.", "succes")
         return redirect(request.form.get("retour") if (request.form.get("retour") or "").startswith("/")
+                        else url_for("document_fiche", did=d.id))
+
+    @app.route("/document/<int:did>/note", methods=["POST"])
+    @gestion
+    def document_note(did):
+        """Note libre à côté d'un visa / d'une carte (ex. pourquoi il est expiré, où en est le dossier)."""
+        d = ou_404(Document, did)
+        note = re.sub(r"\s+", " ", request.form.get("note") or "").strip()[:255]
+        if note != (d.renouvellement_note or ""):
+            d.renouvellement_note = note or None
+            d.note_le, d.note_par_id = (now(), current_user.id) if note else (None, None)
+            journaliser("Note sur document", f"{d.type_libelle} · {d.personne.nom}", note or "note effacée")
+            db.session.commit()
+            flash(f"Note {'enregistrée' if note else 'effacée'} pour {d.personne.nom}.", "succes")
+        retour = request.form.get("retour") or ""
+        return redirect(retour if retour.startswith("/") and not retour.startswith("//")
                         else url_for("document_fiche", did=d.id))
 
     @app.route("/document/<int:did>/supprimer", methods=["POST"])

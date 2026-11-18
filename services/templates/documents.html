@@ -47,7 +47,7 @@
 {% if page.items %}
 <div class="carte carte-table"><div class="table-conteneur">
 <table class="table">
-  <thead><tr><th>Personne</th><th>Document</th><th>Début</th><th>Fin</th><th>Validité</th><th>État</th><th>Renouvellement</th></tr></thead>
+  <thead><tr><th>Personne</th><th>Document</th><th>Début</th><th>Fin</th><th>Validité</th><th>État</th><th>Renouvellement et note</th></tr></thead>
   <tbody>
   {% for d in page.items %}{% set niv = d.niveau(seuil) %}
   <tr class="ligne-cliquable ligne-{{ niv }}" data-href="{{ url_for('document_fiche', did=d.id) }}">
@@ -58,7 +58,7 @@
     <td class="col-jauge">{% if d.date_delivrance %}{% set total = (d.date_expiration - d.date_delivrance).days or 1 %}{% set ecoule = (aujourdhui - d.date_delivrance).days %}
       <span class="jauge-validite jauge-mini" title="{{ [[ecoule / total * 100, 0]|max, 100]|min|round|int }} % de la validité écoulée"><span class="jauge-validite-barre jauge-{{ niv }}" data-largeur="{{ [[ecoule / total * 100, 0]|max, 100]|min|round(1) }}"></span></span>{% endif %}</td>
     <td>{{ badge_doc(d) }}</td>
-    <td>
+    <td class="col-note">
       {% if current_user.gere and niv in ('alerte', 'critique', 'expire') %}
       <form method="post" action="{{ url_for('document_demarche', did=d.id) }}" class="form-mini" data-stop>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="{{ request.full_path }}">
@@ -66,7 +66,17 @@
           {% for k, v in RENOUVELLEMENT.items() if k != 'obtenu' %}<option value="{{ k }}" {{ 'selected' if d.renouvellement == k }}>{{ v }}</option>{% endfor %}
         </select>
       </form>
-      {% else %}<span class="{{ 'muted' if not d.renouvellement }}">{{ RENOUVELLEMENT[d.renouvellement] }}</span>{% endif %}
+      <form method="post" action="{{ url_for('document_note', did=d.id) }}" class="form-note" data-stop>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="retour" value="{{ request.full_path }}">
+        <label class="sr-only" for="note-{{ d.id }}">Note pour {{ d.personne.nom }}</label>
+        <input id="note-{{ d.id }}" name="note" value="{{ d.renouvellement_note or '' }}" maxlength="255" placeholder="{{ 'Pourquoi est-il expiré ? Où en est le dossier ?' if niv == 'expire' else 'Ajouter une note…' }}">
+        <button class="btn-icone" aria-label="Enregistrer la note" title="Enregistrer la note">{{ icon('check', 16) }}</button>
+      </form>
+      {% if d.note_le %}<span class="muted petit">{{ d.note_par.nom if d.note_par else '' }} · {{ d.note_le|dateheure }}</span>{% endif %}
+      {% else %}
+      <span class="{{ 'muted' if not d.renouvellement }}">{{ RENOUVELLEMENT[d.renouvellement] }}</span>
+      {% if d.renouvellement_note %}<p class="note-doc">{{ icon('message', 14) }} {{ d.renouvellement_note }}{% if d.note_le %} <span class="muted petit">· {{ d.note_par.nom if d.note_par else '' }}, {{ d.note_le|date }}</span>{% endif %}</p>{% endif %}
+      {% endif %}
     </td>
   </tr>
   {% endfor %}

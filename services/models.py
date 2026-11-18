@@ -216,12 +216,15 @@ class Document(Tracable, db.Model):
     date_expiration = db.Column(db.Date, nullable=False, index=True)
     renouvellement = db.Column(db.String(20), nullable=False, default="")
     renouvellement_note = db.Column(db.String(255))
+    note_le = db.Column(db.DateTime)                 # dernière modification de la note
+    note_par_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id"))
     remplace = db.Column(db.Boolean, nullable=False, default=False)   # renouvelé : un document plus récent existe
     cout = db.Column(db.BigInteger)
     notes = db.Column(db.Text)
     cree_par_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id"))
 
     personne = db.relationship("Personne", back_populates="documents")
+    note_par = db.relationship("User", foreign_keys=[note_par_id])
 
     @property
     def jours_restants(self):
@@ -531,6 +534,7 @@ def migrer():
     db.create_all()
     COLONNES_AJOUTEES = {
         "personnes": [("entreprise_id", "INTEGER REFERENCES entreprises(id) ON DELETE SET NULL")],
+        "documents": [("note_le", "TIMESTAMP"), ("note_par_id", "INTEGER")],
     }
     insp = inspect(db.engine)
     with db.engine.begin() as cx:

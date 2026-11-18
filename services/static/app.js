@@ -41,7 +41,7 @@
   // ---------- Lignes de tableau cliquables ----------
   $$("tr[data-href]").forEach(function (tr) {
     tr.addEventListener("click", function (e) {
-      if (e.target.closest("a, button, input, select")) return;
+      if (e.target.closest("a, button, input, select, form, label")) return;
       window.location = tr.getAttribute("data-href");
     });
   });
