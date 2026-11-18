@@ -1569,6 +1569,32 @@ def register_routes(app):
     def logement_modifier(lid):
         return formulaire_logement(ou_404(Logement, lid))
 
+    @app.route("/logement/<int:lid>/supprimer", methods=["POST"])
+    @gestion
+    def logement_supprimer(lid):
+        """Supprime un appartement avec ses loyers, factures, réparations et pièces jointes."""
+        l = ou_404(Logement, lid)
+        nom = l.libelle
+        if request.form.get("confirmation", "").strip().upper() != "SUPPRIMER":
+            flash("Tapez SUPPRIMER pour confirmer la suppression.", "erreur")
+            return redirect(url_for("logement_fiche", lid=l.id) + "#supprimer")
+        nb = (len(l.loyers), len(l.factures), len(l.reparations))
+        for x in l.loyers:
+            supprimer_pieces("loyer", x.id)
+        for x in l.factures:
+            supprimer_pieces("facture", x.id)
+        for x in l.reparations:
+            supprimer_pieces("reparation", x.id)
+        supprimer_pieces("logement", l.id)
+        for p in l.occupants:
+            p.logement_id = None
+        User.query.filter_by(logement_id=l.id).update({"logement_id": None})
+        db.session.delete(l)
+        journaliser("Logement supprimé", nom, f"{nb[0]} loyer(s), {nb[1]} facture(s), {nb[2]} réparation(s)")
+        db.session.commit()
+        flash(f"{nom} a été supprimé.", "succes")
+        return redirect(url_for("logements"))
+
     @app.route("/logement/<int:lid>/periode-payee", methods=["GET", "POST"])
     @gestion
     def logement_periode_payee(lid):

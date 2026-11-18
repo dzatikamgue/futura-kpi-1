@@ -573,3 +573,39 @@ def test_import_compresse(app, monkeypatch):
     with app.app_context():
         import_initial()
         assert Logement.query.filter_by(batiment="ZB").count() == 1
+
+
+def test_pas_de_retard_avant_fin_de_periode(app):
+    from models import Logement, aujourdhui, db
+    with app.app_context():
+        l = Logement(nom="R — 1", batiment="R", numero="1", loyer=400000, periodicite=6, jour_echeance=5,
+                     loyers_suivis_depuis=aujourdhui().replace(day=1) - timedelta(days=200),
+                     bail_debut=aujourdhui() - timedelta(days=150), bail_fin=aujourdhui() + timedelta(days=20))
+        db.session.add(l); db.session.commit()
+        assert l.echeances_dues() == []
+        l.bail_fin = aujourdhui() - timedelta(days=3)
+        db.session.commit()
+        assert len(l.echeances_dues()) == 1
+
+
+def test_supprimer_logement(app):
+    from models import Logement, Loyer, Personne, aujourdhui, db
+    with app.app_context():
+        l = Logement(nom="S — 1", batiment="S", numero="1", loyer=100000)
+        db.session.add(l); db.session.flush()
+        db.session.add(Loyer(logement_id=l.id, periode_debut=aujourdhui().replace(day=1), mois=1, montant=100000,
+                             date_paiement=aujourdhui()))
+        db.session.add(Personne(nom="AGENT TEST", logement_id=l.id))
+        db.session.commit()
+        lid = l.id
+    rh = client(app, "rh")
+    assert "Supprimer cet appartement" in rh.get(f"/logement/{lid}").get_data(as_text=True)
+    rh.post(f"/logement/{lid}/supprimer", data={"confirmation": "non"})
+    with app.app_context():
+        assert db.session.get(Logement, lid) is not None
+    r = rh.post(f"/logement/{lid}/supprimer", data={"confirmation": "supprimer"})
+    assert r.status_code == 302
+    with app.app_context():
+        assert db.session.get(Logement, lid) is None and Loyer.query.count() == 0
+        assert Personne.query.filter_by(nom="AGENT TEST").one().logement_id is None
+    assert client(app, "dg").post(f"/logement/{lid}/supprimer", data={"confirmation": "SUPPRIMER"}).status_code in (302, 403, 404)

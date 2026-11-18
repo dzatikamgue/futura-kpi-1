@@ -105,6 +105,18 @@
       </dl>
     </section>
     {% with objet='logement', oid=l.id %}{% include "_pieces.html" %}{% endwith %}
+    {% if current_user.gere %}
+    <details class="zone-danger" id="supprimer"><summary>Supprimer cet appartement</summary>
+      <form method="post" action="{{ url_for('logement_supprimer', lid=l.id) }}" class="formulaire">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="muted petit">Supprime définitivement {{ l.libelle }} avec {{ l.loyers|length }} paiement(s) de loyer, {{ l.factures|length }} facture(s), {{ l.reparations|length }} réparation(s) et leurs pièces jointes.
+          Pour un appartement simplement rendu, préférez « Modifier » → décocher « Logement toujours loué par l'entreprise » : l'historique est conservé.</p>
+        <div class="champ"><label for="confirmation">Tapez SUPPRIMER pour confirmer</label>
+          <input id="confirmation" name="confirmation" autocomplete="off" required pattern="[Ss][Uu][Pp][Pp][Rr][Ii][Mm][Ee][Rr]"></div>
+        <button class="btn btn-danger btn-sm">{{ icon('trash', 14) }} Supprimer définitivement</button>
+      </form>
+    </details>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

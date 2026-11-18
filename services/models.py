@@ -390,9 +390,16 @@ class Logement(Tracable, db.Model):
 
     def echeances_dues(self, jusqu_au=None):
         """Échéances de loyer échues (date ≤ jusqu_au) non couvertes par un paiement : [(début, date limite)]."""
-        if not self.actif or not self.loyer or not self.loyers_suivis_depuis:
+        if not self.actif or (not self.bail_fin and (not self.loyer or not self.loyers_suivis_depuis)):
             return []
         jusqu_au = jusqu_au or aujourdhui()
+        if self.bail_fin:
+            # Tout est payé jusqu'à la fin de la période en cours : rien en retard tant qu'elle n'est pas expirée
+            if self.bail_fin >= jusqu_au:
+                return []
+            from datetime import timedelta
+            d = self.bail_fin + timedelta(days=1)
+            return [] if d.replace(day=1) in {l.periode_debut for l in self.loyers} else [(d, d)]
         payees = {l.periode_debut for l in self.loyers}
         p = self.periodicite or 1
         d = self.loyers_suivis_depuis.replace(day=1)
@@ -410,6 +417,10 @@ class Logement(Tracable, db.Model):
 
     def prochaine_echeance(self):
         """Prochaine échéance (non encore échue ni payée)."""
+        if self.actif and self.bail_fin:
+            from datetime import timedelta
+            d = self.bail_fin + timedelta(days=1)
+            return (d, d) if d > aujourdhui() else None
         if not self.actif or not self.loyer or not self.loyers_suivis_depuis:
             return None
         payees = {l.periode_debut for l in self.loyers}
