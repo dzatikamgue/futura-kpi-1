@@ -31,7 +31,7 @@
 {% if liste %}
 <div class="carte carte-table"><div class="table-conteneur">
 <table class="table">
-  <thead><tr><th>Bâtiment</th><th>Appt / étage</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période payée</th><th>Prochaine période</th><th class="num">Montant de la période</th></tr></thead>
+  <thead><tr><th>Bâtiment</th><th>Appt / étage</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période en cours</th><th class="num">Montant de la période</th></tr></thead>
   <tbody>
   {% for l in liste %}{% set niv = l.niveau_fin(seuil_loyer) %}
   <tr class="ligne-cliquable {{ 'ligne-expire' if niv in ('echue', 'critique') else 'ligne-alerte' if niv == 'alerte' }} {{ 'inactif' if not l.actif }}" data-href="{{ url_for('logement_fiche', lid=l.id) }}">
@@ -45,7 +45,6 @@
       {% elif niv == 'critique' %}<span class="badge badge-ko">J-{{ l.jours_avant_fin }} · à payer</span>
       {% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ l.jours_avant_fin }} · à payer</span>
       {% elif niv == 'ok' %}<span class="badge badge-ok">payé · {{ l.jours_avant_fin }} j restants</span>{% endif %}</td>
-    <td class="nowrap petit">{% if l.prochaine_debut %}<span class="badge badge-nonpaye">Non payée</span><br>{{ l.prochaine_debut|date }} → {{ l.prochaine_fin|date }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td class="num"><strong>{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }}</strong>{% if l.loyer %}<br><span class="muted petit">{{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois')|lower }}</span>{% endif %}
       {% if current_user.gere and l.actif %}<br><a class="btn btn-sm btn-ghost mt-1" href="{{ url_for('logement_periode_payee', lid=l.id) }}">{{ icon('check', 14) }} Période payée</a>{% endif %}</td>
   </tr>

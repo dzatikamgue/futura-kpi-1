@@ -356,13 +356,8 @@ class Logement(Tracable, db.Model):
 
     @property
     def fin_payee(self):
-        """Dernier jour payé : fin de la période en cours, sinon veille de la prochaine période (non payée)."""
-        if self.bail_fin:
-            return self.bail_fin
-        if self.prochaine_debut:
-            from datetime import timedelta
-            return self.prochaine_debut - timedelta(days=1)
-        return None
+        """Dernier jour payé : fin de la période en cours."""
+        return self.bail_fin
 
     @property
     def jours_avant_fin(self):
@@ -375,9 +370,7 @@ class Logement(Tracable, db.Model):
         return self.montant_periode or (self.montant_echeance if self.loyer else None)
 
     def periode_suivante(self):
-        """Dates proposées pour la prochaine période : celle saisie, sinon la suite de la période payée."""
-        if self.prochaine_debut:
-            return self.prochaine_debut, self.prochaine_fin
+        """Dates proposées pour le prochain paiement : la suite de la période en cours."""
         if self.bail_fin:
             from datetime import timedelta
             debut = self.bail_fin + timedelta(days=1)
@@ -640,4 +633,15 @@ def migrer():
                 par_nom[cle] = Entreprise(nom=p.societe.strip(), type_entreprise="groupe")
                 db.session.add(par_nom[cle])
             p.entreprise = par_nom[cle]
+        db.session.commit()
+
+    # Suppression des « prochaines périodes non payées » : seule la période en cours est gardée.
+    # (Si seule la période non payée était connue, la période en cours s'arrête la veille de son début.)
+    if not db.session.get(Parametre, "prochaines_supprimees"):
+        from datetime import timedelta
+        for l in Logement.query.filter(Logement.prochaine_debut.isnot(None)):
+            if not l.bail_fin:
+                l.bail_fin = l.prochaine_debut - timedelta(days=1)
+            l.prochaine_debut = l.prochaine_fin = None
+        db.session.add(Parametre(cle="prochaines_supprimees", valeur="1"))
         db.session.commit()

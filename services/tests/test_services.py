@@ -558,14 +558,10 @@ def test_periode_payee(app):
     assert r.status_code == 302
     with app.app_context():
         l = db.session.get(Logement, lid)
-        assert l.bail_fin == nfin and l.prochaine_debut == nfin + timedelta(days=1) and Loyer.query.count() == 1
+        assert l.bail_fin == nfin and l.prochaine_debut is None and Loyer.query.count() == 1
     assert "Loyer à payer — Q · Appt 1" not in rh.get("/tableau-de-bord").get_data(as_text=True)
-    # Prochaine période seule (période payée inconnue) : la notification part de la veille
-    with app.app_context():
-        m = Logement(nom="Q — 2", batiment="Q", numero="2", prochaine_debut=aujourdhui() + timedelta(days=5),
-                     prochaine_fin=aujourdhui() + timedelta(days=180))
-        db.session.add(m); db.session.commit()
-        assert m.jours_avant_fin == 4
+    page = rh.get("/logements").get_data(as_text=True)
+    assert "Période en cours" in page and "Non payée" not in page
 
 
 def test_import_compresse(app, monkeypatch):

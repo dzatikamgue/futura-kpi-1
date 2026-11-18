@@ -296,7 +296,7 @@ def import_initial():
     nb_l = 0
     champs_l = ("batiment", "numero", "residents", "mode_paiement", "type_logement", "ville", "loyer", "charges",
                 "charges_mode", "periodicite", "caution", "notes", "quartier", "bailleur", "montant_periode", "actif")
-    dates_l = ("bail_debut", "bail_fin", "date_entree", "prochaine_debut", "prochaine_fin")
+    dates_l = ("bail_debut", "bail_fin", "date_entree")
     nb_maj = 0
     for x in donnees.get("logements") or []:
         bat, num = str(x.get("batiment") or "").strip(), str(x.get("numero") or "").strip()
@@ -1522,8 +1522,6 @@ def register_routes(app):
             val, err, f = F.lire(champs)
             if val.get("bail_debut") and val.get("bail_fin") and val["bail_fin"] < val["bail_debut"]:
                 err["bail_fin"] = "La fin de la période doit suivre son début."
-            if val.get("prochaine_debut") and val.get("prochaine_fin") and val["prochaine_fin"] < val["prochaine_debut"]:
-                err["prochaine_fin"] = "La fin de la période doit suivre son début."
             if not val.get("nom"):
                 if val.get("batiment") and val.get("numero"):
                     val["nom"] = f"{val['batiment']} — {val['numero']}"[:120]
@@ -1574,7 +1572,7 @@ def register_routes(app):
     @app.route("/logement/<int:lid>/periode-payee", methods=["GET", "POST"])
     @gestion
     def logement_periode_payee(lid):
-        """Enregistre le paiement de la prochaine période : elle devient la période payée, la suivante est proposée."""
+        """Enregistre le paiement d'une période : elle devient la période en cours."""
         l = ou_404(Logement, lid)
         d0, f0 = l.periode_suivante()
         champs = [F.C("debut", "Période payée : début", "date", requis=True),
@@ -1603,15 +1601,12 @@ def register_routes(app):
                     db.session.flush()
                     rattacher(pieces, "loyer", x.id)
                 l.bail_debut, l.bail_fin = d, fn
-                l.prochaine_debut = fn + timedelta(days=1)
-                l.prochaine_fin = mois_ajoutes(l.prochaine_debut, nb_mois) - timedelta(days=1)
                 if val.get("mode_paiement"):
                     l.mode_paiement = val["mode_paiement"]
                 journaliser("Période de loyer payée", l.libelle,
                             f"{d:%d/%m/%Y} → {fn:%d/%m/%Y} · {_milliers(val['montant'])} FCFA")
                 db.session.commit()
-                flash(f"Paiement enregistré : {l.libelle} payé jusqu'au {fn:%d/%m/%Y}. "
-                      f"Prochaine période (non payée) : {l.prochaine_debut:%d/%m/%Y} → {l.prochaine_fin:%d/%m/%Y}.", "succes")
+                flash(f"Paiement enregistré : {l.libelle} payé jusqu'au {fn:%d/%m/%Y}.", "succes")
                 return redirect(url_for("logement_fiche", lid=l.id))
         else:
             err = {}
@@ -1621,7 +1616,7 @@ def register_routes(app):
         return render_template("formulaire.html", champs=champs, f=f, err=err, objet=None, pieces_form=True,
                                listes={"modes": MODES_PAIEMENT + ["Versement bancaire"]},
                                titre=f"Paiement du loyer — {l.libelle}", bouton="Enregistrer le paiement",
-                               aide="La période saisie devient la période payée ; la suivante est créée « non payée ».",
+                               aide="La période saisie devient la période en cours (payée).",
                                ariane=[("Logements", url_for("logements")), (l.libelle, url_for("logement_fiche", lid=l.id))],
                                retour=url_for("logement_fiche", lid=l.id))
 

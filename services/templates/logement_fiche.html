@@ -21,7 +21,7 @@
 {% if niv in ('alerte', 'critique', 'echue') %}
 <div class="bandeau bandeau-{{ 'ko' if niv != 'alerte' else 'alerte' }}">{{ icon('bell', 20) }}
   <p><strong>{% if niv == 'echue' %}Loyer en retard : payé jusqu'au {{ l.fin_payee|date }}.{% else %}Payé jusqu'au {{ l.fin_payee|date }} (dans {{ l.jours_avant_fin }} jours).{% endif %}</strong>
-  Prochaine période à payer{% if l.prochaine_debut %} : {{ l.prochaine_debut|date }} → {{ l.prochaine_fin|date }}{% endif %}{% if l.montant_a_payer %}, {{ l.montant_a_payer|fcfa }}{% endif %}.
+  {% if l.montant_a_payer %}Montant de la période suivante : {{ l.montant_a_payer|fcfa }}.{% endif %}
   {% if current_user.gere %}<a class="lien" href="{{ url_for('logement_periode_payee', lid=l.id) }}">Enregistrer le paiement</a>{% endif %}</p></div>
 {% endif %}
 <div class="kpis">
@@ -97,8 +97,7 @@
           {% else %}<span class="muted">Aucune</span>{% endif %}</dd>
         <dt>Périodicité</dt><dd>{{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois') }}</dd>
         <dt>Caution</dt><dd>{{ l.caution|fcfa }}</dd>
-        <dt>Période payée</dt><dd>{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}{% if l.fin_payee %}<br><span class="muted petit">notification le {{ (l.fin_payee - timedelta_jours(seuil_loyer))|date }}</span>{% endif %}</dd>
-        <dt>Prochaine période</dt><dd>{% if l.prochaine_debut %}<span class="badge badge-nonpaye">Non payée</span> {{ l.prochaine_debut|date }} → {{ l.prochaine_fin|date }}{% else %}—{% endif %}</dd>
+        <dt>Période en cours</dt><dd>{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}{% if l.fin_payee %}<br><span class="muted petit">notification le {{ (l.fin_payee - timedelta_jours(seuil_loyer))|date }}</span>{% endif %}</dd>
         <dt>Montant d'une période</dt><dd>{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }} <span class="muted petit">({{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois')|lower }}{{ ', montant du fichier' if l.montant_periode }})</span></dd>
         <dt>Mode de paiement</dt><dd>{{ l.mode_paiement or '—' }}</dd>
         <dt>Suivi des loyers depuis</dt><dd>{{ l.loyers_suivis_depuis|mois }}</dd>
