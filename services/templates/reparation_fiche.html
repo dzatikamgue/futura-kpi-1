@@ -23,7 +23,7 @@
     <section class="carte">
       <div class="carte-entete"><h2>Demande</h2>{% if r.urgence == 'urgente' %}<span class="badge badge-ko">Urgent</span>{% endif %}</div>
       <dl class="fiche">
-        <dt>Logement</dt><dd>{% if current_user.occupant %}{{ r.logement.libelle }}{% else %}<a class="lien" href="{{ url_for('logement_fiche', lid=r.logement.id) }}">{{ r.logement.libelle }}</a>{% endif %}</dd>
+        <dt>Logement</dt><dd>{{ r.logement.libelle }}</dd>
         <dt>Catégorie</dt><dd>{{ r.categorie }}</dd>
         <dt>Signalé</dt><dd>le {{ r.signale_le|dateheure }}{% if r.signale_par %} par {{ r.signale_par.nom }}{% endif %}</dd>
         <dt>Description</dt><dd class="pre">{{ r.description or '—' }}</dd>

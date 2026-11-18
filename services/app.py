@@ -663,14 +663,18 @@ def register_filters(app):
             return url_for(request.endpoint, **(request.view_args or {}), **args)
         nb_alertes, docs_notif, loyers_notif = 0, None, None
         if current_user.is_authenticated and not current_user.occupant and request.endpoint not in ("static", None):
+            ep = request.endpoint
             nb_alertes = len(a_surveiller())
+            # Chaque sous-module n'affiche que ses propres alertes
+            dans_docs = ep.startswith(("document", "entreprise", "personne", "personnel"))
+            dans_logements = ep.startswith(("logement", "loyer"))
             proches = documents_en_vigueur().filter(
-                Document.date_expiration <= aujourdhui() + timedelta(days=seuil_docs())).all()
+                Document.date_expiration <= aujourdhui() + timedelta(days=seuil_docs())).all() if dans_docs else []
             if proches:
                 docs_notif = dict(total=len(proches), expires=sum(1 for d in proches if d.jours_restants < 0),
                                   a_lancer=sum(1 for d in proches if d.renouvellement in ("", "a_lancer")),
                                   premier=min(proches, key=lambda d: d.date_expiration))
-            fins = loyers_a_renouveler()
+            fins = loyers_a_renouveler() if dans_logements else []
             if fins:
                 loyers_notif = dict(total=len(fins), echus=sum(1 for l in fins if l.jours_avant_fin < 0), premier=fins[0])
         return dict(ROLES=ROLES, SOUS_MODULES=SOUS_MODULES, TYPES_DOCUMENT=TYPES_DOCUMENT,

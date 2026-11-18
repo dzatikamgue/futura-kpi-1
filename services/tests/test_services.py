@@ -86,7 +86,10 @@ def test_document_alerte_et_renouvellement(app):
         did = d.id
     # Notification sur toutes les pages, et page unique visas + cartes avec début et fin
     accueil = rh.get("/").get_data(as_text=True)
-    assert "expire dans moins de 30 jours" in accueil and "Commencez les procédures de renouvellement" in accueil
+    assert "Commencez les procédures de renouvellement" not in accueil          # sous-modules indépendants
+    perso = rh.get("/personnel").get_data(as_text=True)
+    assert "expire dans moins de 30 jours" in perso and "Commencez les procédures de renouvellement" in perso
+    assert "Commencez les procédures de renouvellement" not in rh.get("/loyers").get_data(as_text=True)
     liste = rh.get("/documents").get_data(as_text=True)
     assert "Visas et cartes de séjour" in liste and exp.strftime("%d/%m/%Y") in liste
     assert (exp - timedelta(days=365)).strftime("%d/%m/%Y") in liste
@@ -516,8 +519,10 @@ def test_logement_residents_et_notification(app, monkeypatch):
     with app.app_context():
         l = Logement.query.filter_by(numero="2B").one()
         assert l.nom == "BAT TEST — 2B" and l.montant_echeance == 2_100_000 and l.niveau_fin(30) == "alerte"
-    page = rh.get("/").get_data(as_text=True)
+    page = rh.get("/loyers").get_data(as_text=True)
     assert "arrive en fin de période dans moins de 30 jours" in page and "BAT TEST · Appt 2B" in page
+    assert "arrive en fin de période" not in rh.get("/personnel").get_data(as_text=True)
+    assert "arrive en fin de période" not in rh.get("/").get_data(as_text=True)
     liste = rh.get("/logements").get_data(as_text=True)
     assert "Agent A, Agent B" in liste and "J-20" in liste and "2 100 000 FCFA" in liste
     assert "Loyer à payer — BAT TEST · Appt 2B" in rh.get("/tableau-de-bord").get_data(as_text=True)

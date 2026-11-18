@@ -6,14 +6,7 @@
 <div class="espaces-tete">
   <p class="action-sur">Services généraux</p>
   <h1>Bonjour {{ current_user.nom.split(' ')[0] }}, que voulez-vous suivre ?</h1>
-  <p class="muted">Les documents du personnel et les logements de l'entreprise, au même endroit. Les alertes s'allument dès qu'un visa approche de son expiration ou qu'un paiement est en retard.</p>
-  {% if nb_alertes %}
-  <a class="bandeau-alertes" href="{{ url_for('tableau_de_bord') }}">
-    <span class="bandeau-alertes-ico" aria-hidden="true">{{ icon('bell', 18) }}</span>
-    <span><strong>{{ nb_alertes }} point{{ 's' if nb_alertes > 1 }} à surveiller</strong> — documents qui expirent, loyers ou factures en retard, réparations urgentes.</span>
-    <span class="espace-ouvrir">Voir {{ icon('arrow', 16) }}</span>
-  </a>
-  {% endif %}
+  <p class="muted">Les documents du personnel et les logements de l'entreprise, au même endroit. Chaque sous-module est indépendant et affiche ses propres alertes.</p>
 </div>
 
 {% for famille, cartes in familles.items() %}

@@ -24,14 +24,6 @@
   {% if l.montant_a_payer %}Montant de la période suivante : {{ l.montant_a_payer|fcfa }}.{% endif %}
   {% if current_user.gere %}<a class="lien" href="{{ url_for('logement_periode_payee', lid=l.id) }}">Enregistrer le paiement</a>{% endif %}</p></div>
 {% endif %}
-<div class="kpis">
-  <div class="kpi sm-loyers"><span class="kpi-lib">{{ icon('key', 16) }} Loyers payés {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.loyers|fcfa }}</span>
-    <span class="kpi-sous">{% if dus %}<span class="texte-ko">{{ dus|length }} échéance{{ 's' if dus|length > 1 }} en retard</span>{% elif prochaine %}Prochaine : {{ prochaine[1]|date }}{% else %}—{% endif %}</span></div>
-  <div class="kpi sm-electricite"><span class="kpi-lib">{{ icon('bolt', 16) }} Électricité {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.electricite|fcfa }}</span><span class="kpi-sous">Compteur {{ l.compteur_electricite or '—' }}</span></div>
-  <div class="kpi sm-eau"><span class="kpi-lib">{{ icon('drop', 16) }} Eau {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.eau|fcfa }}</span><span class="kpi-sous">Compteur {{ l.compteur_eau or '—' }}</span></div>
-  <div class="kpi sm-reparations"><span class="kpi-lib">{{ icon('wrench', 16) }} Réparations {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.reparations|fcfa }}</span><span class="kpi-sous">{{ l.reparations|selectattr('ouverte')|list|length }} en cours</span></div>
-</div>
-
 <div class="grille-detail mt-3">
   <div class="colonne">
     <section class="carte carte-table sm-loyers" id="historique">
@@ -66,27 +58,6 @@
       {% elif not dus %}<p class="muted pad">Aucun paiement enregistré.{% if current_user.gere %} <a class="lien" href="{{ url_for('logement_periode_payee', lid=l.id) }}">Ajouter le premier paiement</a>{% endif %}</p>{% endif %}
     </section>
 
-    <section class="carte carte-table">
-      <div class="carte-entete pad"><h2>{{ icon('bolt', 18) }} Factures d'électricité et d'eau</h2>
-        {% if current_user.gere %}<span class="actions"><a class="btn btn-ghost btn-sm" href="{{ url_for('facture_nouvelle', type_energie='electricite', logement=l.id) }}">{{ icon('plus', 14) }} Électricité</a><a class="btn btn-ghost btn-sm" href="{{ url_for('facture_nouvelle', type_energie='eau', logement=l.id) }}">{{ icon('plus', 14) }} Eau</a></span>{% endif %}</div>
-      {% if l.factures %}
-      <div class="table-conteneur"><table class="table table-compacte">
-        <thead><tr><th>Mois</th><th>Type</th><th>Conso.</th><th>État</th><th class="num">Montant</th></tr></thead>
-        <tbody>{% for fe in l.factures[:12] %}<tr><td>{{ fe.periode|mois }}</td><td><span class="type-energie type-{{ fe.type_energie }}">{{ icon('bolt' if fe.type_energie == 'electricite' else 'drop', 14) }} {{ fe.type_libelle }}</span></td><td>{{ fe.consommation|decimal }} {{ UNITES[fe.type_energie] if fe.consommation is not none }}</td><td>{{ badge_facture(fe) }}</td><td class="num">{{ fe.montant|fcfa }}</td></tr>{% endfor %}</tbody>
-      </table></div>
-      {% else %}<p class="muted pad">Aucune facture enregistrée.</p>{% endif %}
-    </section>
-
-    <section class="carte carte-table">
-      <div class="carte-entete pad"><h2>{{ icon('wrench', 18) }} Réparations</h2>
-        {% if current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('reparation_nouvelle', logement=l.id) }}">{{ icon('plus', 14) }} Signaler</a>{% endif %}</div>
-      {% if l.reparations %}
-      <div class="table-conteneur"><table class="table table-compacte">
-        <thead><tr><th>Problème</th><th>Signalé le</th><th>Statut</th><th class="num">Coût</th></tr></thead>
-        <tbody>{% for r in l.reparations[:15] %}<tr class="ligne-cliquable" data-href="{{ url_for('reparation_fiche', rid=r.id) }}"><td><a class="lien" href="{{ url_for('reparation_fiche', rid=r.id) }}">{{ r.titre }}</a><br><span class="muted petit">{{ r.categorie }}</span></td><td>{{ r.signale_le|date }}</td><td>{{ badge_reparation(r) }}</td><td class="num">{{ r.cout|fcfa }}</td></tr>{% endfor %}</tbody>
-      </table></div>
-      {% else %}<p class="muted pad">Aucune réparation signalée.</p>{% endif %}
-    </section>
   </div>
 
   <div class="colonne">

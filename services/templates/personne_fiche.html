@@ -37,19 +37,6 @@
     </section>
     {% endfor %}
 
-    <section class="carte carte-table sm-billets">
-      <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('plane', 16) }}</span> Billets d'avion</h2>
-        <span class="muted petit">{{ cout_billets|fcfa }} au total</span>
-        {% if current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('billet_nouveau', personne=p.id) }}">{{ icon('plus', 14) }} Billet</a>{% endif %}</div>
-      {% if p.billets %}
-      <div class="table-conteneur"><table class="table table-compacte">
-        <thead><tr><th>Départ</th><th>Trajet</th><th>Motif</th><th>Statut</th><th class="num">Prix</th></tr></thead>
-        <tbody>{% for b in p.billets %}
-        <tr class="ligne-cliquable" data-href="{{ url_for('billet_fiche', bid=b.id) }}"><td>{{ b.date_depart|date }}</td><td>{{ b.trajet }}</td><td>{{ MOTIFS_BILLET[b.motif] }}</td><td><span class="badge badge-billet-{{ b.statut }}">{{ STATUTS_BILLET[b.statut] }}</span></td><td class="num">{{ b.montant|fcfa }}</td></tr>
-        {% endfor %}</tbody>
-      </table></div>
-      {% else %}<p class="muted pad">Aucun billet.</p>{% endif %}
-    </section>
   </div>
 
   <div class="colonne">
@@ -60,7 +47,7 @@
         <dt>Téléphone</dt><dd>{% if p.telephone %}<a class="lien" href="tel:{{ p.telephone }}">{{ p.telephone }}</a>{% else %}—{% endif %}</dd>
         <dt>E-mail</dt><dd>{% if p.email %}<a class="lien" href="mailto:{{ p.email }}">{{ p.email }}</a>{% else %}—{% endif %}</dd>
         <dt>Passeport</dt><dd>{{ p.passeport_numero or '—' }}{% if p.passeport_expiration %}<br>{% set j = (p.passeport_expiration - aujourdhui).days %}<span class="petit {{ 'texte-ko' if j < 0 else 'texte-alerte' if j <= seuil else 'muted' }}">expire le {{ p.passeport_expiration|date }}{% if j < 0 %} (expiré){% elif j <= seuil %} (dans {{ j }} j){% endif %}</span>{% endif %}</dd>
-        <dt>Logement</dt><dd>{% if p.logement %}<a class="lien" href="{{ url_for('logement_fiche', lid=p.logement.id) }}">{{ p.logement.libelle }}</a>{% else %}—{% endif %}</dd>
+        <dt>Logement</dt><dd>{{ p.logement.libelle if p.logement else '—' }}</dd>
         {% if p.notes %}<dt>Notes</dt><dd class="pre">{{ p.notes }}</dd>{% endif %}
       </dl>
     </section>
