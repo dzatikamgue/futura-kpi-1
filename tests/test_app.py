@@ -2339,3 +2339,17 @@ def test_recopie_acces_modules(app, monkeypatch):
     assert "sans équivalent" in r.get_data(as_text=True)
     assert M.role_equivalent("gestionnaire", "services") == "gestionnaire"
     assert M.role_equivalent("occupant", "flotte") is None
+
+
+def test_portail_lien_acces_modules(app, monkeypatch):
+    """Le portail affiche « Gérer les accès aux modules » aux RH / superadmin seulement."""
+    monkeypatch.setenv("MODULE_SERVICES_URL", "https://services.exemple.cm")
+    monkeypatch.setenv("MODULE_SERVICES_SECRET", "s")
+    from app.services import modules as M
+    monkeypatch.setattr(M, "a_acces", lambda code, email: True)
+    rh = app.test_client()
+    login(rh, email_de("MBALLA"))
+    assert "Gérer les accès aux modules" in rh.get("/modules/").get_data(as_text=True)
+    autre = app.test_client()
+    login(autre, email_de("NGUEMA"))
+    assert "Gérer les accès aux modules" not in autre.get("/modules/").get_data(as_text=True)

@@ -5,7 +5,9 @@
 {% block breadcrumb %}<span class="sep">/</span><span aria-current="page">Modules</span>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Bonjour{{ " " ~ current_user.employe.prenom if current_user.employe and current_user.employe.prenom }}</h1>
-  <p>Choisissez le module à ouvrir. Vous êtes connecté une seule fois pour tous.</p></div></div>
+  <p>Choisissez le module à ouvrir. Vous êtes connecté une seule fois pour tous.</p></div>
+  {% if current_user.est_rh %}<div class="page-head__actions"><a class="btn btn--primary" href="{{ url_for('modules.acces') }}">{{ icon('users') }} Gérer les accès aux modules</a></div>{% endif %}
+</div>
 
 <div class="modules">
   {% for m in modules %}
