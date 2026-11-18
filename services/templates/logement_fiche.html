@@ -12,7 +12,7 @@
   {% if current_user.gere %}
   <div class="actions">
     <a class="btn btn-ghost" href="{{ url_for('logement_modifier', lid=l.id) }}">{{ icon('edit', 16) }} Modifier</a>
-    {% if l.loyer %}<a class="btn btn-primary" href="{{ url_for('loyer_payer', logement=l.id, retour=request.path) }}">{{ icon('key', 16) }} Enregistrer un loyer</a>{% endif %}
+    <a class="btn btn-primary" href="{{ url_for('logement_periode_payee', lid=l.id) }}">{{ icon('check', 16) }} Enregistrer le paiement d'une période</a>
   </div>
   {% endif %}
 </div>
@@ -20,8 +20,9 @@
 {% set niv = l.niveau_fin(seuil_loyer) %}
 {% if niv in ('alerte', 'critique', 'echue') %}
 <div class="bandeau bandeau-{{ 'ko' if niv != 'alerte' else 'alerte' }}">{{ icon('bell', 20) }}
-  <p><strong>{% if niv == 'echue' %}La période de loyer est terminée depuis le {{ l.bail_fin|date }}.{% else %}La période de loyer se termine le {{ l.bail_fin|date }} (dans {{ l.jours_avant_fin }} jours).{% endif %}</strong>
-  Préparez le renouvellement : {{ l.montant_echeance|fcfa }} pour la prochaine période ({{ PERIODICITES[l.periodicite]|lower }}). Une fois payé, mettez à jour les dates de la période dans « Modifier ».</p></div>
+  <p><strong>{% if niv == 'echue' %}Loyer en retard : payé jusqu'au {{ l.fin_payee|date }}.{% else %}Payé jusqu'au {{ l.fin_payee|date }} (dans {{ l.jours_avant_fin }} jours).{% endif %}</strong>
+  Prochaine période à payer{% if l.prochaine_debut %} : {{ l.prochaine_debut|date }} → {{ l.prochaine_fin|date }}{% endif %}{% if l.montant_a_payer %}, {{ l.montant_a_payer|fcfa }}{% endif %}.
+  {% if current_user.gere %}<a class="lien" href="{{ url_for('logement_periode_payee', lid=l.id) }}">Enregistrer le paiement</a>{% endif %}</p></div>
 {% endif %}
 <div class="kpis">
   <div class="kpi sm-loyers"><span class="kpi-lib">{{ icon('key', 16) }} Loyers payés {{ aujourdhui.year }}</span><span class="kpi-val kpi-val-sm">{{ couts.loyers|fcfa }}</span>
@@ -35,7 +36,7 @@
   <div class="colonne">
     <section class="carte carte-table sm-loyers">
       <div class="carte-entete pad"><h2><span class="sm-ico sm-ico-sm" aria-hidden="true">{{ icon('key', 16) }}</span> Loyers</h2>
-        <span class="muted petit">{{ l.montant_echeance|fcfa }} · {{ PERIODICITES[l.periodicite]|lower }}, le {{ l.jour_echeance }} · {{ l.charges_libelle }}</span></div>
+        <span class="muted petit">{{ l.montant_echeance|fcfa }} · {{ PERIODICITES.get(l.periodicite, '')|lower }} · {{ l.charges_libelle }}</span></div>
       {% if dus %}
       <ul class="boite pad">
         {% for debut, limite in dus %}
@@ -94,10 +95,11 @@
         <dt>Charges communes</dt><dd>{% if l.charges_mode == 'en_sus' %}<span class="badge badge-charges">En plus</span> {{ l.charges|fcfa }} / mois<br><span class="muted petit">Total mensuel : {{ l.mensuel_total|fcfa }}</span>
           {% elif l.charges_mode == 'incluses' %}<span class="badge badge-ok">Incluses</span>{% if l.charges %} dont {{ l.charges|fcfa }} / mois{% endif %}
           {% else %}<span class="muted">Aucune</span>{% endif %}</dd>
-        <dt>Paiement</dt><dd>{{ PERIODICITES[l.periodicite] }}, le {{ l.jour_echeance }} du mois</dd>
+        <dt>Périodicité</dt><dd>{{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois') }}</dd>
         <dt>Caution</dt><dd>{{ l.caution|fcfa }}</dd>
-        <dt>Période de loyer</dt><dd>{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% if l.bail_fin %}<br><span class="muted petit">notification le {{ (l.bail_fin - timedelta_jours(seuil_loyer))|date }}</span>{% endif %}</dd>
-        <dt>Montant de la période</dt><dd>{{ l.montant_echeance|fcfa if l.loyer else '—' }} <span class="muted petit">({{ PERIODICITES[l.periodicite]|lower }})</span></dd>
+        <dt>Période payée</dt><dd>{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}{% if l.fin_payee %}<br><span class="muted petit">notification le {{ (l.fin_payee - timedelta_jours(seuil_loyer))|date }}</span>{% endif %}</dd>
+        <dt>Prochaine période</dt><dd>{% if l.prochaine_debut %}<span class="badge badge-nonpaye">Non payée</span> {{ l.prochaine_debut|date }} → {{ l.prochaine_fin|date }}{% else %}—{% endif %}</dd>
+        <dt>Montant d'une période</dt><dd>{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }} <span class="muted petit">({{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois')|lower }}{{ ', montant du fichier' if l.montant_periode }})</span></dd>
         <dt>Mode de paiement</dt><dd>{{ l.mode_paiement or '—' }}</dd>
         <dt>Suivi des loyers depuis</dt><dd>{{ l.loyers_suivis_depuis|mois }}</dd>
         {% if l.notes %}<dt>Notes</dt><dd class="pre">{{ l.notes }}</dd>{% endif %}

@@ -520,7 +520,7 @@ def test_logement_residents_et_notification(app, monkeypatch):
     assert "arrive en fin de période dans moins de 30 jours" in page and "BAT TEST · Appt 2B" in page
     liste = rh.get("/logements").get_data(as_text=True)
     assert "Agent A, Agent B" in liste and "J-20" in liste and "2 100 000 FCFA" in liste
-    assert "Loyer à renouveler — BAT TEST · Appt 2B" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert "Loyer à payer — BAT TEST · Appt 2B" in rh.get("/tableau-de-bord").get_data(as_text=True)
     # Sans bâtiment / n° ni nom : refusé
     r = rh.post("/logements/nouveau", data={"batiment": "X", "periodicite": "1", "jour_echeance": "5", "charges_mode": "aucune"})
     assert r.status_code == 200 and "Indiquez le bâtiment" in r.get_data(as_text=True)
@@ -535,3 +535,34 @@ def test_logement_residents_et_notification(app, monkeypatch):
         assert Logement.query.filter_by(batiment="BAT TEST").count() == 2
         c = Logement.query.filter_by(numero="3C").one()
         assert c.ville is None and c.bail_fin.isoformat() == "2027-04-15" and c.montant_echeance == 2_100_000
+
+
+def test_periode_payee(app):
+    from models import Logement, Loyer, aujourdhui, db
+    with app.app_context():
+        l = Logement(nom="Q — 1", batiment="Q", numero="1", loyer=500000, charges=50000, charges_mode="en_sus", periodicite=6,
+                     montant_periode=3300000, bail_debut=aujourdhui() - timedelta(days=170),
+                     bail_fin=aujourdhui() + timedelta(days=10))
+        db.session.add(l)
+        db.session.commit()
+        lid, fin = l.id, l.bail_fin
+    rh = client(app, "rh")
+    assert "Loyer à payer — Q · Appt 1" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    form = rh.get(f"/logement/{lid}/periode-payee").get_data(as_text=True)
+    debut = fin + timedelta(days=1)
+    assert f'value="{debut.isoformat()}"' in form and 'value="3 300 000"' in form
+    from models import mois_ajoutes
+    nfin = mois_ajoutes(debut, 6) - timedelta(days=1)
+    r = rh.post(f"/logement/{lid}/periode-payee", data={"debut": debut.isoformat(), "fin": nfin.isoformat(),
+                                                        "montant": "3 300 000", "date_paiement": aujourdhui().isoformat()})
+    assert r.status_code == 302
+    with app.app_context():
+        l = db.session.get(Logement, lid)
+        assert l.bail_fin == nfin and l.prochaine_debut == nfin + timedelta(days=1) and Loyer.query.count() == 1
+    assert "Loyer à payer — Q · Appt 1" not in rh.get("/tableau-de-bord").get_data(as_text=True)
+    # Prochaine période seule (période payée inconnue) : la notification part de la veille
+    with app.app_context():
+        m = Logement(nom="Q — 2", batiment="Q", numero="2", prochaine_debut=aujourdhui() + timedelta(days=5),
+                     prochaine_fin=aujourdhui() + timedelta(days=180))
+        db.session.add(m); db.session.commit()
+        assert m.jours_avant_fin == 4

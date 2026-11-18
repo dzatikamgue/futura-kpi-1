@@ -8,17 +8,21 @@
     <p class="muted">{{ liste|length }} logement{{ 's' if liste|length > 1 }} · {{ total_loyers|fcfa }} par mois (loyers + charges communes) · notification {{ seuil_loyer }} jours avant la fin de chaque période de loyer</p></div>
   {% if current_user.gere %}<div class="actions"><a class="btn btn-primary" href="{{ url_for('logement_nouveau') }}">{{ icon('plus', 16) }} Nouveau logement</a></div>{% endif %}
 </div>
-{% set proches = liste|selectattr('bail_fin')|selectattr('actif')|list %}
+{% set proches = liste|selectattr('fin_payee')|selectattr('actif')|list %}
 {% set a_renouveler = [] %}{% for l in proches %}{% if l.niveau_fin(seuil_loyer) in ('alerte', 'critique', 'echue') %}{% set _ = a_renouveler.append(l) %}{% endif %}{% endfor %}
 {% if a_renouveler %}
 <div class="bandeau bandeau-{{ 'ko' if a_renouveler|selectattr('jours_avant_fin', 'lt', 0)|list else 'alerte' }}">
   {{ icon('bell', 20) }}
   <p><strong>{{ a_renouveler|length }} loyer{{ 's' if a_renouveler|length > 1 }} à renouveler :</strong>
-  {% for l in a_renouveler %}{{ l.libelle }} (fin le {{ l.bail_fin|date }}){{ ', ' if not loop.last }}{% endfor %}.</p>
+  {% for l in a_renouveler %}{{ l.libelle }} (payé jusqu'au {{ l.fin_payee|date }}){{ ', ' if not loop.last }}{% endfor %}.</p>
 </div>
 {% endif %}
 <div class="filtres">
   {{ onglets('statut', [('actifs', 'Loués', none), ('inactifs', 'Rendus', none), ('tous', 'Tous', none)], 'actifs') }}
+  <form class="filtres-form" method="get">
+    <input type="hidden" name="statut" value="{{ request.args.get('statut', 'actifs') }}">
+    <select name="batiment" data-auto-submit aria-label="Bâtiment"><option value="">Tous les bâtiments</option>{% for b in batiments %}<option {{ 'selected' if request.args.get('batiment') == b }}>{{ b }}</option>{% endfor %}</select>
+  </form>
   <form class="recherche" method="get" role="search">
     {% for k, v in request.args.items() if k != 'q' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
     {{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Bâtiment, n°, résident, bailleur…" aria-label="Rechercher">
@@ -27,7 +31,7 @@
 {% if liste %}
 <div class="carte carte-table"><div class="table-conteneur">
 <table class="table">
-  <thead><tr><th>Bâtiment</th><th>Appt</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période de loyer</th><th>Fin</th><th class="num">Montant de la période</th></tr></thead>
+  <thead><tr><th>Bâtiment</th><th>Appt / étage</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période payée</th><th>Prochaine période</th><th class="num">Montant de la période</th></tr></thead>
   <tbody>
   {% for l in liste %}{% set niv = l.niveau_fin(seuil_loyer) %}
   <tr class="ligne-cliquable {{ 'ligne-expire' if niv in ('echue', 'critique') else 'ligne-alerte' if niv == 'alerte' }} {{ 'inactif' if not l.actif }}" data-href="{{ url_for('logement_fiche', lid=l.id) }}">
@@ -36,12 +40,14 @@
     <td class="petit">{% if l.residents %}{{ l.residents }}{% elif l.occupants %}{{ l.occupants|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td class="num">{{ l.loyer|fcfa }}</td>
     <td class="num">{% if l.charges_mode == 'en_sus' %}{{ l.charges|fcfa }}{% elif l.charges_mode == 'incluses' %}<span class="muted petit">incluses</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td class="nowrap petit">{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → {{ l.bail_fin|date }}{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td class="nowrap">{% if niv == 'echue' %}<span class="badge badge-ko">Terminée depuis {{ -l.jours_avant_fin }} j</span>
-      {% elif niv == 'critique' %}<span class="badge badge-ko">J-{{ l.jours_avant_fin }} · renouveler</span>
-      {% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ l.jours_avant_fin }} · renouveler</span>
-      {% elif niv == 'ok' %}<span class="badge badge-ok">{{ l.jours_avant_fin }} j</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td class="num"><strong>{{ l.montant_echeance|fcfa if l.loyer else '—' }}</strong>{% if l.loyer %}<br><span class="muted petit">{{ PERIODICITES[l.periodicite]|lower }}</span>{% endif %}</td>
+    <td class="nowrap petit">{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}
+      <br>{% if niv == 'echue' %}<span class="badge badge-ko">Loyer en retard · {{ -l.jours_avant_fin }} j</span>
+      {% elif niv == 'critique' %}<span class="badge badge-ko">J-{{ l.jours_avant_fin }} · à payer</span>
+      {% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ l.jours_avant_fin }} · à payer</span>
+      {% elif niv == 'ok' %}<span class="badge badge-ok">payé · {{ l.jours_avant_fin }} j restants</span>{% endif %}</td>
+    <td class="nowrap petit">{% if l.prochaine_debut %}<span class="badge badge-nonpaye">Non payée</span><br>{{ l.prochaine_debut|date }} → {{ l.prochaine_fin|date }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="num"><strong>{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }}</strong>{% if l.loyer %}<br><span class="muted petit">{{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois')|lower }}</span>{% endif %}
+      {% if current_user.gere and l.actif %}<br><a class="btn btn-sm btn-ghost mt-1" href="{{ url_for('logement_periode_payee', lid=l.id) }}">{{ icon('check', 14) }} Période payée</a>{% endif %}</td>
   </tr>
   {% endfor %}
   </tbody>

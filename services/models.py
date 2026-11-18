@@ -292,6 +292,9 @@ class Logement(Tracable, db.Model):
     numero = db.Column(db.String(30))                     # n° d'appartement / étage-bloc (ex. 1A)
     residents = db.Column(db.Text)                        # noms des résidents, tels que communiqués
     date_entree = db.Column(db.Date)                      # entrée dans le logement
+    montant_periode = db.Column(db.BigInteger)            # montant TTC de la période (tel que facturé)
+    prochaine_debut = db.Column(db.Date)                  # prochaine période, PAS ENCORE PAYÉE
+    prochaine_fin = db.Column(db.Date)
     mode_paiement = db.Column(db.String(30))
     type_logement = db.Column(db.String(30), default="Appartement")
     ville = db.Column(db.String(40))
@@ -300,6 +303,7 @@ class Logement(Tracable, db.Model):
     bailleur = db.Column(db.String(160))
     bailleur_telephone = db.Column(db.String(40))
     loyer = db.Column(db.BigInteger)                     # montant par mois (hors charges si « en sus »)
+    # bail_debut / bail_fin : dernière période PAYÉE
     charges_mode = db.Column(db.String(10), nullable=False, default="aucune")   # aucune / incluses / en_sus
     charges = db.Column(db.BigInteger)                   # charges communes par mois (montant ou part incluse)
     periodicite = db.Column(db.Integer, nullable=False, default=1)   # mois couverts par échéance
@@ -346,12 +350,39 @@ class Logement(Tracable, db.Model):
     @property
     def libelle(self):
         if self.batiment and self.numero:
-            return f"{self.batiment} · Appt {self.numero}"
+            court = len(self.numero) <= 4 or self.numero[:1].isdigit()
+            return f"{self.batiment} · {'Appt ' if court else ''}{self.numero}"
         return f"{self.nom} · {self.quartier}" if self.quartier else self.nom
 
     @property
+    def fin_payee(self):
+        """Dernier jour payé : fin de la période en cours, sinon veille de la prochaine période (non payée)."""
+        if self.bail_fin:
+            return self.bail_fin
+        if self.prochaine_debut:
+            from datetime import timedelta
+            return self.prochaine_debut - timedelta(days=1)
+        return None
+
+    @property
     def jours_avant_fin(self):
-        return (self.bail_fin - aujourdhui()).days if self.bail_fin else None
+        f = self.fin_payee
+        return (f - aujourdhui()).days if f else None
+
+    @property
+    def montant_a_payer(self):
+        """Montant de la prochaine période : montant TTC connu, sinon (loyer + charges en sus) × périodicité."""
+        return self.montant_periode or (self.montant_echeance if self.loyer else None)
+
+    def periode_suivante(self):
+        """Dates proposées pour la prochaine période : celle saisie, sinon la suite de la période payée."""
+        if self.prochaine_debut:
+            return self.prochaine_debut, self.prochaine_fin
+        if self.bail_fin:
+            from datetime import timedelta
+            debut = self.bail_fin + timedelta(days=1)
+            return debut, mois_ajoutes(debut, self.periodicite or 1) - timedelta(days=1)
+        return None, None
 
     def niveau_fin(self, seuil=ALERTE_BAIL_JOURS):
         """ok / alerte (fin dans le délai de notification) / critique (≤ 7 j) / echue."""
@@ -582,7 +613,8 @@ def migrer():
         "documents": [("note_le", "TIMESTAMP"), ("note_par_id", "INTEGER")],
         "logements": [("charges_mode", "VARCHAR(10) NOT NULL DEFAULT 'aucune'"), ("charges", "BIGINT"),
                       ("batiment", "VARCHAR(120)"), ("numero", "VARCHAR(30)"), ("residents", "TEXT"),
-                      ("mode_paiement", "VARCHAR(30)"), ("date_entree", "DATE")],
+                      ("mode_paiement", "VARCHAR(30)"), ("date_entree", "DATE"), ("montant_periode", "BIGINT"),
+                      ("prochaine_debut", "DATE"), ("prochaine_fin", "DATE")],
         "loyers": [("montant_charges", "BIGINT")],
     }
     insp = inspect(db.engine)

@@ -27,7 +27,7 @@ from sqlalchemy.orm import selectinload
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import formulaires as F
-from models import (ALERTE_BAIL_JOURS, ALERTE_DOC_JOURS, CATEGORIES_REPARATION, FOURNISSEURS, MIMES_AUTORISES,
+from models import (MODES_PAIEMENT, ALERTE_BAIL_JOURS, ALERTE_DOC_JOURS, CATEGORIES_REPARATION, FOURNISSEURS, MIMES_AUTORISES,
                     MOTIFS_BILLET, OBJETS_PIECE, PERIODICITES, RENOUVELLEMENT, REPARATIONS_OUVERTES, ROLES,
                     STATUTS_BILLET, STATUTS_REPARATION, TYPES_DOCUMENT, TYPES_ENERGIE, UNITES, URGENCES,
                     TYPES_ENTREPRISE, Billet, Document, Entreprise, FactureEnergie, Journal, Logement, Loyer, Parametre, Personne, Piece,
@@ -287,20 +287,35 @@ def import_initial():
     # Logements (bâtiment + n° d'appartement) : créés s'ils n'existent pas encore
     nb_l = 0
     champs_l = ("batiment", "numero", "residents", "mode_paiement", "type_logement", "ville", "loyer", "charges",
-                "charges_mode", "periodicite", "caution", "notes")
+                "charges_mode", "periodicite", "caution", "notes", "quartier", "bailleur", "montant_periode", "actif")
+    dates_l = ("bail_debut", "bail_fin", "date_entree", "prochaine_debut", "prochaine_fin")
+    nb_maj = 0
     for x in donnees.get("logements") or []:
         bat, num = str(x.get("batiment") or "").strip(), str(x.get("numero") or "").strip()
-        if not bat or not num or Logement.query.filter(func.lower(Logement.batiment) == bat.lower(),
-                                                       func.lower(Logement.numero) == num.lower()).first():
+        nom = (f"{bat} — {num or x.get('residents') or ''}").strip(" —")[:120]
+        if not bat:
             continue
-        l = Logement(nom=f"{bat} — {num}"[:120], **{k: x[k] for k in champs_l if x.get(k) is not None})
-        for k in ("bail_debut", "bail_fin", "date_entree"):
-            if x.get(k):
-                setattr(l, k, date.fromisoformat(x[k]))
-        if "ville" in x and x["ville"] is None:
-            l.ville = None
-        db.session.add(l)
-        nb_l += 1
+        q = Logement.query.filter(func.lower(Logement.batiment) == bat.lower())
+        l = (q.filter(func.lower(Logement.numero) == num.lower()) if num else q.filter(Logement.nom == nom)).first()
+        if l is None:
+            l = Logement(nom=nom)
+            db.session.add(l)
+            nb_l += 1
+        else:
+            if not donnees.get("maj"):
+                continue
+            nb_maj += 1
+        for k in champs_l:
+            if k in x:
+                setattr(l, k, x[k])
+        for k in dates_l:
+            if k in x:
+                setattr(l, k, date.fromisoformat(x[k]) if x[k] else None)
+        l.periodicite = l.periodicite or 1
+        l.charges_mode = l.charges_mode or "aucune"
+    if nb_maj:
+        journaliser("Mise à jour logements (import)", "", f"{nb_maj} logement(s)")
+        print(f"Import initial : {nb_maj} logement(s) mis à jour.", flush=True)
     if nb_l:
         journaliser("Import initial logements", "", f"{nb_l} logement(s)")
         print(f"Import initial : {nb_l} logement(s).", flush=True)
@@ -492,6 +507,14 @@ def barre_entreprises():
             for e in Entreprise.query.filter_by(actif=True).order_by(Entreprise.type_entreprise.desc(), Entreprise.nom)]
 
 
+def loyers_a_renouveler():
+    """Logements loués dont la période payée se termine dans le délai de notification (ou est dépassée)."""
+    s = seuil_bail()
+    res = [l for l in Logement.query.filter(Logement.actif.is_(True))
+           if l.jours_avant_fin is not None and l.jours_avant_fin <= s]
+    return sorted(res, key=lambda l: l.fin_payee)
+
+
 def loyers_dus(jusqu_au=None):
     """Toutes les échéances de loyer échues et non payées : liste de dict, plus ancienne d'abord."""
     res = []
@@ -595,13 +618,14 @@ def a_surveiller():
                               titre=f"{'Réparation urgente' if r.urgence == 'urgente' else 'Réparation en attente'} — {r.logement.libelle}",
                               texte=f"{r.titre} · {r.statut_libelle} · ouverte depuis {r.jours_ouverte} j",
                               lien=url_for("reparation_fiche", rid=r.id), tri=-r.jours_ouverte))
-    for l in Logement.query.filter(Logement.actif.is_(True), Logement.bail_fin.isnot(None),
-                                   Logement.bail_fin <= aujourdhui() + timedelta(days=seuil_bail())):
-        j = (l.bail_fin - aujourdhui()).days
+    for l in loyers_a_renouveler():
+        j = l.jours_avant_fin
         items.append(dict(niveau="critique" if j <= 7 else "alerte", icone="home",
-                          titre=f"Loyer à renouveler — {l.libelle}",
-                          texte=(f"Période de loyer terminée depuis {-j} j" if j < 0 else f"La période de loyer se termine dans {j} j")
-                          + f" ({l.bail_fin:%d/%m/%Y})" + (f" · {l.residents}" if l.residents else ""),
+                          titre=f"Loyer à payer — {l.libelle}",
+                          texte=(f"Payé jusqu'au {l.fin_payee:%d/%m/%Y}, en retard de {-j} j" if j < 0
+                                 else f"Payé jusqu'au {l.fin_payee:%d/%m/%Y} (dans {j} j)")
+                          + (f" · {_milliers(l.montant_a_payer)} FCFA" if l.montant_a_payer else "")
+                          + (f" · {l.residents}" if l.residents else ""),
                           lien=url_for("logement_fiche", lid=l.id), tri=j))
     items.sort(key=lambda x: (x["niveau"] != "critique", x["tri"]))
     return items
@@ -638,11 +662,9 @@ def register_filters(app):
                 docs_notif = dict(total=len(proches), expires=sum(1 for d in proches if d.jours_restants < 0),
                                   a_lancer=sum(1 for d in proches if d.renouvellement in ("", "a_lancer")),
                                   premier=min(proches, key=lambda d: d.date_expiration))
-            fins = Logement.query.filter(Logement.actif.is_(True), Logement.bail_fin.isnot(None),
-                                         Logement.bail_fin <= aujourdhui() + timedelta(days=seuil_bail())) \
-                .order_by(Logement.bail_fin).all()
+            fins = loyers_a_renouveler()
             if fins:
-                loyers_notif = dict(total=len(fins), echus=sum(1 for l in fins if l.bail_fin < aujourdhui()), premier=fins[0])
+                loyers_notif = dict(total=len(fins), echus=sum(1 for l in fins if l.jours_avant_fin < 0), premier=fins[0])
         return dict(ROLES=ROLES, SOUS_MODULES=SOUS_MODULES, TYPES_DOCUMENT=TYPES_DOCUMENT,
                     RENOUVELLEMENT=RENOUVELLEMENT, MOTIFS_BILLET=MOTIFS_BILLET, STATUTS_BILLET=STATUTS_BILLET,
                     TYPES_ENERGIE=TYPES_ENERGIE, UNITES=UNITES, FOURNISSEURS=FOURNISSEURS,
@@ -1471,6 +1493,8 @@ def register_routes(app):
             q = q.filter(Logement.actif.is_(request.args.get("statut") != "inactifs"))
         if request.args.get("ville"):
             q = q.filter(Logement.ville == request.args["ville"])
+        if request.args.get("batiment"):
+            q = q.filter(Logement.batiment == request.args["batiment"])
         r = recherche()
         if r:
             like = f"%{r}%"
@@ -1478,7 +1502,8 @@ def register_routes(app):
                              Logement.adresse.ilike(like), Logement.batiment.ilike(like), Logement.numero.ilike(like),
                              Logement.residents.ilike(like)))
         liste = q.order_by(Logement.batiment, Logement.numero, Logement.nom).all()
-        return render_template("logements.html", liste=liste,
+        batiments = sorted(b for (b,) in db.session.query(Logement.batiment).filter(Logement.batiment.isnot(None)).distinct())
+        return render_template("logements.html", liste=liste, batiments=batiments,
                                total_loyers=sum(l.mensuel_total for l in liste if l.actif))
 
     def formulaire_logement(l=None):
@@ -1489,6 +1514,8 @@ def register_routes(app):
             val, err, f = F.lire(champs)
             if val.get("bail_debut") and val.get("bail_fin") and val["bail_fin"] < val["bail_debut"]:
                 err["bail_fin"] = "La fin de la période doit suivre son début."
+            if val.get("prochaine_debut") and val.get("prochaine_fin") and val["prochaine_fin"] < val["prochaine_debut"]:
+                err["prochaine_fin"] = "La fin de la période doit suivre son début."
             if not val.get("nom"):
                 if val.get("batiment") and val.get("numero"):
                     val["nom"] = f"{val['batiment']} — {val['numero']}"[:120]
@@ -1519,7 +1546,9 @@ def register_routes(app):
             if l is None:
                 f["loyers_suivis_depuis"] = aujourdhui().strftime("%Y-%m")
         batiments = [b for (b,) in db.session.query(Logement.batiment).filter(Logement.batiment.isnot(None)).distinct()]
-        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=l, listes={"batiments": batiments},
+        modes = MODES_PAIEMENT + ["Versement bancaire"]
+        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=l,
+                               listes={"batiments": batiments, "modes": modes},
                                titre="Modifier le logement" if l else "Nouveau logement",
                                ariane=[("Logements", url_for("logements"))],
                                retour=url_for("logement_fiche", lid=l.id) if l else url_for("logements"))
@@ -1533,6 +1562,60 @@ def register_routes(app):
     @gestion
     def logement_modifier(lid):
         return formulaire_logement(ou_404(Logement, lid))
+
+    @app.route("/logement/<int:lid>/periode-payee", methods=["GET", "POST"])
+    @gestion
+    def logement_periode_payee(lid):
+        """Enregistre le paiement de la prochaine période : elle devient la période payée, la suivante est proposée."""
+        l = ou_404(Logement, lid)
+        d0, f0 = l.periode_suivante()
+        champs = [F.C("debut", "Période payée : début", "date", requis=True),
+                  F.C("fin", "Période payée : fin", "date", requis=True),
+                  F.C("montant", "Montant payé", "montant", requis=True),
+                  F.C("date_paiement", "Payé le", "date", requis=True),
+                  F.C("mode_paiement", "Mode de paiement", max_long=30, liste="modes"),
+                  F.C("reference", "Référence (reçu, virement…)", max_long=80)]
+        if request.method == "POST":
+            val, err, f = F.lire(champs)
+            if val.get("debut") and val.get("fin") and val["fin"] < val["debut"]:
+                err["fin"] = "La fin doit suivre le début."
+            pieces, e = lire_pieces()
+            if e:
+                err["pieces"] = e
+            if not err:
+                d, fn = val["debut"], val["fin"]
+                nb_mois = max(1, round(((fn - d).days + 1) / 30.4))
+                x = None
+                if not Loyer.query.filter_by(logement_id=l.id, periode_debut=d.replace(day=1)).first():
+                    x = Loyer(logement_id=l.id, periode_debut=d.replace(day=1), mois=nb_mois, montant=val["montant"],
+                              date_paiement=val["date_paiement"], mode_paiement=val.get("mode_paiement"),
+                              reference=val.get("reference"), notes=f"Période du {d:%d/%m/%Y} au {fn:%d/%m/%Y}",
+                              montant_charges=(l.charges_en_sus * nb_mois) or None, cree_par_id=current_user.id)
+                    db.session.add(x)
+                    db.session.flush()
+                    rattacher(pieces, "loyer", x.id)
+                l.bail_debut, l.bail_fin = d, fn
+                l.prochaine_debut = fn + timedelta(days=1)
+                l.prochaine_fin = mois_ajoutes(l.prochaine_debut, nb_mois) - timedelta(days=1)
+                if val.get("mode_paiement"):
+                    l.mode_paiement = val["mode_paiement"]
+                journaliser("Période de loyer payée", l.libelle,
+                            f"{d:%d/%m/%Y} → {fn:%d/%m/%Y} · {_milliers(val['montant'])} FCFA")
+                db.session.commit()
+                flash(f"Paiement enregistré : {l.libelle} payé jusqu'au {fn:%d/%m/%Y}. "
+                      f"Prochaine période (non payée) : {l.prochaine_debut:%d/%m/%Y} → {l.prochaine_fin:%d/%m/%Y}.", "succes")
+                return redirect(url_for("logement_fiche", lid=l.id))
+        else:
+            err = {}
+            f = {"debut": d0.isoformat() if d0 else "", "fin": f0.isoformat() if f0 else "",
+                 "montant": _milliers(l.montant_a_payer) if l.montant_a_payer else "",
+                 "date_paiement": aujourdhui().isoformat(), "mode_paiement": l.mode_paiement or "", "reference": ""}
+        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=None, pieces_form=True,
+                               listes={"modes": MODES_PAIEMENT + ["Versement bancaire"]},
+                               titre=f"Paiement du loyer — {l.libelle}", bouton="Enregistrer le paiement",
+                               aide="La période saisie devient la période payée ; la suivante est créée « non payée ».",
+                               ariane=[("Logements", url_for("logements")), (l.libelle, url_for("logement_fiche", lid=l.id))],
+                               retour=url_for("logement_fiche", lid=l.id))
 
     @app.route("/logement/<int:lid>")
     @lecture
