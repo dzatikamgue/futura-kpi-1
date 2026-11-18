@@ -362,3 +362,59 @@ def test_ajouter_personne_depuis_annuaire(app, monkeypatch):
     page = rh.get("/personnel/ajouter?q=xyz").get_data(as_text=True)
     assert "ne répond pas" in page and "Saisir une nouvelle personne" in page
     assert client(app, "dg").get("/personnel/ajouter").status_code == 403
+
+
+def _classeur():
+    import io
+    from datetime import datetime
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet3"
+    ws["A5"], ws["B5"], ws["C5"], ws["D5"], ws["E5"] = "NATIONALITE", "NOMS", "DOCUMENTS ADMINISTRATIF", "VALIDITE", "NIVEAU DE TRAITEMENT"
+    rows = [("AGENT TEST UN", "Carte de séjour", datetime(2035, 2, 12), None),
+            ("AGENT TEST DEUX", "carte de séjour/ Receipt", "16/7/2028", None),
+            ("AGENT TEST TROIS", "VISA", "6/12/2026", "Encours de téléchargement"),
+            ("SANS DATE", "VISA", "bientôt", None),
+            ("INCONNU", "Passeport", "1/1/2027", None)]
+    for i, (n, d, v, e) in enumerate(rows, start=7):
+        ws.cell(i, 2, n); ws.cell(i, 3, d); ws.cell(i, 4, v); ws.cell(i, 5, e)
+    ws["A7"] = "LIBANAIS"
+    ws.merge_cells("A7:A11")
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return buf
+
+
+def test_import_excel(app):
+    import json
+    import import_excel as IX
+    from models import Document, Entreprise, Personne
+    lignes, err = IX.analyser(_classeur())
+    assert err is None and len(lignes) == 5
+    assert [l["probleme"] is None for l in lignes] == [True, True, True, False, False]
+    assert lignes[0]["expiration"] == "2035-02-12" and lignes[1]["expiration"] == "2028-07-16"
+    assert all(l["nationalite"] == "Libanais" for l in lignes)          # cellule fusionnée
+    assert lignes[1]["type_doc"] == "carte_sejour" and lignes[1]["categorie"] == "carte de séjour/ Receipt"
+    assert IX.lire_date("9-Jan-27").isoformat() == "2027-01-09" and IX.lire_date("13-Oct-28").isoformat() == "2028-10-13"
+    rh = client(app, "rh")
+    r = rh.post("/documents/importer", data={"action": "analyser", "nouvelle_entreprise": "Futura",
+                                             "fichier": (_classeur(), "suivi.xlsx")}, content_type="multipart/form-data")
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200 and "Date de validité illisible" in page and "Type de document non reconnu" in page
+    donnees = json.dumps(lignes)
+    sel = [f"Sheet3:{l['ligne']}" for l in lignes]
+    r = rh.post("/documents/importer", data={"action": "confirmer", "nouvelle_entreprise": "Futura", "donnees": donnees, "ligne": sel})
+    assert r.status_code == 302
+    with app.app_context():
+        assert Entreprise.query.filter_by(nom="Futura").count() == 1
+        assert Personne.query.count() == 3 and Document.query.count() == 3
+        j = Personne.query.filter_by(nom="AGENT TEST TROIS").one()
+        assert j.nationalite == "Libanais" and j.entreprise.nom == "Futura"
+        d = j.documents[0]
+        assert d.date_delivrance is None and d.renouvellement_note == "Encours de téléchargement"
+    # Réimport : aucun doublon
+    rh.post("/documents/importer", data={"action": "confirmer", "nouvelle_entreprise": "Futura", "donnees": donnees, "ligne": sel})
+    with app.app_context():
+        assert Personne.query.count() == 3 and Document.query.count() == 3
+    assert "à compléter" in rh.get("/documents").get_data(as_text=True)
+    assert client(app, "dg").get("/documents/importer").status_code == 403

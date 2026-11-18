@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, entete_module with context %}
+{% block titre %}Importer un fichier Excel{% endblock %}
+{% block sous_module %}documents{% endblock %}
+{% block ariane %}<a href="{{ url_for('documents') }}">Visas et cartes de séjour</a><span aria-current="page">Importer un fichier Excel</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, 'Importer un fichier Excel', "Reprend votre fichier de suivi (NATIONALITE · NOMS · DOCUMENTS ADMINISTRATIF · VALIDITE · NIVEAU DE TRAITEMENT). Vous vérifiez l'aperçu avant tout enregistrement.") %}{% endcall %}
+
+{% if lignes is none %}
+<form method="post" enctype="multipart/form-data" class="carte formulaire" data-chargement-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="analyser">
+  <div class="grille-champs">
+    <div class="champ champ-plein"><label for="fichier">Fichier Excel (.xlsx) <span class="requis">*</span></label>
+      <input id="fichier" name="fichier" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      <p class="champ-aide">Le fichier d'origine, tel quel : la nationalité écrite une fois pour un groupe (cellule fusionnée) est reprise pour tout le groupe.</p></div>
+    <div class="champ"><label for="entreprise_id">Entreprise de ce personnel</label>
+      <select id="entreprise_id" name="entreprise_id"><option value="">— Choisir —</option>{% for v, l in entreprises %}<option value="{{ v }}" {{ 'selected' if ent_id == v|string }}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="champ"><label for="nouvelle_entreprise">… ou nouvelle entreprise</label>
+      <input id="nouvelle_entreprise" name="nouvelle_entreprise" value="{{ nouvelle }}" placeholder="Ex. Futura SARL">
+      <p class="champ-aide">Créée au moment de l'import si elle n'existe pas encore.</p></div>
+  </div>
+  <div class="form-actions"><a class="btn btn-ghost" href="{{ url_for('documents') }}">Annuler</a>
+    <button class="btn btn-primary" data-chargement="Lecture du fichier…">{{ icon('upload', 16) }} Lire le fichier et voir l'aperçu</button></div>
+</form>
+<div class="carte mt-3"><p class="muted petit">Rien n'est deviné : une ligne sans nom, avec un type de document non reconnu ou une date illisible est signalée et n'est pas importée.
+  La date de début de validité n'existe pas dans ce fichier : elle restera « à compléter ». La colonne « Niveau de traitement » est reprise comme note de renouvellement.
+  Une personne déjà présente (même nom) n'est pas recréée, et un document déjà enregistré (même type, même date de fin) n'est pas dupliqué.</p></div>
+{% else %}
+{% set ok = lignes|selectattr('probleme', 'none')|rejectattr('doublon')|list %}
+{% set ko = lignes|rejectattr('probleme', 'none')|list %}
+<div class="kpis kpis-3">
+  <div class="kpi"><span class="kpi-lib">Lignes lues — {{ fichier }}</span><span class="kpi-val">{{ lignes|length }}</span><span class="kpi-sous">{{ lignes|map(attribute='feuille')|unique|join(', ') }}</span></div>
+  <div class="kpi"><span class="kpi-lib">Prêtes à importer</span><span class="kpi-val">{{ ok|length }}</span><span class="kpi-sous">{{ lignes|selectattr('doublon')|list|length }} déjà enregistrée(s)</span></div>
+  <div class="kpi {{ 'kpi-ko' if ko }}"><span class="kpi-lib">À corriger dans le fichier</span><span class="kpi-val">{{ ko|length }}</span><span class="kpi-sous">non importées</span></div>
+</div>
+<form method="post" class="mt-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="confirmer">
+  <input type="hidden" name="entreprise_id" value="{{ ent_id }}"><input type="hidden" name="nouvelle_entreprise" value="{{ nouvelle }}">
+  <textarea name="donnees" hidden>{{ donnees }}</textarea>
+  <div class="carte carte-table"><div class="table-conteneur">
+  <table class="table table-compacte">
+    <thead><tr><th><label class="sr-only" for="tout">Tout cocher</label><input type="checkbox" id="tout" data-tout-cocher checked></th><th>Ligne</th><th>Nom</th><th>Nationalité</th><th>Document</th><th>Fin de validité</th><th>Note</th><th>Résultat</th></tr></thead>
+    <tbody>
+    {% for l in lignes %}{% set fin = l.expiration %}
+    <tr class="{{ 'ligne-expire' if l.probleme }}">
+      <td>{% if not l.probleme and not l.doublon %}<input type="checkbox" name="ligne" value="{{ l.feuille }}:{{ l.ligne }}" checked data-coche aria-label="Importer {{ l.nom }}">{% endif %}</td>
+      <td class="muted petit nowrap">{{ l.feuille }} · {{ l.ligne }}</td>
+      <td><strong>{{ l.nom or '—' }}</strong>{% if l.existe %}<br><span class="muted petit">déjà dans le module</span>{% endif %}</td>
+      <td>{{ l.nationalite or '—' }}</td>
+      <td>{{ TYPES_DOCUMENT.get(l.type_doc, '—') }}{% if l.categorie %}<br><span class="muted petit">{{ l.categorie }}</span>{% endif %}</td>
+      <td class="nowrap">{% if fin %}{{ fin[8:10] }}/{{ fin[5:7] }}/{{ fin[:4] }}{% else %}—{% endif %}</td>
+      <td class="petit">{{ l.note or '' }}</td>
+      <td>{% if l.probleme %}<span class="badge badge-ko">{{ l.probleme }}</span>{% elif l.doublon %}<span class="badge">Déjà enregistré</span>{% else %}<span class="badge badge-ok">À importer</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+  <div class="form-actions mt-3"><a class="btn btn-ghost" href="{{ url_for('documents_importer') }}">Recommencer</a>
+    <button class="btn btn-primary">{{ icon('check', 16) }} Importer les lignes cochées</button></div>
+</form>
+{% endif %}
+{% endblock %}

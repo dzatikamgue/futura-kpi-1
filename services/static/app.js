@@ -427,4 +427,9 @@
     }
     setTimeout(function () { requestAnimationFrame(pas); }, 180);
   });
+  // Import Excel : tout cocher / décocher
+  var tout = document.querySelector("[data-tout-cocher]");
+  if (tout) tout.addEventListener("change", function () {
+    document.querySelectorAll("[data-coche]").forEach(function (c) { c.checked = tout.checked; });
+  });
 })();

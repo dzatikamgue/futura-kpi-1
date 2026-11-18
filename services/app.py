@@ -1086,6 +1086,105 @@ def register_routes(app):
                                retour=url_for("document_fiche", did=(d or renouveler).id) if (d or renouveler)
                                else url_for("documents"))
 
+    @app.route("/documents/importer", methods=["GET", "POST"])
+    @gestion
+    def documents_importer():
+        """Import du fichier Excel de suivi : aperçu d'abord, enregistrement ensuite (rien n'est deviné)."""
+        import json
+        import import_excel as IX
+        entreprises_opt = options_entreprises()
+        ent_id = request.values.get("entreprise_id", "")
+        nouvelle = (request.values.get("nouvelle_entreprise") or "").strip()[:160]
+        if request.method == "GET":
+            return render_template("documents_importer.html", lignes=None, entreprises=entreprises_opt,
+                                   ent_id=ent_id or (str(filtre_entreprise().id) if filtre_entreprise() else ""),
+                                   nouvelle=nouvelle, module=SOUS_MODULES["documents"])
+        if request.form.get("action") == "analyser":
+            f = request.files.get("fichier")
+            if not f or not f.filename:
+                flash("Choisissez le fichier Excel à importer.", "erreur")
+                return redirect(request.path)
+            if not ent_id and not nouvelle:
+                flash("Choisissez l'entreprise de ce personnel, ou indiquez le nom d'une nouvelle entreprise.", "erreur")
+                return redirect(request.path)
+            lignes, err = IX.analyser(f.stream)
+            if err:
+                flash(err, "erreur")
+                return redirect(request.path)
+            # Comparaison avec ce qui existe déjà
+            pers = {IX.cle_nom(p.nom): p for p in Personne.query.options(selectinload(Personne.documents))}
+            for l in lignes:
+                p = pers.get(IX.cle_nom(l["nom"]))
+                l["existe"] = bool(p)
+                l["doublon"] = bool(p and l["expiration"] and any(
+                    d.type_doc == l["type_doc"] and d.date_expiration.isoformat() == l["expiration"] for d in p.documents))
+            return render_template("documents_importer.html", lignes=lignes, donnees=json.dumps(lignes, ensure_ascii=False),
+                                   entreprises=entreprises_opt, ent_id=ent_id, nouvelle=nouvelle, fichier=f.filename,
+                                   module=SOUS_MODULES["documents"])
+        # Confirmation
+        try:
+            lignes = json.loads(request.form.get("donnees") or "[]")
+        except ValueError:
+            lignes = []
+        choisies = {x for x in request.form.getlist("ligne")}
+        if nouvelle:
+            ent = Entreprise.query.filter(func.lower(Entreprise.nom) == nouvelle.lower()).first()
+            if not ent:
+                ent = Entreprise(nom=nouvelle, type_entreprise="groupe")
+                db.session.add(ent)
+                db.session.flush()
+                journaliser("Entreprise créée", ent.nom, "import Excel")
+        else:
+            ent = db.session.get(Entreprise, int(ent_id)) if ent_id.isdigit() else None
+        if not ent:
+            flash("Entreprise introuvable : recommencez l'import.", "erreur")
+            return redirect(request.path)
+        pers = {IX.cle_nom(p.nom): p for p in Personne.query.options(selectinload(Personne.documents))}
+        nb_p, nb_d, ignores = 0, 0, 0
+        for l in lignes:
+            if not isinstance(l, dict) or f"{l.get('feuille')}:{l.get('ligne')}" not in choisies:
+                continue
+            t, nom = l.get("type_doc"), str(l.get("nom") or "").strip()[:160]
+            try:
+                exp = date.fromisoformat(l.get("expiration") or "")
+            except ValueError:
+                exp = None
+            if t not in TYPES_DOCUMENT or not nom or not exp:
+                ignores += 1
+                continue
+            p = pers.get(IX.cle_nom(nom))
+            if not p:
+                p = Personne(nom=nom, entreprise=ent, cree_par_id=current_user.id)
+                db.session.add(p)
+                db.session.flush()
+                pers[IX.cle_nom(nom)] = p
+                nb_p += 1
+            if not p.entreprise_id:
+                p.entreprise = ent
+            if not p.nationalite and l.get("nationalite"):
+                p.nationalite = str(l["nationalite"])[:80]
+            if any(d.type_doc == t and d.date_expiration == exp for d in p.documents):
+                ignores += 1
+                continue
+            d = Document(personne=p, type_doc=t, date_expiration=exp, categorie=(str(l.get("categorie") or "")[:120] or None),
+                         renouvellement_note=(str(l.get("note") or "")[:255] or None), renouvellement="",
+                         cree_par_id=current_user.id)
+            db.session.add(d)
+            db.session.flush()
+            # Un document plus récent du même type remplace l'ancien (même règle que la saisie)
+            for a in p.documents:
+                if a.id != d.id and a.type_doc == t and not a.remplace and a.date_expiration < exp:
+                    a.remplace = True
+            if any(a.id != d.id and a.type_doc == t and not a.remplace and a.date_expiration > exp for a in p.documents):
+                d.remplace = True
+            nb_d += 1
+        journaliser("Import Excel visas / cartes de séjour", ent.nom,
+                    f"{nb_p} personne(s) créée(s), {nb_d} document(s), {ignores} ligne(s) ignorée(s)")
+        db.session.commit()
+        flash(f"Import terminé pour {ent.nom} : {nb_p} personne(s) ajoutée(s), {nb_d} visa(s) / carte(s) enregistré(s)"
+              + (f", {ignores} ligne(s) ignorée(s) (doublon ou incomplète)" if ignores else "") + ".", "succes")
+        return redirect(url_for("documents", entreprise=ent.id))
+
     @app.route("/documents/<type_doc>/nouveau", methods=["GET", "POST"])
     @gestion
     def document_nouveau(type_doc):

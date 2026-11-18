@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=9">
   <script src="{{ url_for('static', filename='theme.js') }}"></script>
-  <script src="{{ url_for('static', filename='app.js') }}?v=1" defer></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=2" defer></script>
 </head>
 {% set sm = self.sous_module() | trim %}
 <body class="{{ 'sm-' ~ sm if sm }}">

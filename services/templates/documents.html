@@ -6,6 +6,7 @@
 {% block contenu %}
 {% call entete_module(module, 'Visas et cartes de séjour', 'Le document en cours de chaque personne, avec ses dates de début et de fin. Notification ' ~ seuil ~ ' jours avant la fin pour lancer le renouvellement.') %}
   <a class="btn btn-ghost" href="{{ url_for('documents_export', type_doc=type_doc, **request.args) }}">{{ icon('download', 16) }} Excel</a>
+  {% if current_user.gere %}<a class="btn btn-ghost" href="{{ url_for('documents_importer', entreprise=ent.id if ent else None) }}">{{ icon('upload', 16) }} Importer Excel</a>{% endif %}
   {% if current_user.gere %}
   <a class="btn btn-ghost" href="{{ url_for('document_nouveau', type_doc='carte_sejour') }}">{{ icon('plus', 16) }} Carte de séjour</a>
   <a class="btn btn-primary" href="{{ url_for('document_nouveau', type_doc='visa') }}">{{ icon('plus', 16) }} Visa</a>
@@ -52,7 +53,7 @@
   <tr class="ligne-cliquable ligne-{{ niv }}" data-href="{{ url_for('document_fiche', did=d.id) }}">
     <td class="col-fixe"><a class="lien" href="{{ url_for('document_fiche', did=d.id) }}"><strong>{{ d.personne.nom }}</strong></a><br><span class="muted petit">{{ d.personne.entreprise_nom }}</span></td>
     <td><span class="type-doc type-doc-{{ d.type_doc }}">{{ icon('stamp' if d.type_doc == 'visa' else 'id', 14) }} {{ d.type_libelle }}</span><br><span class="muted petit">{{ d.numero or '' }}{{ ' · ' if d.numero and d.categorie }}{{ d.categorie or '' }}</span></td>
-    <td class="nowrap">{{ d.date_delivrance|date }}</td>
+    <td class="nowrap">{% if d.date_delivrance %}{{ d.date_delivrance|date }}{% else %}<span class="muted petit">à compléter</span>{% endif %}</td>
     <td class="nowrap"><strong>{{ d.date_expiration|date }}</strong></td>
     <td class="col-jauge">{% if d.date_delivrance %}{% set total = (d.date_expiration - d.date_delivrance).days or 1 %}{% set ecoule = (aujourdhui - d.date_delivrance).days %}
       <span class="jauge-validite jauge-mini" title="{{ [[ecoule / total * 100, 0]|max, 100]|min|round|int }} % de la validité écoulée"><span class="jauge-validite-barre jauge-{{ niv }}" data-largeur="{{ [[ecoule / total * 100, 0]|max, 100]|min|round(1) }}"></span></span>{% endif %}</td>
