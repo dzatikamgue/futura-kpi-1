@@ -418,3 +418,17 @@ def test_import_excel(app):
         assert Personne.query.count() == 3 and Document.query.count() == 3
     assert "à compléter" in rh.get("/documents").get_data(as_text=True)
     assert client(app, "dg").get("/documents/importer").status_code == 403
+
+
+def test_import_initial_par_variable(app, monkeypatch):
+    import base64, json
+    import import_excel as IX
+    from app import import_initial
+    from models import Document, Entreprise, Personne
+    lignes, _ = IX.analyser(_classeur())
+    monkeypatch.setenv("IMPORT_VISAS", base64.b64encode(json.dumps({"entreprise": "Futura", "lignes": lignes}).encode()).decode())
+    with app.app_context():
+        import_initial()
+        import_initial()                       # rejoué : rien de plus
+        assert Entreprise.query.filter_by(nom="Futura").count() == 1
+        assert Personne.query.count() == 3 and Document.query.count() == 3

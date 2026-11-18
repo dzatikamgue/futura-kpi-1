@@ -107,6 +107,7 @@ def create_app():
         try:
             migrer()
             bootstrap_admin()
+            import_initial()
         except IntegrityError:
             db.session.rollback()
 
@@ -219,6 +220,84 @@ def chercher_annuaire(q):
             return json.loads(r.read().decode("utf-8")).get("personnes") or [], None
     except Exception:
         return [], "Le portail ne répond pas pour le moment : réessayez, ou saisissez la personne à la main."
+
+
+def importer_lignes(lignes, ent, user_id=None, choisies=None):
+    """Enregistre des lignes analysées par import_excel (personnes + visas / cartes). Retourne (nb_p, nb_d, ignorées)."""
+    import import_excel as IX
+    pers = {IX.cle_nom(p.nom): p for p in Personne.query.options(selectinload(Personne.documents))}
+    nb_p, nb_d, ignores = 0, 0, 0
+    for l in lignes:
+        if not isinstance(l, dict) or (choisies is not None and f"{l.get('feuille')}:{l.get('ligne')}" not in choisies):
+            continue
+        t, nom = l.get("type_doc"), str(l.get("nom") or "").strip()[:160]
+        try:
+            exp = date.fromisoformat(l.get("expiration") or "")
+        except ValueError:
+            exp = None
+        if t not in TYPES_DOCUMENT or not nom or not exp or l.get("probleme"):
+            ignores += 1
+            continue
+        p = pers.get(IX.cle_nom(nom))
+        if not p:
+            p = Personne(nom=nom, entreprise=ent, cree_par_id=user_id)
+            db.session.add(p)
+            db.session.flush()
+            pers[IX.cle_nom(nom)] = p
+            nb_p += 1
+        if not p.entreprise_id:
+            p.entreprise = ent
+        if not p.nationalite and l.get("nationalite"):
+            p.nationalite = str(l["nationalite"])[:80]
+        if any(d.type_doc == t and d.date_expiration == exp for d in p.documents):
+            ignores += 1
+            continue
+        d = Document(personne=p, type_doc=t, date_expiration=exp, categorie=(str(l.get("categorie") or "")[:120] or None),
+                     renouvellement_note=(str(l.get("note") or "")[:255] or None), renouvellement="", cree_par_id=user_id)
+        db.session.add(d)
+        db.session.flush()
+        for a in p.documents:          # le plus récent du même type remplace l'ancien
+            if a.id != d.id and a.type_doc == t and not a.remplace and a.date_expiration < exp:
+                a.remplace = True
+        if any(a.id != d.id and a.type_doc == t and not a.remplace and a.date_expiration > exp for a in p.documents):
+            d.remplace = True
+        nb_d += 1
+    return nb_p, nb_d, ignores
+
+
+def import_initial():
+    """Import ponctuel transmis par la variable d'environnement IMPORT_VISAS (JSON en base64, jamais dans le code).
+
+    Format : {"entreprise": "Futura", "lignes": [...]} (lignes d'import_excel). Rejouable sans doublon.
+    """
+    import base64
+    import hashlib
+    import json
+    brut = (os.environ.get("IMPORT_VISAS") or "").strip()
+    if not brut:
+        return
+    empreinte = hashlib.sha256(brut.encode()).hexdigest()[:16]
+    if (db.session.get(Parametre, "import_visas_fait") or Parametre(valeur="")).valeur == empreinte:
+        return
+    try:
+        donnees = json.loads(base64.b64decode(brut).decode("utf-8"))
+    except Exception:
+        print("Import initial : variable IMPORT_VISAS illisible, rien n'est importé.", flush=True)
+        return
+    nom_ent = str(donnees.get("entreprise") or "Futura").strip()[:160]
+    ent = next((e for e in Entreprise.query if e.nom.strip().lower().startswith(nom_ent.lower())), None)
+    if not ent:
+        ent = Entreprise(nom=nom_ent, type_entreprise="groupe")
+        db.session.add(ent)
+        db.session.flush()
+    nb_p, nb_d, ign = importer_lignes(donnees.get("lignes") or [], ent)
+    p = db.session.get(Parametre, "import_visas_fait") or Parametre(cle="import_visas_fait", valeur="")
+    p.valeur = empreinte
+    db.session.add(p)
+    journaliser("Import initial visas / cartes de séjour", ent.nom,
+                f"{nb_p} personne(s), {nb_d} document(s), {ign} ligne(s) ignorée(s)")
+    db.session.commit()
+    print(f"Import initial ({ent.nom}) : {nb_p} personne(s), {nb_d} document(s), {ign} ignorée(s).", flush=True)
 
 
 def filtre_entreprise():
@@ -1139,45 +1218,7 @@ def register_routes(app):
         if not ent:
             flash("Entreprise introuvable : recommencez l'import.", "erreur")
             return redirect(request.path)
-        pers = {IX.cle_nom(p.nom): p for p in Personne.query.options(selectinload(Personne.documents))}
-        nb_p, nb_d, ignores = 0, 0, 0
-        for l in lignes:
-            if not isinstance(l, dict) or f"{l.get('feuille')}:{l.get('ligne')}" not in choisies:
-                continue
-            t, nom = l.get("type_doc"), str(l.get("nom") or "").strip()[:160]
-            try:
-                exp = date.fromisoformat(l.get("expiration") or "")
-            except ValueError:
-                exp = None
-            if t not in TYPES_DOCUMENT or not nom or not exp:
-                ignores += 1
-                continue
-            p = pers.get(IX.cle_nom(nom))
-            if not p:
-                p = Personne(nom=nom, entreprise=ent, cree_par_id=current_user.id)
-                db.session.add(p)
-                db.session.flush()
-                pers[IX.cle_nom(nom)] = p
-                nb_p += 1
-            if not p.entreprise_id:
-                p.entreprise = ent
-            if not p.nationalite and l.get("nationalite"):
-                p.nationalite = str(l["nationalite"])[:80]
-            if any(d.type_doc == t and d.date_expiration == exp for d in p.documents):
-                ignores += 1
-                continue
-            d = Document(personne=p, type_doc=t, date_expiration=exp, categorie=(str(l.get("categorie") or "")[:120] or None),
-                         renouvellement_note=(str(l.get("note") or "")[:255] or None), renouvellement="",
-                         cree_par_id=current_user.id)
-            db.session.add(d)
-            db.session.flush()
-            # Un document plus récent du même type remplace l'ancien (même règle que la saisie)
-            for a in p.documents:
-                if a.id != d.id and a.type_doc == t and not a.remplace and a.date_expiration < exp:
-                    a.remplace = True
-            if any(a.id != d.id and a.type_doc == t and not a.remplace and a.date_expiration > exp for a in p.documents):
-                d.remplace = True
-            nb_d += 1
+        nb_p, nb_d, ignores = importer_lignes(lignes, ent, current_user.id, choisies)
         journaliser("Import Excel visas / cartes de séjour", ent.nom,
                     f"{nb_p} personne(s) créée(s), {nb_d} document(s), {ignores} ligne(s) ignorée(s)")
         db.session.commit()
