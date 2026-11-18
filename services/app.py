@@ -30,7 +30,7 @@ import formulaires as F
 from models import (ALERTE_BAIL_JOURS, ALERTE_DOC_JOURS, CATEGORIES_REPARATION, FOURNISSEURS, MIMES_AUTORISES,
                     MOTIFS_BILLET, OBJETS_PIECE, PERIODICITES, RENOUVELLEMENT, REPARATIONS_OUVERTES, ROLES,
                     STATUTS_BILLET, STATUTS_REPARATION, TYPES_DOCUMENT, TYPES_ENERGIE, UNITES, URGENCES,
-                    Billet, Document, FactureEnergie, Journal, Logement, Loyer, Parametre, Personne, Piece,
+                    TYPES_ENTREPRISE, Billet, Document, Entreprise, FactureEnergie, Journal, Logement, Loyer, Parametre, Personne, Piece,
                     Reparation, SuiviReparation, User, aujourdhui, db, migrer, mois_ajoutes, now)
 
 csrf = CSRFProtect()
@@ -177,8 +177,54 @@ def ou_404(modele, oid):
 
 
 def options_personnes():
-    return [(p.id, p.nom + (f" · {p.societe}" if p.societe else ""))
-            for p in Personne.query.filter_by(actif=True).order_by(Personne.nom)]
+    return [(p.id, p.nom + (f" · {p.entreprise_nom}" if p.entreprise_nom else ""))
+            for p in Personne.query.options(selectinload(Personne.entreprise)).filter_by(actif=True).order_by(Personne.nom)]
+
+
+def options_entreprises(toutes=False):
+    q = Entreprise.query if toutes else Entreprise.query.filter_by(actif=True)
+    return [(e.id, e.nom + (" (externe)" if e.externe else "")) for e in q.order_by(Entreprise.type_entreprise.desc(), Entreprise.nom)]
+
+
+def url_portail_api():
+    """Adresse de l'API du portail (PORTAIL_API_URL, sinon déduite de PORTAIL_URL)."""
+    u = (os.environ.get("PORTAIL_API_URL") or "").strip().rstrip("/")
+    if not u:
+        u = (os.environ.get("PORTAIL_URL") or "").strip().rstrip("/")
+        if u.endswith("/modules"):
+            u = u[: -len("/modules")]
+    return u or None
+
+
+def chercher_annuaire(q):
+    """Cherche une personne dans l'annuaire commun du portail (personnel KPI + comptes des autres modules).
+
+    Retourne (liste, erreur). Demande signée avec le secret partagé (SSO_SECRET).
+    """
+    import hashlib
+    import hmac
+    import json
+    import urllib.request
+    base, secret = url_portail_api(), os.environ.get("SSO_SECRET")
+    if not base or not secret:
+        return [], "L'annuaire du portail n'est pas configuré : saisissez la personne à la main."
+    corps = json.dumps({"q": q}).encode()
+    ts = str(int(time.time()))
+    sig = hmac.new(secret.encode(), ts.encode() + b"." + corps, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(f"{base}/modules/api/annuaire", data=corps, method="POST", headers={
+        "Content-Type": "application/json", "X-Futura-Module": "services", "X-Futura-Horodatage": ts,
+        "X-Futura-Signature": sig})
+    try:
+        with urllib.request.urlopen(req, timeout=6) as r:
+            return json.loads(r.read().decode("utf-8")).get("personnes") or [], None
+    except Exception:
+        return [], "Le portail ne répond pas pour le moment : réessayez, ou saisissez la personne à la main."
+
+
+def filtre_entreprise():
+    """Entreprise choisie dans les filtres (?entreprise=<id>), ou None."""
+    v = request.args.get("entreprise") or ""
+    return db.session.get(Entreprise, int(v)) if v.isdigit() else None
 
 
 def options_logements(tous=False):
@@ -318,12 +364,27 @@ def documents_en_vigueur(type_doc=None):
     return q
 
 
-def stats_documents(type_doc):
+def stats_documents(type_doc, entreprise=None):
     s = seuil_docs()
-    docs = documents_en_vigueur(type_doc).all()
+    q = documents_en_vigueur(type_doc)
+    if entreprise is not None:
+        q = q.filter(Personne.entreprise_id == entreprise.id)
+    docs = q.all()
     niv = [d.niveau(s) for d in docs]
     return dict(total=len(docs), valides=niv.count("ok"), alerte=niv.count("alerte") + niv.count("critique"),
                 expires=niv.count("expire"))
+
+
+def barre_entreprises():
+    """Pour la barre des entreprises : personnel suivi et documents à renouveler par entreprise."""
+    s = seuil_docs()
+    nb_pers = dict(db.session.query(Personne.entreprise_id, func.count(Personne.id))
+                   .filter(Personne.actif.is_(True)).group_by(Personne.entreprise_id).all())
+    alertes = defaultdict(int)
+    for d in documents_en_vigueur().filter(Document.date_expiration <= aujourdhui() + timedelta(days=s)):
+        alertes[d.personne.entreprise_id] += 1
+    return [dict(e=e, personnes=nb_pers.get(e.id, 0), alertes=alertes.get(e.id, 0))
+            for e in Entreprise.query.filter_by(actif=True).order_by(Entreprise.type_entreprise.desc(), Entreprise.nom)]
 
 
 def loyers_dus(jusqu_au=None):
@@ -397,7 +458,8 @@ def a_surveiller():
             .order_by(Document.date_expiration):
         j = d.jours_restants
         items.append(dict(niveau="critique" if j <= 15 else "alerte", icone="id" if d.type_doc == "carte_sejour" else "stamp",
-                          titre=f"{d.type_libelle} de {d.personne.nom}",
+                          titre=f"{d.type_libelle} de {d.personne.nom}"
+                          + (f" ({d.personne.entreprise_nom})" if d.personne.entreprise_nom else ""),
                           texte=(f"Expiré depuis {-j} jour{'s' if -j > 1 else ''}" if j < 0 else
                                  "Expire aujourd'hui" if j == 0 else f"Expire dans {j} jour{'s' if j > 1 else ''}")
                           + f" ({d.date_expiration:%d/%m/%Y})"
@@ -645,7 +707,8 @@ def register_routes(app):
         sv, sc = stats_documents("visa"), stats_documents("carte_sejour")
         cartes["documents"] = dict(stats=[(s["valides"], "valides", ""), (s["alerte"], "à renouveler", "alerte"),
                                           (s["expires"], "expirés", "ko")],
-                                   pied=f"{sv['total']} visa(s) · {sc['total']} carte(s) de séjour · alerte {seuil_docs()} j avant la fin",
+                                   pied=f"{Entreprise.query.filter_by(actif=True).count()} entreprise(s) · {sv['total']} visa(s) · "
+                                        f"{sc['total']} carte(s) de séjour · alerte {seuil_docs()} j avant la fin",
                                    alerte=s["alerte"] + s["expires"], lien=url_for("documents"))
         a_venir = Billet.query.filter(Billet.date_depart >= aujourdhui(), Billet.statut.in_(("reserve", "emis")))
         debut_annee = aujourdhui().replace(month=1, day=1)
@@ -719,23 +782,31 @@ def register_routes(app):
     @app.route("/personnel")
     @lecture
     def personnel():
-        q = Personne.query.options(selectinload(Personne.logement), selectinload(Personne.documents))
+        q = Personne.query.options(selectinload(Personne.logement), selectinload(Personne.documents),
+                                   selectinload(Personne.entreprise))
+        ent = filtre_entreprise()
+        if ent:
+            q = q.filter(Personne.entreprise_id == ent.id)
         if request.args.get("statut") != "tous":
             q = q.filter(Personne.actif.is_(request.args.get("statut") != "inactifs"))
         r = recherche()
         if r:
             like = f"%{r}%"
             q = q.filter(or_(Personne.nom.ilike(like), Personne.matricule.ilike(like), Personne.poste.ilike(like),
-                             Personne.societe.ilike(like), Personne.nationalite.ilike(like)))
+                             Personne.societe.ilike(like), Personne.nationalite.ilike(like),
+                             Personne.entreprise.has(Entreprise.nom.ilike(like))))
         page = q.order_by(Personne.nom).paginate(page=args_page(), per_page=PAR_PAGE, error_out=False)
-        return render_template("personnel.html", page=page)
+        return render_template("personnel.html", page=page, ent=ent, entreprises=options_entreprises(toutes=True))
 
     def _doc_courant(p, type_doc):
         return next((d for d in p.documents if d.type_doc == type_doc and not d.remplace), None)
     app.jinja_env.globals["doc_courant"] = _doc_courant
 
     def formulaire_personne(p=None):
-        champs = F.champs_personne(options_logements(tous=True))
+        if not Entreprise.query.first():
+            flash("Créez d'abord l'entreprise (du groupe ou externe) à laquelle rattacher le personnel.", "info")
+            return redirect(url_for("entreprise_nouvelle", suite=request.full_path))
+        champs = F.champs_personne(options_logements(tous=True), options_entreprises(toutes=p is not None))
         if p is not None:
             champs.append(F.C("actif", "Toujours dans l'entreprise", "case"))
         if request.method == "POST":
@@ -746,16 +817,47 @@ def register_routes(app):
                     db.session.add(p)
                 F.appliquer(champs, p, val)
                 db.session.flush()
-                journaliser("Personne enregistrée", p.nom)
+                src = request.args.get("source")
+                journaliser("Personne enregistrée", p.nom, f"reprise depuis {src[:60]}" if src and p is not None else "")
                 db.session.commit()
                 flash(f"Fiche de {p.nom} enregistrée.", "succes")
                 return redirect(url_for("personne_fiche", pid=p.id))
         else:
             f, err = F.depuis_objet(champs, p), {}
+            if p is None and (request.args.get("entreprise") or "").isdigit():
+                f["entreprise_id"] = request.args["entreprise"]
+            if p is None:   # reprise depuis l'annuaire du portail
+                for k in ("nom", "poste", "email", "telephone", "matricule"):
+                    if request.args.get(k):
+                        f[k] = request.args[k][:160]
         return render_template("formulaire.html", champs=champs, f=f, err=err, objet=p,
                                titre="Modifier la fiche" if p else "Nouvelle personne",
+                               aide=(f"Informations reprises de « {request.args['source'][:60]} » : vérifiez-les, choisissez "
+                                     "l'entreprise, puis enregistrez." if p is None and request.args.get("source") else None),
                                ariane=[("Personnel", url_for("personnel"))],
                                retour=url_for("personne_fiche", pid=p.id) if p else url_for("personnel"))
+
+    @app.route("/personnel/ajouter")
+    @gestion
+    def personne_ajouter():
+        """Ajouter une personne : la reprendre d'un autre module (annuaire du portail) ou la saisir."""
+        q = recherche()
+        ent = filtre_entreprise()
+        resultats, erreur = (chercher_annuaire(q) if len(q) >= 2 else ([], None))
+        existants = Personne.query.options(selectinload(Personne.entreprise)).all()
+        par_email = {p.email.lower(): p for p in existants if p.email}
+        par_nom = {p.nom.strip().lower(): p for p in existants}
+        ents = {e.nom.strip().lower(): e for e in Entreprise.query}
+        for r in resultats:
+            nom = f"{r.get('prenom', '')} {r.get('nom', '')}".strip()
+            r["nom_complet"] = nom
+            r["deja"] = par_email.get((r.get("email") or "").lower()) or par_nom.get(nom.lower())
+            e = ent or ents.get((r.get("entite") or "").strip().lower())
+            r["lien"] = url_for("personne_nouvelle", nom=nom, poste=r.get("poste") or None, email=r.get("email") or None,
+                                telephone=r.get("telephone") or None, matricule=r.get("matricule") or None,
+                                entreprise=e.id if e else None, source=r.get("source"))
+        return render_template("personne_ajouter.html", q=q, ent=ent, resultats=resultats, erreur=erreur,
+                               module=SOUS_MODULES["documents"])
 
     @app.route("/personnel/nouveau", methods=["GET", "POST"])
     @gestion
@@ -782,15 +884,89 @@ def register_routes(app):
         for p in Personne.query.options(selectinload(Personne.documents), selectinload(Personne.logement)) \
                 .order_by(Personne.nom):
             v, c = _doc_courant(p, "visa"), _doc_courant(p, "carte_sejour")
-            lignes.append([p.nom, p.matricule, p.poste, p.societe, p.nationalite, p.telephone, p.email,
+            lignes.append([p.nom, p.matricule, p.poste, p.entreprise_nom, p.nationalite, p.telephone, p.email,
                            p.passeport_numero, p.passeport_expiration, v.date_expiration if v else None,
                            c.date_expiration if c else None, p.logement.libelle if p.logement else "",
                            "Oui" if p.actif else "Non"])
         return exporter_excel("personnel", "Personnel", [
-            "Nom", "Matricule", "Poste", "Société", "Nationalité", "Téléphone", "E-mail", "Passeport",
+            "Nom", "Matricule", "Poste", "Entreprise", "Nationalité", "Téléphone", "E-mail", "Passeport",
             "Passeport expire le", "Visa expire le", "Carte de séjour expire le", "Logement", "Actif"],
             lignes, formats={8: "date", 9: "date", 10: "date"},
             largeurs=[28, 12, 22, 20, 14, 16, 26, 14, 14, 14, 14, 28, 8])
+
+    # ---------------- Entreprises (groupe et externes) ---------------- #
+
+    @app.route("/entreprises")
+    @lecture
+    def entreprises():
+        statut = request.args.get("statut", "actives")
+        q = Entreprise.query.options(selectinload(Entreprise.personnes))
+        if statut != "toutes":
+            q = q.filter(Entreprise.actif.is_(statut == "actives"))
+        if request.args.get("type") in TYPES_ENTREPRISE:
+            q = q.filter(Entreprise.type_entreprise == request.args["type"])
+        liste = q.order_by(Entreprise.type_entreprise.desc(), Entreprise.nom).all()
+        stats = {b["e"].id: b for b in barre_entreprises()}
+        return render_template("entreprises.html", liste=liste, stats=stats, module=SOUS_MODULES["documents"])
+
+    def formulaire_entreprise(e=None):
+        champs = F.champs_entreprise()
+        if e is not None:
+            champs.append(F.C("actif", "Entreprise active (dossiers encore suivis)", "case"))
+        if request.method == "POST":
+            val, err, f = F.lire(champs)
+            if val.get("nom"):
+                autre = Entreprise.query.filter(func.lower(Entreprise.nom) == val["nom"].lower())
+                if e is not None:
+                    autre = autre.filter(Entreprise.id != e.id)
+                if autre.first():
+                    err["nom"] = "Une entreprise porte déjà ce nom."
+            if not err:
+                nouveau = e is None
+                if nouveau:
+                    e = Entreprise()
+                    db.session.add(e)
+                F.appliquer(champs, e, val)
+                db.session.flush()
+                journaliser(f"Entreprise {'créée' if nouveau else 'modifiée'}", e.nom, e.type_libelle)
+                db.session.commit()
+                flash(f"Entreprise « {e.nom} » enregistrée.", "succes")
+                suite = request.args.get("suite", "")
+                if nouveau and suite.startswith("/") and not suite.startswith("//"):
+                    return redirect(suite)
+                return redirect(url_for("entreprise_fiche", eid=e.id))
+        else:
+            f, err = F.depuis_objet(champs, e), {}
+        return render_template("formulaire.html", champs=champs, f=f, err=err, objet=e, sous_module="documents",
+                               titre="Modifier l'entreprise" if e else "Nouvelle entreprise",
+                               aide=None if e else "Entreprise du groupe, ou entreprise externe pour laquelle la RH "
+                                                   "demande des visas et cartes de séjour.",
+                               ariane=[("Visas et cartes de séjour", url_for("documents")), ("Entreprises", url_for("entreprises"))],
+                               retour=url_for("entreprise_fiche", eid=e.id) if e else url_for("entreprises"))
+
+    @app.route("/entreprises/nouvelle", methods=["GET", "POST"])
+    @gestion
+    def entreprise_nouvelle():
+        return formulaire_entreprise()
+
+    @app.route("/entreprise/<int:eid>/modifier", methods=["GET", "POST"])
+    @gestion
+    def entreprise_modifier(eid):
+        return formulaire_entreprise(ou_404(Entreprise, eid))
+
+    @app.route("/entreprise/<int:eid>")
+    @lecture
+    def entreprise_fiche(eid):
+        e = ou_404(Entreprise, eid)
+        statut = request.args.get("statut", "actifs")
+        personnes = Personne.query.options(selectinload(Personne.documents)).filter(Personne.entreprise_id == e.id)
+        if statut != "tous":
+            personnes = personnes.filter(Personne.actif.is_(statut == "actifs"))
+        personnes = personnes.order_by(Personne.nom).all()
+        cout = db.session.query(func.coalesce(func.sum(Document.cout), 0)).join(Personne) \
+            .filter(Personne.entreprise_id == e.id, Document.date_delivrance >= aujourdhui().replace(month=1, day=1)).scalar()
+        return render_template("entreprise_fiche.html", e=e, personnes=personnes, stats=stats_documents(None, e),
+                               cout=cout, pieces=pieces_de("entreprise", e.id), module=SOUS_MODULES["documents"])
 
     # ---------------- Visas et cartes de séjour ---------------- #
 
@@ -804,6 +980,9 @@ def register_routes(app):
         q = Document.query.options(selectinload(Document.personne)).join(Personne)
         if type_doc in TYPES_DOCUMENT:
             q = q.filter(Document.type_doc == type_doc)
+        ent = filtre_entreprise()
+        if ent:
+            q = q.filter(Personne.entreprise_id == ent.id)
         statut = request.args.get("statut", "en_vigueur")
         j = aujourdhui()
         if statut != "historique":
@@ -822,7 +1001,7 @@ def register_routes(app):
         if r:
             like = f"%{r}%"
             q = q.filter(or_(Personne.nom.ilike(like), Document.numero.ilike(like), Document.categorie.ilike(like),
-                             Personne.societe.ilike(like)))
+                             Personne.societe.ilike(like), Personne.entreprise.has(Entreprise.nom.ilike(like))))
         return q.order_by(Document.date_expiration.asc(), Document.id)
 
     @app.route("/documents")
@@ -833,7 +1012,8 @@ def register_routes(app):
         type_doc_ou_404(type_doc)
         page = requete_documents(type_doc).paginate(page=args_page(), per_page=PAR_PAGE, error_out=False)
         t = type_doc if type_doc in TYPES_DOCUMENT else None
-        return render_template("documents.html", page=page, type_doc=type_doc, stats=stats_documents(t),
+        return render_template("documents.html", page=page, type_doc=type_doc, stats=stats_documents(t, filtre_entreprise()),
+                               ent=filtre_entreprise(), barre_entreprises=barre_entreprises(),
                                nb_type={k: stats_documents(k)["total"] for k in TYPES_DOCUMENT},
                                module=SOUS_MODULES["documents"])
 
@@ -846,11 +1026,11 @@ def register_routes(app):
         s = seuil_docs()
         etats = {"ok": "Valide", "alerte": "À renouveler", "critique": "À renouveler d'urgence", "expire": "Expiré",
                  "remplace": "Remplacé"}
-        lignes = [[d.personne.nom, d.personne.societe, d.type_libelle, d.numero, d.categorie, d.pays, d.date_delivrance,
+        lignes = [[d.personne.nom, d.personne.entreprise_nom, d.type_libelle, d.numero, d.categorie, d.pays, d.date_delivrance,
                    d.date_expiration, d.jours_restants, etats[d.niveau(s)], RENOUVELLEMENT.get(d.renouvellement, ""),
                    d.renouvellement_note, d.cout] for d in requete_documents(type_doc)]
         return exporter_excel("visas_cartes_sejour", "Visas et cartes de séjour", [
-            "Personne", "Société", "Type", "Numéro", "Catégorie", "Pays", "Début", "Fin", "Jours restants",
+            "Personne", "Entreprise", "Type", "Numéro", "Catégorie", "Pays", "Début", "Fin", "Jours restants",
             "État", "Renouvellement", "Note", "Coût"], lignes, formats={6: "date", 7: "date", 12: "fcfa"},
             largeurs=[28, 18, 16, 16, 22, 12, 12, 12, 10, 22, 22, 32, 14], total_col=12)
 
@@ -899,6 +1079,7 @@ def register_routes(app):
         titre = (f"Renouveler : {lib.lower()} de {renouveler.personne.nom}" if renouveler else
                  f"Modifier {lib.lower()}" if d else f"Nouveau{'lle' if type_doc == 'carte_sejour' else ''} {lib.lower()}")
         return render_template("formulaire.html", champs=champs, f=f, err=err, objet=d, titre=titre, pieces_form=True,
+                               sous_module="documents",
                                aide=("Saisissez le nouveau document : l'ancien passera automatiquement à « remplacé »."
                                      if renouveler else None),
                                ariane=[("Visas et cartes de séjour", url_for("documents"))],
@@ -997,11 +1178,11 @@ def register_routes(app):
     @app.route("/billets/export")
     @lecture
     def billets_export():
-        lignes = [[b.personne.nom, b.personne.societe, MOTIFS_BILLET.get(b.motif, b.motif), b.depart, b.arrivee,
+        lignes = [[b.personne.nom, b.personne.entreprise_nom, MOTIFS_BILLET.get(b.motif, b.motif), b.depart, b.arrivee,
                    b.date_depart, b.date_retour, b.compagnie, b.reservation, b.classe,
                    STATUTS_BILLET.get(b.statut, b.statut), b.montant] for b in requete_billets()]
         return exporter_excel("billets", "Billets d'avion", [
-            "Voyageur", "Société", "Motif", "Départ", "Destination", "Date de départ", "Date de retour", "Compagnie",
+            "Voyageur", "Entreprise", "Motif", "Départ", "Destination", "Date de départ", "Date de retour", "Compagnie",
             "PNR", "Classe", "Statut", "Prix"], lignes, formats={5: "date", 6: "date", 11: "fcfa"},
             largeurs=[26, 18, 16, 14, 16, 13, 13, 18, 10, 12, 14, 14], total_col=11)
 
@@ -1533,7 +1714,7 @@ def register_routes(app):
     # ---------------- Pièces jointes ---------------- #
 
     def objet_piece(objet, oid):
-        modele = {"personne": Personne, "document": Document, "billet": Billet, "logement": Logement,
+        modele = {"entreprise": Entreprise, "personne": Personne, "document": Document, "billet": Billet, "logement": Logement,
                   "loyer": Loyer, "facture": FactureEnergie, "reparation": Reparation}.get(objet)
         return ou_404(modele, oid) if modele else abort(404)
 

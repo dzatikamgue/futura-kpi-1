@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block titre %}Ajouter une personne{% endblock %}
+{% block sous_module %}documents{% endblock %}
+{% block ariane %}<a href="{{ url_for('personnel') }}">Personnel</a><span aria-current="page">Ajouter une personne</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page"><div>
+  <h1>Ajouter une personne{% if ent %} à {{ ent.nom }}{% endif %}</h1>
+  <p class="muted">Cherchez d'abord la personne dans les autres modules Futura (personnel KPI, Flotte, Factures) pour la reprendre sans tout ressaisir. Si elle n'y est pas — par exemple le salarié d'une entreprise externe — saisissez-la.</p>
+</div></div>
+
+<div class="grille-2">
+  <section class="carte carte-action">
+    <h2>{{ icon('search', 18) }} Reprendre d'un autre module</h2>
+    <form method="get" class="formulaire mt-3" role="search">
+      {% if ent %}<input type="hidden" name="entreprise" value="{{ ent.id }}">{% endif %}
+      <div class="champ"><label for="q">Nom, prénom, matricule ou e-mail</label>
+        <input id="q" name="q" value="{{ q }}" minlength="2" autofocus placeholder="Ex. Mballa, FUT-0042, j.mballa@futura.cm" autocomplete="off"></div>
+      <button class="btn btn-primary btn-bloc" data-chargement="Recherche…">{{ icon('search', 16) }} Chercher dans les modules</button>
+    </form>
+  </section>
+  <section class="carte carte-action">
+    <h2>{{ icon('edit', 18) }} Saisir à la main</h2>
+    <p class="muted mt-1">Pour une personne qui n'existe dans aucun module : salarié d'une entreprise externe, nouvel arrivant pas encore enregistré…</p>
+    <a class="btn btn-ghost btn-bloc mt-3" href="{{ url_for('personne_nouvelle', entreprise=ent.id if ent else None, nom=q if q and not resultats else None) }}">{{ icon('plus', 16) }} Saisir une nouvelle personne</a>
+  </section>
+</div>
+
+{% if erreur %}<div class="bandeau bandeau-alerte mt-3">{{ icon('alert', 20) }}<p>{{ erreur }}</p></div>{% endif %}
+
+{% if q|length >= 2 and not erreur %}
+<section class="carte carte-table mt-3">
+  <div class="carte-entete pad"><h2>{{ icon('users', 18) }} Résultats pour « {{ q }} »</h2><span class="badge">{{ resultats|length }}</span></div>
+  {% if resultats %}
+  <div class="table-conteneur"><table class="table">
+    <thead><tr><th>Personne</th><th>Poste</th><th>Entité</th><th>Trouvée dans</th><th></th></tr></thead>
+    <tbody>
+    {% for r in resultats %}
+    <tr>
+      <td class="col-fixe"><strong>{{ r.nom_complet }}</strong><br><span class="muted petit">{{ r.matricule }}{{ ' · ' if r.matricule and r.email }}{{ r.email }}</span></td>
+      <td>{{ r.poste or '—' }}</td>
+      <td>{{ r.entite or '—' }}</td>
+      <td><span class="badge badge-source">{{ r.source }}</span></td>
+      <td class="num nowrap">
+        {% if r.deja %}<a class="btn btn-ghost btn-sm" href="{{ url_for('personne_fiche', pid=r.deja.id) }}">{{ icon('check', 14) }} Déjà suivie — voir</a>
+        {% else %}<a class="btn btn-primary btn-sm" href="{{ r.lien }}">{{ icon('plus', 14) }} Reprendre</a>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="etat-vide etat-vide-sm"><div class="etat-vide-ico">{{ icon('users', 24) }}</div><h3>Personne trouvée dans aucun module</h3>
+    <p class="muted">Saisissez-la à la main : elle sera rattachée à l'entreprise de votre choix.</p>
+    <a class="btn btn-primary" href="{{ url_for('personne_nouvelle', entreprise=ent.id if ent else None, nom=q) }}">{{ icon('plus', 16) }} Saisir « {{ q }} »</a></div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

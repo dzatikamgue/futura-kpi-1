@@ -7,7 +7,7 @@
   <div class="titre-module-g">
     <span class="avatar avatar-xl" aria-hidden="true">{{ p.nom[:1]|upper }}</span>
     <div><h1>{{ p.nom }} {% if not p.actif %}<span class="badge">Parti(e)</span>{% endif %}</h1>
-      <p class="muted">{{ p.poste or 'Poste non renseigné' }}{% if p.societe %} · {{ p.societe }}{% endif %}{% if p.nationalite %} · {{ p.nationalite }}{% endif %}</p></div>
+      <p class="muted">{{ p.poste or 'Poste non renseigné' }}{% if p.entreprise %} · <a class="lien" href="{{ url_for('entreprise_fiche', eid=p.entreprise.id) }}">{{ p.entreprise.nom }}</a>{% if p.entreprise.externe %} (externe){% endif %}{% elif p.societe %} · {{ p.societe }}{% endif %}{% if p.nationalite %} · {{ p.nationalite }}{% endif %}</p></div>
   </div>
   {% if current_user.gere %}<div class="actions"><a class="btn btn-ghost" href="{{ url_for('personne_modifier', pid=p.id) }}">{{ icon('edit', 16) }} Modifier</a></div>{% endif %}
 </div>

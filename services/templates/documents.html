@@ -12,6 +12,9 @@
   {% endif %}
 {% endcall %}
 
+{% include "_barre_entreprises.html" %}
+{% if ent %}<p class="muted mb-3">{{ icon('building', 14) }} Dossiers de <a class="lien" href="{{ url_for('entreprise_fiche', eid=ent.id) }}"><strong>{{ ent.nom }}</strong></a>{% if ent.externe %} (entreprise externe){% endif %}.
+  {% if current_user.gere %}<a class="lien" href="{{ url_for('personne_ajouter', entreprise=ent.id) }}">Ajouter une personne à cette entreprise</a>{% endif %}</p>{% endif %}
 {% if stats.alerte or stats.expires %}
 <div class="bandeau bandeau-{{ 'ko' if stats.expires else 'alerte' }}">
   {{ icon('bell', 20) }}
@@ -30,6 +33,7 @@
   {{ onglets('statut', [('en_vigueur', 'En cours', stats.total), ('a_traiter', 'À renouveler', stats.alerte + stats.expires), ('valides', 'Valides', stats.valides), ('historique', 'Historique complet', none)], 'en_vigueur') }}
   <form class="filtres-form" method="get" action="{{ url_for('documents') }}">
     <input type="hidden" name="statut" value="{{ request.args.get('statut', 'en_vigueur') }}">
+    {% if ent %}<input type="hidden" name="entreprise" value="{{ ent.id }}">{% endif %}
     <select name="type" data-auto-submit aria-label="Type de document">
       <option value="">Visas et cartes ({{ nb_type.visa + nb_type.carte_sejour }})</option>
       <option value="visa" {{ 'selected' if type_doc == 'visa' }}>Visas seulement ({{ nb_type.visa }})</option>
@@ -46,7 +50,7 @@
   <tbody>
   {% for d in page.items %}{% set niv = d.niveau(seuil) %}
   <tr class="ligne-cliquable ligne-{{ niv }}" data-href="{{ url_for('document_fiche', did=d.id) }}">
-    <td class="col-fixe"><a class="lien" href="{{ url_for('document_fiche', did=d.id) }}"><strong>{{ d.personne.nom }}</strong></a><br><span class="muted petit">{{ d.personne.societe or '' }}</span></td>
+    <td class="col-fixe"><a class="lien" href="{{ url_for('document_fiche', did=d.id) }}"><strong>{{ d.personne.nom }}</strong></a><br><span class="muted petit">{{ d.personne.entreprise_nom }}</span></td>
     <td><span class="type-doc type-doc-{{ d.type_doc }}">{{ icon('stamp' if d.type_doc == 'visa' else 'id', 14) }} {{ d.type_libelle }}</span><br><span class="muted petit">{{ d.numero or '' }}{{ ' · ' if d.numero and d.categorie }}{{ d.categorie or '' }}</span></td>
     <td class="nowrap">{{ d.date_delivrance|date }}</td>
     <td class="nowrap"><strong>{{ d.date_expiration|date }}</strong></td>

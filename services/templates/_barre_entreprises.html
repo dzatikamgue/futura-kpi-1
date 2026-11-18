@@ -1,0 +1,16 @@
+{# Barre des entreprises : filtre du sous-module Visas et cartes de séjour. Paramètres : barre_entreprises, ent #}
+<nav class="barre-ent" aria-label="Entreprises">
+  <a class="ent-puce {{ 'actif' if not ent }}" href="{{ url_avec(entreprise='', page=1) }}" {% if not ent %}aria-current="page"{% endif %}>
+    <span class="ent-logo ent-logo-tous" aria-hidden="true">{{ icon('layers', 16) }}</span>
+    <span><strong>Toutes les entreprises</strong><span class="muted petit">{{ barre_entreprises|sum(attribute='personnes') }} personne(s)</span></span>
+  </a>
+  {% for b in barre_entreprises %}
+  <a class="ent-puce {{ 'actif' if ent and ent.id == b.e.id }} {{ 'ent-externe' if b.e.externe }}" href="{{ url_avec(entreprise=b.e.id, page=1) }}" {% if ent and ent.id == b.e.id %}aria-current="page"{% endif %}>
+    <span class="ent-logo" aria-hidden="true">{{ b.e.initiales }}</span>
+    <span><strong>{{ b.e.nom }}</strong><span class="muted petit">{{ 'Externe · ' if b.e.externe }}{{ b.personnes }} personne(s)</span></span>
+    {% if b.alertes %}<span class="nav-compteur" title="{{ b.alertes }} document(s) à renouveler">{{ b.alertes }}</span>{% endif %}
+  </a>
+  {% endfor %}
+  {% if current_user.gere %}<a class="ent-puce ent-ajout" href="{{ url_for('entreprise_nouvelle') }}">{{ icon('plus', 16) }} Entreprise</a>{% endif %}
+  <a class="ent-puce ent-ajout" href="{{ url_for('entreprises') }}">{{ icon('building', 16) }} Gérer</a>
+</nav>

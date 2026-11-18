@@ -46,8 +46,15 @@ def client(app, qui):
     return c
 
 
-def personne(c, nom="Anoop Kumar"):
-    r = c.post("/personnel/nouveau", data={"nom": nom, "nationalite": "Indienne"})
+def entreprise(c, nom="Futura SARL", type_entreprise="groupe"):
+    r = c.post("/entreprises/nouvelle", data={"nom": nom, "type_entreprise": type_entreprise})
+    assert r.status_code == 302
+    return int(r.headers["Location"].rstrip("/").split("/")[-1])
+
+
+def personne(c, nom="Anoop Kumar", eid=None):
+    eid = eid or entreprise(c, nom="Ent " + nom)
+    r = c.post("/personnel/nouveau", data={"nom": nom, "nationalite": "Indienne", "entreprise_id": eid})
     assert r.status_code == 302
     return int(r.headers["Location"].rstrip("/").split("/")[-1])
 
@@ -239,7 +246,7 @@ def test_sso_portail(app):
     jeton = s.dumps({"email": "nouveau@futura.cm", "n": "abc", "m": "services", "r": "gestionnaire", "nom": "Nouveau"})
     c = app.test_client()
     assert c.get(f"/sso?jeton={jeton}").status_code == 302
-    assert c.get("/personnel/nouveau").status_code == 200
+    assert c.get("/entreprises/nouvelle").status_code == 200
     with app.app_context():
         assert User.query.filter_by(email="nouveau@futura.cm").one().role == "gestionnaire"
     # Jeton déjà utilisé, jeton d'un autre module
@@ -279,7 +286,8 @@ def test_accueil_toutes_pages(app):
     rh = client(app, "rh")
     for url in ["/", "/tableau-de-bord", "/personnel", "/documents", "/documents/visa", "/documents/carte_sejour", "/billets",
                 "/logements", "/loyers", "/loyers?onglet=paiements", "/factures/electricite", "/factures/eau",
-                "/reparations", "/loyers/payer", "/billets/nouveau", "/logements/nouveau"]:
+                "/reparations", "/loyers/payer", "/billets/nouveau", "/logements/nouveau", "/entreprises",
+                "/entreprises/nouvelle"]:
         assert rh.get(url).status_code == 200, url
 
 
@@ -292,3 +300,65 @@ def test_sso_comptes(app):
     # Sans le bon type de question, ou pour un autre module : refusé
     assert app.test_client().get("/sso/comptes?jeton=" + s.dumps({"email": "x", "m": "services"})).status_code == 403
     assert app.test_client().get("/sso/comptes?jeton=" + s.dumps({"email": "x", "q": "comptes", "m": "flotte"})).status_code == 403
+
+
+def test_entreprises_et_filtre(app):
+    from models import Personne, aujourdhui
+    rh = client(app, "rh")
+    # Sans entreprise : la création de personne renvoie vers la création d'entreprise
+    r = rh.get("/personnel/nouveau")
+    assert r.status_code == 302 and "/entreprises/nouvelle" in r.headers["Location"]
+    g = entreprise(rh, "Futura SARL")
+    x = entreprise(rh, "SEG International", "externe")
+    assert rh.post("/entreprises/nouvelle", data={"nom": "seg international", "type_entreprise": "groupe"}).status_code == 200
+    p1, p2 = personne(rh, "Anoop", g), personne(rh, "Elias", x)
+    fin = (aujourdhui() + timedelta(days=10)).isoformat()
+    for pid, num in ((p1, "VG"), (p2, "VX")):
+        rh.post("/documents/visa/nouveau", data={"personne_id": pid, "numero": num, "date_expiration": fin,
+                                                 "date_delivrance": "2026-01-01"})
+    page = rh.get(f"/documents?entreprise={x}").get_data(as_text=True)
+    assert "VX" in page and "VG" not in page and "SEG International" in page
+    fiche = rh.get(f"/entreprise/{x}").get_data(as_text=True)
+    assert f'href="/personnel/{p2}"' in fiche and f'href="/personnel/{p1}"' not in fiche and "Entreprise externe" in fiche
+    liste = rh.get(f"/personnel?entreprise={x}").get_data(as_text=True)
+    assert f'href="/personnel/{p2}"' in liste and f'href="/personnel/{p1}"' not in liste
+    assert "(SEG International)" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert client(app, "dg").get("/entreprises/nouvelle").status_code == 403
+    with app.app_context():
+        assert Personne.query.filter_by(nom="Elias").one().entreprise.externe
+
+
+def test_reprise_ancienne_societe(app):
+    from models import Entreprise, Personne, db, migrer
+    with app.app_context():
+        db.session.add_all([Personne(nom="A", societe="BuildSmart BTP"), Personne(nom="B", societe="buildsmart btp ")])
+        db.session.commit()
+        migrer()
+        assert Entreprise.query.count() == 1
+        assert {p.entreprise.nom for p in Personne.query} == {"BuildSmart BTP"}
+
+
+def test_ajouter_personne_depuis_annuaire(app, monkeypatch):
+    import app as A
+    rh = client(app, "rh")
+    eid = entreprise(rh, "Futura SARL")
+    deja = personne(rh, "Paul Ekambi", eid)
+    monkeypatch.setattr(A, "chercher_annuaire", lambda q: ([
+        {"nom": "MBALLA", "prenom": "Jean", "matricule": "FUT-042", "poste": "Comptable", "email": "j.mballa@futura.cm",
+         "telephone": "+237 6", "entite": "Futura SARL", "source": "Performance KPI"},
+        {"nom": "Paul Ekambi", "prenom": "", "matricule": "", "poste": "Chef de projet", "email": "", "telephone": "",
+         "entite": "", "source": "Circuit des factures"}], None))
+    page = rh.get("/personnel/ajouter?q=mba").get_data(as_text=True)
+    assert "Jean MBALLA" in page and "Performance KPI" in page and "Reprendre" in page
+    assert f'href="/personnel/{deja}"' in page          # déjà suivie : pas de doublon proposé
+    # Le lien « Reprendre » pré-remplit le formulaire, entreprise retrouvée par son nom
+    import re
+    lien = re.search(r'href="(/personnel/nouveau\\?[^"]*FUT-042[^"]*)"', page).group(1).replace("&amp;", "&")
+    form = rh.get(lien).get_data(as_text=True)
+    assert 'value="Jean MBALLA"' in form and 'value="FUT-042"' in form and "Performance KPI" in form
+    assert f'<option value="{eid}" selected' in form
+    # Portail injoignable : message clair, saisie manuelle possible
+    monkeypatch.setattr(A, "chercher_annuaire", lambda q: ([], "Le portail ne répond pas pour le moment."))
+    page = rh.get("/personnel/ajouter?q=xyz").get_data(as_text=True)
+    assert "ne répond pas" in page and "Saisir une nouvelle personne" in page
+    assert client(app, "dg").get("/personnel/ajouter").status_code == 403

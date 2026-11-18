@@ -2353,3 +2353,28 @@ def test_portail_lien_acces_modules(app, monkeypatch):
     autre = app.test_client()
     login(autre, email_de("NGUEMA"))
     assert "Gérer les accès aux modules" not in autre.get("/modules/").get_data(as_text=True)
+
+
+def test_annuaire_modules(app, monkeypatch):
+    """Annuaire commun : personnel KPI + comptes des autres modules, demande signée par le module."""
+    import hashlib, hmac, json, time
+    from app.services import modules as M
+    monkeypatch.setenv("MODULE_SERVICES_URL", "https://services.exemple.cm")
+    monkeypatch.setenv("MODULE_SERVICES_SECRET", "sec")
+    monkeypatch.setenv("MODULE_FLOTTE_URL", "https://flotte.exemple.cm")
+    monkeypatch.setenv("MODULE_FLOTTE_SECRET", "s2")
+    monkeypatch.setattr(M, "comptes_module", lambda code: {"chauffeur.x@futura.cm": {"nom": "Jean Chauffeur", "role": "chauffeur", "actif": True}})
+
+    def appel(q, secret="sec"):
+        corps = json.dumps({"q": q}).encode()
+        ts = str(int(time.time()))
+        sig = hmac.new(secret.encode(), ts.encode() + b"." + corps, hashlib.sha256).hexdigest()
+        return app.test_client().post("/modules/api/annuaire", data=corps, content_type="application/json",
+                                      headers={"X-Futura-Module": "services", "X-Futura-Horodatage": ts, "X-Futura-Signature": sig})
+    r = appel("NGUEMA")
+    assert r.status_code == 200
+    p = r.get_json()["personnes"]
+    assert p and p[0]["nom"] == "NGUEMA" and p[0]["source"] == "Performance KPI" and p[0]["matricule"]
+    r = appel("chauffeur")
+    assert any(x["source"] == "Flotte automobile" and x["nom"] == "Jean Chauffeur" for x in r.get_json()["personnes"])
+    assert appel("NGUEMA", secret="mauvais").status_code == 403

@@ -904,3 +904,24 @@ body[class*="sm-"] .entete { box-shadow: inset 0 3px 0 var(--esp); }
 .notif-docs-ko { background: var(--ko-doux); border-color: color-mix(in srgb, var(--ko) 35%, transparent); }
 .notif-docs-ko .notif-docs-ico { background: var(--ko); } .notif-docs-ko .espace-ouvrir { color: var(--ko); }
 @media (prefers-reduced-motion: reduce) { .notif-docs-ico { animation: none; } }
+
+/* Entreprises (groupe / externes) dans Visas et cartes de séjour */
+.barre-ent { display: flex; gap: var(--e2); overflow-x: auto; padding: 2px 2px var(--e3); margin-bottom: var(--e4); scrollbar-width: thin; }
+.ent-puce { position: relative; display: flex; align-items: center; gap: var(--e2); flex: none; padding: var(--e2) var(--e3); border-radius: var(--r2);
+  background: var(--surface); border: 1px solid var(--bord); color: var(--texte); min-width: 0; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.ent-puce > span:nth-child(2) { display: flex; flex-direction: column; line-height: 1.25; }
+.ent-puce strong { font-size: 14px; white-space: nowrap; }
+.ent-puce:hover { text-decoration: none; border-color: var(--esp); transform: translateY(-1px); }
+.ent-puce.actif { border-color: var(--esp); box-shadow: 0 0 0 2px color-mix(in srgb, var(--esp) 25%, transparent); background: color-mix(in srgb, var(--esp) 6%, var(--surface)); }
+.ent-puce .nav-compteur { margin-left: var(--e1); }
+.ent-ajout { color: var(--texte-2); border-style: dashed; font-weight: 500; font-size: 14px; }
+.ent-logo { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; font-weight: 700; font-size: 12px; letter-spacing: .02em;
+  color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #000)); }
+.ent-externe .ent-logo, .ent-logo.ent-externe { background: linear-gradient(135deg, #b45309, #78350f); }
+.ent-logo-tous { background: var(--surface-2); color: var(--texte-2); }
+.ent-logo-lg { width: 42px; height: 42px; font-size: 14px; }
+.ent-logo-xl { width: 52px; height: 52px; font-size: 17px; border-radius: 12px; }
+.carte-ent.ent-externe { border-top: 3px solid #b45309; }
+.nav a.nav-sous { padding-left: calc(var(--e3) + 18px); font-size: 14px; }
+.mb-3 { margin-bottom: var(--e3); }
+.badge-source { background: var(--accent-doux); color: var(--accent); }

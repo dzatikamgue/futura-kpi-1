@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, vide, onglets, entete_module with context %}
+{% block titre %}Entreprises{% endblock %}
+{% block sous_module %}documents{% endblock %}
+{% block ariane %}<a href="{{ url_for('documents') }}">Visas et cartes de séjour</a><span aria-current="page">Entreprises</span>{% endblock %}
+{% block contenu %}
+{% call entete_module(module, 'Entreprises', "Les entreprises du groupe et les entreprises externes pour lesquelles la RH gère visas et cartes de séjour.") %}
+  {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('entreprise_nouvelle') }}">{{ icon('plus', 16) }} Nouvelle entreprise</a>{% endif %}
+{% endcall %}
+<div class="filtres">
+  {{ onglets('type', [('', 'Toutes', none), ('groupe', 'Du groupe', none), ('externe', 'Externes', none)], '') }}
+  {{ onglets('statut', [('actives', 'Actives', none), ('inactives', 'Archivées', none), ('toutes', 'Toutes', none)], 'actives') }}
+</div>
+{% if liste %}
+<div class="grille-logements">
+  {% for e in liste %}{% set st = stats.get(e.id) %}
+  <a class="carte carte-logement carte-ent {{ 'ent-externe' if e.externe }} {{ 'inactif' if not e.actif }}" href="{{ url_for('entreprise_fiche', eid=e.id) }}">
+    <div class="carte-logement-tete">
+      <span class="ent-logo ent-logo-lg" aria-hidden="true">{{ e.initiales }}</span>
+      <div><strong>{{ e.nom }}</strong><span class="muted petit">{{ e.type_libelle }}{% if e.contact_nom %} · {{ e.contact_nom }}{% endif %}</span></div>
+    </div>
+    <div class="carte-logement-pied">
+      <span class="gros-montant">{{ e.personnes|selectattr('actif')|list|length }}<small> personne(s)</small></span>
+      <span class="carte-logement-badges">
+        {% if st and st.alertes %}<span class="badge badge-alerte">{{ st.alertes }} à renouveler</span>{% else %}<span class="badge badge-ok">À jour</span>{% endif %}
+      </span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+{{ vide('Aucune entreprise', 'Créez les entreprises du groupe et les entreprises externes dont la RH gère les dossiers de visa et de carte de séjour.', url_for('entreprise_nouvelle') if current_user.gere else '', 'Nouvelle entreprise', 'building') }}
+{% endif %}
+{% endblock %}

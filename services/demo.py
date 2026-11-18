@@ -1,7 +1,7 @@
 """Données de démonstration (flask --app app seed-demo). Ne pas lancer sur la base de production."""
 from datetime import timedelta
 
-from models import (Billet, Document, FactureEnergie, Logement, Loyer, Personne, Reparation, SuiviReparation, User,
+from models import (Billet, Entreprise, Document, FactureEnergie, Logement, Loyer, Personne, Reparation, SuiviReparation, User,
                     aujourdhui, db, mois_ajoutes, now)
 
 MDP = "Futura2026"
@@ -39,6 +39,12 @@ def charger():
         L.append(l)
     db.session.flush()
 
+    futura = Entreprise(nom="Futura SARL", sigle="FUT", type_entreprise="groupe")
+    bsb = Entreprise(nom="BuildSmart BTP", sigle="BSB", type_entreprise="groupe")
+    seg = Entreprise(nom="SEG International", sigle="SEG", type_entreprise="externe", contact_nom="Service RH SEG",
+                     contact_telephone="+237 6 90 00 00 00", notes="Frais de visa refacturés à SEG.")
+    db.session.add_all([futura, bsb, seg])
+    ents = {"Anoop Kumar": futura, "Elias Nayef": seg, "Imad Obeid": bsb, "Mathavan R.": futura}
     P = []
     for nom, poste, nat, l, v_j, c_j in [
         ("Anoop Kumar", "Ingénieur MEP", "Indienne", L[0], 25, 200),
@@ -46,7 +52,7 @@ def charger():
         ("Imad Obeid", "Architecte", "Libanaise", L[2], 300, 12),
         ("Mathavan R.", "Conducteur de travaux", "Indienne", None, 120, 380),
     ]:
-        p = Personne(nom=nom, poste=poste, societe="Futura SARL", nationalite=nat, logement=l,
+        p = Personne(nom=nom, poste=poste, entreprise=ents[nom], nationalite=nat, logement=l,
                      passeport_numero="P" + str(abs(hash(nom)) % 10_000_000), passeport_expiration=j + timedelta(days=900),
                      telephone="+237 6 77 00 00 00", cree_par_id=admin.id)
         db.session.add(p)

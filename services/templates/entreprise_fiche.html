@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge_doc, onglets, entete_module with context %}
+{% block titre %}{{ e.nom }}{% endblock %}
+{% block sous_module %}documents{% endblock %}
+{% block ariane %}<a href="{{ url_for('documents') }}">Visas et cartes de séjour</a><a href="{{ url_for('entreprises') }}">Entreprises</a><span aria-current="page">{{ e.nom }}</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div class="titre-module-g">
+    <span class="ent-logo ent-logo-xl {{ 'ent-externe' if e.externe }}" aria-hidden="true">{{ e.initiales }}</span>
+    <div><p class="action-sur">{{ e.type_libelle }}</p><h1>{{ e.nom }} {% if not e.actif %}<span class="badge">Archivée</span>{% endif %}</h1>
+      <p class="muted">{% if e.contact_nom %}Contact : {{ e.contact_nom }}{% endif %}{% if e.contact_telephone %} · <a class="lien" href="tel:{{ e.contact_telephone }}">{{ e.contact_telephone }}</a>{% endif %}{% if e.contact_email %} · <a class="lien" href="mailto:{{ e.contact_email }}">{{ e.contact_email }}</a>{% endif %}</p></div>
+  </div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('documents', entreprise=e.id) }}">{{ icon('id', 16) }} Ses visas et cartes</a>
+    {% if current_user.gere %}
+    <a class="btn btn-ghost" href="{{ url_for('entreprise_modifier', eid=e.id) }}">{{ icon('edit', 16) }} Modifier</a>
+    <a class="btn btn-primary" href="{{ url_for('personne_ajouter', entreprise=e.id) }}">{{ icon('plus', 16) }} Ajouter une personne</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><span class="kpi-lib">{{ icon('users', 16) }} Personnel suivi</span><span class="kpi-val">{{ e.personnes|selectattr('actif')|list|length }}</span><span class="kpi-sous">{{ stats.total }} document(s) en cours</span></div>
+  <a class="kpi" href="{{ url_for('documents', entreprise=e.id, statut='valides') }}"><span class="kpi-lib">Valides</span><span class="kpi-val">{{ stats.valides }}</span><span class="kpi-sous">fin dans plus de {{ seuil }} jours</span></a>
+  <a class="kpi {{ 'kpi-alerte' if stats.alerte }}" href="{{ url_for('documents', entreprise=e.id, statut='a_traiter') }}"><span class="kpi-lib">{{ icon('bell', 16) }} À renouveler</span><span class="kpi-val">{{ stats.alerte }}</span><span class="kpi-sous">fin dans moins de {{ seuil }} jours</span></a>
+  <a class="kpi {{ 'kpi-ko' if stats.expires }}" href="{{ url_for('documents', entreprise=e.id, statut='expires') }}"><span class="kpi-lib">Expirés</span><span class="kpi-val">{{ stats.expires }}</span><span class="kpi-sous">frais {{ aujourdhui.year }} : {{ cout|fcfa }}</span></a>
+</div>
+
+<div class="grille-detail mt-3">
+  <section class="carte carte-table">
+    <div class="carte-entete pad"><h2>{{ icon('users', 18) }} Personnel de {{ e.nom }}</h2>
+      {{ onglets('statut', [('actifs', 'En poste', none), ('inactifs', 'Partis', none), ('tous', 'Tous', none)], 'actifs') }}</div>
+    {% if personnes %}
+    <div class="table-conteneur"><table class="table">
+      <thead><tr><th>Nom</th><th>Visa (début → fin)</th><th>Carte de séjour (début → fin)</th><th>Passeport</th>{% if current_user.gere %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for p in personnes %}{% set v = doc_courant(p, 'visa') %}{% set c = doc_courant(p, 'carte_sejour') %}
+      <tr>
+        <td class="col-fixe"><a class="lien" href="{{ url_for('personne_fiche', pid=p.id) }}"><strong>{{ p.nom }}</strong></a><br><span class="muted petit">{{ p.poste or '' }}{{ ' · ' if p.poste and p.nationalite }}{{ p.nationalite or '' }}</span></td>
+        <td>{% if v %}<a href="{{ url_for('document_fiche', did=v.id) }}" class="petit nowrap lien">{{ v.date_delivrance|date }} → <strong>{{ v.date_expiration|date }}</strong></a><br>{{ badge_doc(v) }}
+            {% elif current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('document_nouveau', type_doc='visa', personne=p.id) }}">{{ icon('plus', 14) }} Visa</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if c %}<a href="{{ url_for('document_fiche', did=c.id) }}" class="petit nowrap lien">{{ c.date_delivrance|date }} → <strong>{{ c.date_expiration|date }}</strong></a><br>{{ badge_doc(c) }}
+            {% elif current_user.gere %}<a class="btn btn-ghost btn-sm" href="{{ url_for('document_nouveau', type_doc='carte_sejour', personne=p.id) }}">{{ icon('plus', 14) }} Carte</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="nowrap">{% if p.passeport_expiration %}{% set j = (p.passeport_expiration - aujourdhui).days %}<span class="{{ 'texte-ko' if j < 0 else 'texte-alerte' if j <= seuil else '' }}">{{ p.passeport_expiration|date }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        {% if current_user.gere %}<td class="num"><a class="btn-icone" href="{{ url_for('personne_modifier', pid=p.id) }}" aria-label="Modifier {{ p.nom }}" title="Modifier">{{ icon('edit', 16) }}</a></td>{% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="etat-vide etat-vide-sm"><div class="etat-vide-ico">{{ icon('users', 24) }}</div><h3>Aucune personne</h3>
+      <p class="muted">Ajoutez le personnel de {{ e.nom }} pour suivre ses visas et cartes de séjour.</p>
+      {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('personne_ajouter', entreprise=e.id) }}">{{ icon('plus', 16) }} Ajouter une personne</a>{% endif %}</div>
+    {% endif %}
+  </section>
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('building', 18) }} Informations</h2></div>
+      <dl class="fiche">
+        <dt>Type</dt><dd>{{ e.type_libelle }}</dd>
+        <dt>Sigle</dt><dd>{{ e.sigle or '—' }}</dd>
+        <dt>Adresse</dt><dd>{{ e.adresse or '—' }}</dd>
+        {% if e.notes %}<dt>Notes</dt><dd class="pre">{{ e.notes }}</dd>{% endif %}
+      </dl>
+    </section>
+    {% with objet='entreprise', oid=e.id %}{% include "_pieces.html" %}{% endwith %}
+  </div>
+</div>
+{% endblock %}

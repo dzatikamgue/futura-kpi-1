@@ -152,12 +152,13 @@ def appliquer(champs, obj, val, exclure=()):
 #  Description des formulaires
 # --------------------------------------------------------------------------- #
 
-def champs_personne(logements):
+def champs_personne(logements, entreprises):
     return [
         C("nom", "Nom et prénom", requis=True, attrs='autocomplete="off" autofocus'),
+        C("entreprise_id", "Entreprise", "choix", requis=True, options=entreprises, entier=True,
+          aide="Entreprise du groupe ou entreprise externe pour laquelle la RH gère le dossier."),
         C("matricule", "Matricule", max_long=40),
         C("poste", "Poste / fonction"),
-        C("societe", "Société / entité", aide="Ex. Futura SARL, BuildSmart BTP"),
         C("nationalite", "Nationalité", max_long=80),
         C("telephone", "Téléphone", "tel", max_long=40),
         C("email", "E-mail", "email"),
@@ -166,6 +167,20 @@ def champs_personne(logements):
           aide="Une alerte s'affiche aussi avant l'expiration du passeport."),
         C("logement_id", "Logement occupé", "choix", options=logements, entier=True, vide="— Aucun —"),
         C("notes", "Notes", "zone", plein=True),
+    ]
+
+
+def champs_entreprise():
+    return [
+        C("nom", "Nom de l'entreprise", requis=True, attrs="autofocus", aide="Ex. Futura SARL, BuildSmart BTP, SEG International"),
+        C("type_entreprise", "Type", "choix", requis=True, vide=None, defaut="groupe",
+          options=[("groupe", "Entreprise du groupe"), ("externe", "Entreprise externe (la RH gère ses dossiers)")]),
+        C("sigle", "Sigle", max_long=20, aide="Facultatif. Ex. FUT, BSB"),
+        C("contact_nom", "Personne à contacter"),
+        C("contact_telephone", "Téléphone du contact", "tel", max_long=40),
+        C("contact_email", "E-mail du contact", "email"),
+        C("adresse", "Adresse", max_long=255, plein=True),
+        C("notes", "Notes", "zone", plein=True, aide="Ex. conditions de refacturation des frais de visa."),
     ]
 
 

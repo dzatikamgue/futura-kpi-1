@@ -125,6 +125,49 @@ def acces():
     return render_template("modules/acces.html", modules=externes, comptes=comptes, actuel=actuel, locaux=locaux)
 
 
+@bp.post("/api/annuaire")
+@csrf.exempt                          # appel serveur à serveur, authentifié par signature HMAC
+def api_annuaire():
+    """Annuaire commun : un module cherche une personne dans le personnel KPI et les comptes des autres modules.
+
+    En-têtes : X-Futura-Module, X-Futura-Horodatage, X-Futura-Signature. Corps JSON : {"q": "texte"}.
+    Réponse : {"personnes": [{nom, prenom, matricule, poste, email, telephone, entite, source}]} (30 au plus).
+    """
+    from sqlalchemy import or_
+    from ..models import Employe
+    code = request.headers.get("X-Futura-Module", "")
+    corps = request.get_data(cache=True)
+    if not M.module(code) or M.module(code).get("interne") or not M.verifier_signature_module(
+            code, request.headers.get("X-Futura-Horodatage", ""), request.headers.get("X-Futura-Signature", ""), corps):
+        return jsonify(erreur="Demande non autorisée."), 403
+    q = str((request.get_json(silent=True) or {}).get("q") or "").strip()[:80]
+    if len(q) < 2:
+        return jsonify(personnes=[])
+    like = f"%{q}%"
+    res, vus = [], set()
+    employes = db.session.scalars(select(Employe).where(Employe.actif.is_(True), or_(
+        Employe.nom.ilike(like), Employe.prenom.ilike(like), Employe.matricule.ilike(like), Employe.email.ilike(like),
+        (Employe.prenom + " " + Employe.nom).ilike(like))).order_by(Employe.nom).limit(30))
+    for e in employes:
+        res.append(dict(nom=e.nom, prenom=e.prenom or "", matricule=e.matricule, poste=e.poste or "",
+                        email=(e.email or "").lower(), telephone=e.telephone or "",
+                        entite=e.entite.nom if e.entite else "", source="Performance KPI"))
+        if e.email:
+            vus.add(e.email.strip().lower())
+    ql = q.lower()
+    for m in M.externes_configures():
+        if m["code"] == code or len(res) >= 30:
+            continue
+        for email, c in (M.comptes_module(m["code"]) or {}).items():
+            if email in vus or not c.get("actif"):
+                continue
+            if ql in email or ql in (c.get("nom") or "").lower():
+                vus.add(email)
+                res.append(dict(nom=c.get("nom") or email, prenom="", matricule="", poste=m["roles"].get(c.get("role"), ""),
+                                email=email, telephone="", entite="", source=m["nom"]))
+    return jsonify(personnes=res[:30])
+
+
 @bp.post("/api/ia")
 @csrf.exempt                          # appel serveur à serveur, authentifié par signature HMAC
 def api_ia():

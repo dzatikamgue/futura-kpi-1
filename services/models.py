@@ -130,8 +130,45 @@ class User(UserMixin, db.Model):
 
 
 # --------------------------------------------------------------------------- #
-#  Personnel
+#  Entreprises (du groupe ou externes) et personnel
 # --------------------------------------------------------------------------- #
+
+TYPES_ENTREPRISE = {"groupe": "Entreprise du groupe", "externe": "Entreprise externe"}
+
+
+class Entreprise(Tracable, db.Model):
+    """Entité pour laquelle la RH gère visas et cartes de séjour (groupe Futura ou entreprise externe)."""
+    __tablename__ = "entreprises"
+    __table_args__ = (db.CheckConstraint("type_entreprise IN ('groupe', 'externe')", name="ck_type_entreprise"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(160), nullable=False, unique=True)
+    type_entreprise = db.Column(db.String(10), nullable=False, default="groupe")
+    sigle = db.Column(db.String(20))
+    contact_nom = db.Column(db.String(120))
+    contact_telephone = db.Column(db.String(40))
+    contact_email = db.Column(db.String(160))
+    adresse = db.Column(db.String(255))
+    notes = db.Column(db.Text)
+    actif = db.Column(db.Boolean, nullable=False, default=True)
+
+    personnes = db.relationship("Personne", back_populates="entreprise", order_by="Personne.nom")
+
+    @property
+    def externe(self):
+        return self.type_entreprise == "externe"
+
+    @property
+    def type_libelle(self):
+        return TYPES_ENTREPRISE.get(self.type_entreprise, self.type_entreprise)
+
+    @property
+    def initiales(self):
+        if self.sigle:
+            return self.sigle[:3].upper()
+        mots = [m for m in self.nom.replace("-", " ").split() if m[:1].isalnum()]
+        return "".join(m[0] for m in mots[:2]).upper() or "?"
+
 
 class Personne(Tracable, db.Model):
     __tablename__ = "personnes"
@@ -140,7 +177,8 @@ class Personne(Tracable, db.Model):
     nom = db.Column(db.String(160), nullable=False, index=True)
     matricule = db.Column(db.String(40))
     poste = db.Column(db.String(120))
-    societe = db.Column(db.String(120))
+    societe = db.Column(db.String(120))          # ancien champ libre (remplacé par l'entreprise)
+    entreprise_id = db.Column(db.Integer, db.ForeignKey("entreprises.id", ondelete="SET NULL"), index=True)
     nationalite = db.Column(db.String(80))
     telephone = db.Column(db.String(40))
     email = db.Column(db.String(160))
@@ -152,10 +190,15 @@ class Personne(Tracable, db.Model):
     cree_par_id = db.Column(db.Integer, db.ForeignKey("utilisateurs.id"))
 
     logement = db.relationship("Logement", back_populates="occupants")
+    entreprise = db.relationship("Entreprise", back_populates="personnes")
     documents = db.relationship("Document", back_populates="personne", cascade="all, delete-orphan",
                                 order_by="Document.date_expiration.desc()")
     billets = db.relationship("Billet", back_populates="personne", cascade="all, delete-orphan",
                               order_by="Billet.date_depart.desc()")
+
+    @property
+    def entreprise_nom(self):
+        return self.entreprise.nom if self.entreprise else (self.societe or "")
 
 
 class Document(Tracable, db.Model):
@@ -432,7 +475,7 @@ class SuiviReparation(db.Model):
 #  Pièces jointes, réglages, journal
 # --------------------------------------------------------------------------- #
 
-OBJETS_PIECE = ("personne", "document", "billet", "logement", "loyer", "facture", "reparation")
+OBJETS_PIECE = ("entreprise", "personne", "document", "billet", "logement", "loyer", "facture", "reparation")
 
 
 class Piece(db.Model):
@@ -486,7 +529,9 @@ def migrer():
     """
     from sqlalchemy import inspect, text
     db.create_all()
-    COLONNES_AJOUTEES = {}
+    COLONNES_AJOUTEES = {
+        "personnes": [("entreprise_id", "INTEGER REFERENCES entreprises(id) ON DELETE SET NULL")],
+    }
     insp = inspect(db.engine)
     with db.engine.begin() as cx:
         for table, colonnes in COLONNES_AJOUTEES.items():
@@ -494,3 +539,16 @@ def migrer():
             for nom, ddl in colonnes:
                 if nom not in existantes:
                     cx.execute(text(f"ALTER TABLE {table} ADD COLUMN {nom} {ddl}"))
+
+    # Reprise des anciennes « sociétés » saisies en texte libre : une entreprise par nom
+    orphelins = Personne.query.filter(Personne.entreprise_id.is_(None), Personne.societe.isnot(None),
+                                      Personne.societe != "").all()
+    if orphelins:
+        par_nom = {e.nom.strip().lower(): e for e in Entreprise.query}
+        for p in orphelins:
+            cle = p.societe.strip().lower()
+            if cle not in par_nom:
+                par_nom[cle] = Entreprise(nom=p.societe.strip(), type_entreprise="groupe")
+                db.session.add(par_nom[cle])
+            p.entreprise = par_nom[cle]
+        db.session.commit()

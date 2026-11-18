@@ -7,11 +7,15 @@
   <div><p class="action-sur">Personnel</p><h1>Personnel suivi</h1><p class="muted">Une fiche par personne : passeport, visa, carte de séjour, billets et logement.</p></div>
   <div class="actions">
     <a class="btn btn-ghost" href="{{ url_for('personnel_export') }}">{{ icon('download', 16) }} Excel</a>
-    {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('personne_nouvelle') }}">{{ icon('plus', 16) }} Nouvelle personne</a>{% endif %}
+    {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('personne_ajouter') }}">{{ icon('plus', 16) }} Nouvelle personne</a>{% endif %}
   </div>
 </div>
 <div class="filtres">
   {{ onglets('statut', [('actifs', 'En poste', none), ('inactifs', 'Partis', none), ('tous', 'Tous', none)], 'actifs') }}
+  <form class="filtres-form" method="get">
+    <input type="hidden" name="statut" value="{{ request.args.get('statut', 'actifs') }}">
+    <select name="entreprise" data-auto-submit aria-label="Entreprise"><option value="">Toutes les entreprises</option>{% for v, l in entreprises %}<option value="{{ v }}" {{ 'selected' if ent and ent.id == v }}>{{ l }}</option>{% endfor %}</select>
+  </form>
   <form class="recherche" method="get" role="search">
     {% for k, v in request.args.items() if k not in ('q', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
     {{ icon('search', 16) }}<input name="q" value="{{ request.args.get('q', '') }}" placeholder="Nom, matricule, société…" aria-label="Rechercher">
@@ -25,7 +29,7 @@
   {% for p in page.items %}{% set v = doc_courant(p, 'visa') %}{% set c = doc_courant(p, 'carte_sejour') %}
   <tr class="ligne-cliquable" data-href="{{ url_for('personne_fiche', pid=p.id) }}">
     <td class="col-fixe"><a class="lien" href="{{ url_for('personne_fiche', pid=p.id) }}"><strong>{{ p.nom }}</strong></a>{% if p.matricule %}<br><span class="muted petit">{{ p.matricule }}</span>{% endif %}</td>
-    <td>{{ p.poste or '—' }}<br><span class="muted petit">{{ p.societe or '' }}</span></td>
+    <td>{{ p.poste or '—' }}<br><span class="muted petit">{{ p.entreprise_nom }}</span></td>
     <td>{{ p.nationalite or '—' }}</td>
     <td>{% if v %}<span class="petit nowrap">{{ v.date_delivrance|date }} → <strong>{{ v.date_expiration|date }}</strong></span><br>{{ badge_doc(v) }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{% if c %}<span class="petit nowrap">{{ c.date_delivrance|date }} → <strong>{{ c.date_expiration|date }}</strong></span><br>{{ badge_doc(c) }}{% else %}<span class="muted">—</span>{% endif %}</td>
@@ -37,6 +41,6 @@
 </table></div></div>
 {{ pagination(page) }}
 {% else %}
-{{ vide('Aucune personne', 'Enregistrez le personnel pour suivre ses visas, cartes de séjour et billets.' if not request.args.get('q') else 'Aucun résultat pour cette recherche.', url_for('personne_nouvelle') if current_user.gere and not request.args.get('q') else '', 'Nouvelle personne', 'users') }}
+{{ vide('Aucune personne', 'Enregistrez le personnel pour suivre ses visas, cartes de séjour et billets.' if not request.args.get('q') else 'Aucun résultat pour cette recherche.', url_for('personne_ajouter') if current_user.gere and not request.args.get('q') else '', 'Nouvelle personne', 'users') }}
 {% endif %}
 {% endblock %}

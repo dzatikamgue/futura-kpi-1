@@ -46,6 +46,7 @@
       <a href="{{ url_for('personnel') }}" class="{{ 'actif' if ep.startswith('personne') }}">{{ icon('users') }} Personnel</a>
       <a href="{{ url_for('documents') }}" class="nav-sm nav-sm-documents {{ 'actif' if sm == 'documents' }}">{{ icon('id') }} Visas et cartes de séjour
         {% if docs_notif %}<span class="nav-compteur" aria-label="{{ docs_notif.total }} à renouveler">{{ docs_notif.total }}</span>{% endif %}</a>
+      <a href="{{ url_for('entreprises') }}" class="nav-sous {{ 'actif' if ep.startswith('entreprise') }}">{{ icon('building') }} Entreprises</a>
       <a href="{{ url_for('billets') }}" class="nav-sm nav-sm-billets {{ 'actif' if sm == 'billets' }}">{{ icon('plane') }} Billets d'avion</a>
 
       <p class="nav-titre">Logements</p>
