@@ -114,6 +114,11 @@ def create_app():
         except Exception as e:
             db.session.rollback()
             print(f"Import initial : échec, rien n'est importé ({type(e).__name__}: {str(e)[:300]})", flush=True)
+        try:
+            purger_logements_importes()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Purge logements importés : échec, rien n'est supprimé ({type(e).__name__}: {str(e)[:300]})", flush=True)
 
     register_filters(app)
     register_routes(app)
@@ -267,6 +272,41 @@ def importer_lignes(lignes, ent, user_id=None, choisies=None):
             d.remplace = True
         nb_d += 1
     return nb_p, nb_d, ignores
+
+
+def purger_logements_importes():
+    """Suppression ponctuelle des logements importés depuis les fichiers (variable PURGE_LOGEMENTS_IMPORTES=1).
+
+    Une sauvegarde complète (logements + paiements) est gardée dans les paramètres et téléchargeable
+    en Excel par l'administrateur. Sont conservés : les logements créés à la main dans l'application
+    (journal « Logement créé ») et ceux qui ont des factures ou des réparations.
+    """
+    import json
+    if (os.environ.get("PURGE_LOGEMENTS_IMPORTES") or "").strip() != "1" or db.session.get(Parametre, "purge_logements_faite"):
+        return
+    manuels = {j.cible for j in Journal.query.filter_by(action="Logement créé")}
+    sauvegarde, gardes, nb_loyers = [], [], 0
+    for l in Logement.query.order_by(Logement.batiment, Logement.numero).all():
+        if l.nom in manuels or l.factures or l.reparations:
+            gardes.append(l.nom)
+            continue
+        d = {c.name: getattr(l, c.name) for c in Logement.__table__.columns}
+        d["paiements"] = [{c.name: getattr(x, c.name) for c in Loyer.__table__.columns} for x in l.loyers]
+        sauvegarde.append(d)
+        nb_loyers += len(l.loyers)
+        for x in l.loyers:
+            supprimer_pieces("loyer", x.id)
+        supprimer_pieces("logement", l.id)
+        for p in l.occupants:
+            p.logement_id = None
+        User.query.filter_by(logement_id=l.id).update({"logement_id": None})
+        db.session.delete(l)
+    db.session.add(Parametre(cle="sauvegarde_logements_importes",
+                             valeur=json.dumps(sauvegarde, default=str, ensure_ascii=False)))
+    db.session.add(Parametre(cle="purge_logements_faite", valeur=now().isoformat()))
+    journaliser("Logements importés supprimés", "", f"{len(sauvegarde)} logement(s), {nb_loyers} paiement(s) — sauvegarde conservée")
+    db.session.commit()
+    print(f"Purge : {len(sauvegarde)} logement(s) et {nb_loyers} paiement(s) supprimés ; {len(gardes)} conservé(s).", flush=True)
 
 
 def import_initial():
@@ -2244,6 +2284,27 @@ def register_routes(app):
     @roles("admin")
     def utilisateur_modifier(uid):
         return formulaire_utilisateur(ou_404(User, uid))
+
+    @app.route("/parametres/sauvegarde-logements")
+    @roles("admin")
+    def sauvegarde_logements():
+        """Télécharge la sauvegarde des logements importés supprimés (avec leurs paiements)."""
+        import json
+        p = db.session.get(Parametre, "sauvegarde_logements_importes")
+        if not p:
+            abort(404)
+        lignes = []
+        for d in json.loads(p.valeur):
+            base = [d.get("batiment"), d.get("numero"), d.get("residents"), d.get("loyer"), d.get("charges"),
+                    d.get("periodicite"), d.get("montant_periode"), d.get("bail_debut"), d.get("bail_fin"),
+                    d.get("mode_paiement"), d.get("notes")]
+            for x in d["paiements"] or [{}]:
+                lignes.append(base + [x.get("du"), x.get("au"), x.get("montant"), x.get("date_paiement")])
+        return exporter_excel("sauvegarde_logements_importes", "Sauvegarde des logements importés", [
+            "Bâtiment", "N°", "Résidents", "Loyer mensuel", "Charges", "Périodicité (mois)", "Montant période",
+            "Période en cours : début", "Période en cours : fin", "Mode", "Notes",
+            "Paiement : du", "Paiement : au", "Montant payé", "Payé le"], lignes,
+            largeurs=[22, 14, 24, 14, 12, 10, 14, 12, 12, 16, 50, 12, 12, 14, 12])
 
     @app.route("/parametres", methods=["GET", "POST"])
     @roles("admin")

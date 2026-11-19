@@ -649,3 +649,28 @@ def test_historique_paiements(app):
     rh.post(f"/loyer/{xid}/supprimer")
     with app.app_context():
         assert db.session.get(Logement, lid).bail_fin == date(2026, 10, 15)
+
+
+def test_purge_logements_importes(app, monkeypatch):
+    from app import purger_logements_importes
+    from models import FactureEnergie, Journal, Logement, Loyer, Parametre, aujourdhui, db
+    rh = client(app, "rh")
+    with app.app_context():
+        imp = Logement(nom="IMP — 1", batiment="IMP", numero="1", loyer=100000)
+        avec_facture = Logement(nom="IMP — 2", batiment="IMP", numero="2")
+        db.session.add_all([imp, avec_facture]); db.session.flush()
+        db.session.add(Loyer(logement_id=imp.id, periode_debut=aujourdhui().replace(day=1), mois=1, montant=100000))
+        db.session.add(FactureEnergie(logement_id=avec_facture.id, type_energie="eau", periode=aujourdhui().replace(day=1), montant=5000))
+        db.session.add(Logement(nom="MAIN — 1", batiment="MAIN", numero="1"))
+        db.session.add(Journal(action="Logement créé", cible="MAIN — 1"))
+        db.session.commit()
+        purger_logements_importes()                       # sans la variable : rien
+        assert Logement.query.filter_by(nom="IMP — 1").count() == 1
+        monkeypatch.setenv("PURGE_LOGEMENTS_IMPORTES", "1")
+        purger_logements_importes()
+        noms = {l.nom for l in Logement.query}
+        assert "IMP — 1" not in noms and {"IMP — 2", "MAIN — 1"} <= noms and Loyer.query.count() == 0
+        assert db.session.get(Parametre, "sauvegarde_logements_importes")
+    admin = client(app, "admin")
+    assert admin.get("/parametres/sauvegarde-logements").status_code == 200
+    assert rh.get("/parametres/sauvegarde-logements").status_code in (302, 403)
