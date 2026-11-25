@@ -785,6 +785,12 @@ def register_routes(app):
     def login():
         if current_user.is_authenticated:
             return redirect(url_for("accueil"))
+        portail = (os.environ.get("PORTAIL_URL") or "").strip()
+        if portail:
+            # Connexion unique : pas de page de connexion propre au module, tout passe par le portail
+            base = portail.rstrip("/")
+            base = base if base.endswith("/modules") else base + "/modules"
+            return redirect(base + "/services")
         email = ""
         if request.method == "POST":
             email = (request.form.get("email") or "").strip().lower()
@@ -824,14 +830,12 @@ def register_routes(app):
         """Connexion unique depuis le portail Futura (jeton signé, 60 s, usage unique)."""
         d = _sso_lire(request.args.get("jeton"))
         if not d or not d.get("n"):
-            flash("Lien de connexion expiré : rouvrez le module depuis le portail.", "erreur")
-            return redirect(url_for("login"))
+            return render_template("erreur.html", code=401, message="Lien de connexion expiré : rouvrez le module depuis le portail."), 401
         t = time.time()
         for k in [k for k, v in _jetons_utilises.items() if t - v > 120]:
             _jetons_utilises.pop(k, None)
         if d["n"] in _jetons_utilises:
-            flash("Lien de connexion déjà utilisé : rouvrez le module depuis le portail.", "erreur")
-            return redirect(url_for("login"))
+            return render_template("erreur.html", code=401, message="Lien de connexion déjà utilisé : rouvrez le module depuis le portail."), 401
         _jetons_utilises[d["n"]] = t
         email = d["email"].strip().lower()
         u = User.query.filter(func.lower(User.email) == email).first()
@@ -881,7 +885,7 @@ def register_routes(app):
     def logout():
         logout_user()
         flash("Vous êtes déconnecté.", "info")
-        return redirect(url_for("login"))
+        return redirect((os.environ.get("PORTAIL_URL") or "").strip() or url_for("login"))
 
     # ---------------- Accueil : les 7 sous-modules ---------------- #
 

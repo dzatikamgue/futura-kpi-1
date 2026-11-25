@@ -253,9 +253,9 @@ def test_sso_portail(app):
     with app.app_context():
         assert User.query.filter_by(email="nouveau@futura.cm").one().role == "gestionnaire"
     # Jeton déjà utilisé, jeton d'un autre module
-    assert "connexion" in app.test_client().get(f"/sso?jeton={jeton}").headers["Location"]
+    assert app.test_client().get(f"/sso?jeton={jeton}").status_code == 401
     autre = s.dumps({"email": "admin@futura.cm", "n": "x", "m": "factures"})
-    assert "connexion" in app.test_client().get(f"/sso?jeton={autre}").headers["Location"]
+    assert app.test_client().get(f"/sso?jeton={autre}").status_code == 401
     acces = s.dumps({"email": "admin@futura.cm", "n": "y", "m": "services"})
     assert app.test_client().get(f"/sso/acces?jeton={acces}").get_json() == {"acces": True}
 
