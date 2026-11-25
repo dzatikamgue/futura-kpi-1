@@ -95,8 +95,7 @@ def logout():
     journaliser("deconnexion", current_user.email, commit=True)
     logout_user()
     flash("Vous êtes déconnecté.", "info")
-    from ..services.modules import externes_configures
-    return redirect(url_for("modules.portail") if externes_configures() else url_for("auth.login"))
+    return redirect(url_for("auth.login"))
 
 
 @bp.route("/mot-de-passe", methods=["GET", "POST"])

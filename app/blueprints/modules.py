@@ -13,12 +13,14 @@ bp = Blueprint("modules", __name__, url_prefix="/modules")
 
 @bp.get("/")
 def portail():
-    """Page d'accueil publique (avant connexion) ou portail de l'utilisateur connecté."""
+    """Portail de l'utilisateur connecté : uniquement les modules qui lui sont attribués.
+
+    Avant connexion, aucun module n'est proposé : une seule page de connexion pour tout le monde.
+    """
+    if not current_user.is_authenticated:
+        return redirect(url_for("auth.login"))
     if not M.externes_configures():
         return redirect(url_for("tableau_bord.index"))
-    if not current_user.is_authenticated:
-        modules = [m for m in M.MODULES if m.get("interne") or M.module(m["code"])]
-        return render_template("modules/accueil.html", modules=modules)
     return render_template("modules/portail.html", modules=M.modules_pour(current_user.email, current_user))
 
 
@@ -26,12 +28,13 @@ def portail():
 def ouvrir(code):
     m = M.module(code) or abort(404)
     if not current_user.is_authenticated:
-        # Pas encore connecté : page de connexion du module choisi
-        if m.get("interne"):
-            return redirect(url_for("auth.login", module=code))
-        return redirect(M.url_connexion(code))
+        # Connexion unique : après la connexion, le module demandé s'ouvre (si le compte y a accès)
+        return redirect(url_for("auth.login", next=url_for("modules.ouvrir", code=code)))
     if m.get("interne"):
         return redirect(url_for("tableau_bord.index"))
+    if code not in {x["code"] for x in M.modules_pour(current_user.email, current_user)}:
+        flash(f"Le module « {m['nom']} » ne vous est pas attribué. Demandez l'accès à l'administrateur.", "info")
+        return redirect(url_for("modules.portail"))
     journaliser("ouverture_module", current_user.email, m["nom"])
     db.session.commit()
     return redirect(M.url_ouverture(code, current_user.email, M.role_central(code, current_user),

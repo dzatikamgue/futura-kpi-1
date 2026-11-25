@@ -2012,18 +2012,17 @@ def test_portail_modules_et_connexion_unique(app, monkeypatch):
     c2 = app.test_client()
     r2 = c2.post("/connexion?next=%2F", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
     assert r2.location.endswith("/modules/")
-    # Visiteur non connecté : le lien principal montre d'abord les modules
+    # Visiteur non connecté : une seule page de connexion, aucun module proposé avant
     v = app.test_client()
-    assert v.get("/").location.endswith("/modules/")
-    accueil = v.get("/modules/").get_data(as_text=True)
-    assert "Performance KPI" in accueil and "Flotte automobile" in accueil and "Cliquez sur un module" in accueil
-    assert v.get("/modules/kpi").location.endswith("/connexion?module=kpi")
-    assert v.get("/modules/flotte").location == "https://flotte.exemple.cm/connexion"
-    # Module KPI choisi : après connexion, directement dans la KPI
-    r4 = v.post("/connexion?module=kpi", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
-    assert r4.location.endswith("/") and not r4.location.endswith("/modules/")
-    # Déconnexion : retour à la page des modules
-    assert v.post("/deconnexion").location.endswith("/modules/")
+    assert "/connexion" in v.get("/").location
+    assert v.get("/modules/").location.endswith("/connexion")
+    assert "/connexion?next=" in v.get("/modules/flotte").location
+    assert "Tous les modules" not in v.get("/connexion").get_data(as_text=True)
+    # Module demandé avant connexion : ouvert juste après la connexion
+    r4 = v.post("/connexion?next=%2Fmodules%2Fflotte", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
+    assert r4.location.endswith("/modules/flotte")
+    # Déconnexion : retour à la page de connexion
+    assert v.post("/deconnexion").location.endswith("/connexion")
     # Une vraie page demandée reste respectée
     c3 = app.test_client()
     r3 = c3.post("/connexion?next=%2Fpersonnel%2F", data={"email": email_de("MBALLA"), "mot_de_passe": MDP})
@@ -2046,6 +2045,7 @@ def test_portail_modules_et_connexion_unique(app, monkeypatch):
     # Pas de compte dans la flotte : module non proposé
     monkeypatch.setattr(M, "a_acces", lambda code, email: False)
     assert "Flotte automobile" not in c.get("/modules/").get_data(as_text=True)
+    assert c.get("/modules/flotte").location.endswith("/modules/")              # non attribué : refusé
     # Flotte injoignable : module proposé avec un avertissement
     monkeypatch.setattr(M, "a_acces", lambda code, email: None)
     assert "momentanément injoignable" in c.get("/modules/").get_data(as_text=True)

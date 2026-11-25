@@ -19,7 +19,7 @@
 
     <div class="auth__choix">
       <h2>{{ "Votre entreprise" if entites|length == 1 else "Choisissez votre entreprise" }}</h2>
-      <p>L'évaluation mensuelle des équipes, pour chaque société du groupe.</p>
+      <p>{{ "Une seule connexion pour toutes les applications du groupe. Vous verrez ensuite les modules qui vous sont attribués." if modules_externes else "L'évaluation mensuelle des équipes, pour chaque société du groupe." }}</p>
       <div class="tuiles" role="radiogroup" aria-label="Entreprise">
         {% for e in entites %}
         {% set l = logo_entite(e) %}
@@ -37,7 +37,6 @@
 
   <section class="auth__panel">
     <form class="auth__form" method="post" data-validate data-loading>
-      {% if modules_externes %}<a class="auth__retour" href="{{ url_for('modules.portail') }}">← Tous les modules</a>{% endif %}
       <h1 data-titre-connexion>{{ "Connexion à " ~ depart.nom if depart else "Connexion" }}</h1>
       <p>Utilisez l'adresse e-mail de votre fiche salarié.</p>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

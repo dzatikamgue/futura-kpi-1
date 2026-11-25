@@ -29,9 +29,8 @@ def lire_periode():
 @bp.get("/")
 def index():
     if not current_user.is_authenticated:
-        # Lien principal : page des modules avant la connexion (si plusieurs modules)
-        from ..services.modules import externes_configures
-        return redirect(url_for("modules.portail") if externes_configures() else url_for("auth.login", next="/"))
+        # Lien principal : une seule page de connexion pour tout le monde
+        return redirect(url_for("auth.login", next="/"))
     per = perimetre()
     annee, mois = lire_periode()
     kpi = stats.indicateurs_mois(per, annee, mois)
