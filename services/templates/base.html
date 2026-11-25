@@ -42,19 +42,40 @@
       <a href="{{ url_for('tableau_de_bord') }}" class="{{ 'actif' if ep == 'tableau_de_bord' }}">{{ icon('dashboard') }} Tableau de bord
         {% if nb_alertes %}<span class="nav-compteur" aria-label="{{ nb_alertes }} point(s) à surveiller">{{ nb_alertes }}</span>{% endif %}</a>
 
-      <p class="nav-titre">Personnel</p>
-      <a href="{{ url_for('personnel') }}" class="{{ 'actif' if ep.startswith('personne') }}">{{ icon('users') }} Personnel</a>
-      <a href="{{ url_for('documents') }}" class="nav-sm nav-sm-documents {{ 'actif' if sm == 'documents' }}">{{ icon('id') }} Visas et cartes de séjour
-        {% if docs_notif %}<span class="nav-compteur" aria-label="{{ docs_notif.total }} à renouveler">{{ docs_notif.total }}</span>{% endif %}</a>
-      <a href="{{ url_for('entreprises') }}" class="nav-sous {{ 'actif' if ep.startswith('entreprise') }}">{{ icon('building') }} Entreprises</a>
-      <a href="{{ url_for('billets') }}" class="nav-sm nav-sm-billets {{ 'actif' if sm == 'billets' }}">{{ icon('plane') }} Billets d'avion</a>
+      {# Chaque sous-module ne montre que ses propres liens #}
+      {% if ep.startswith(('personne', 'document', 'entreprise')) %}{% set grp = 'visas' %}
+      {% elif ep.startswith('billet') %}{% set grp = 'billets' %}
+      {% elif ep.startswith(('logement', 'loyer')) %}{% set grp = 'loyers' %}
+      {% elif ep.startswith('facture') %}{% set grp = sm if sm in ('electricite', 'eau') else 'electricite' %}
+      {% elif ep.startswith('reparation') %}{% set grp = 'reparations' %}
+      {% else %}{% set grp = '' %}{% endif %}
 
-      <p class="nav-titre">Logements</p>
-      <a href="{{ url_for('logements') }}" class="{{ 'actif' if ep.startswith('logement') }}">{{ icon('home') }} Logements</a>
-      <a href="{{ url_for('loyers') }}" class="nav-sm nav-sm-loyers {{ 'actif' if sm == 'loyers' }}">{{ icon('key') }} Loyers</a>
-      <a href="{{ url_for('factures', type_energie='electricite') }}" class="nav-sm nav-sm-electricite {{ 'actif' if sm == 'electricite' }}">{{ icon('bolt') }} Électricité</a>
-      <a href="{{ url_for('factures', type_energie='eau') }}" class="nav-sm nav-sm-eau {{ 'actif' if sm == 'eau' }}">{{ icon('drop') }} Eau</a>
-      <a href="{{ url_for('reparations') }}" class="nav-sm nav-sm-reparations {{ 'actif' if sm == 'reparations' }}">{{ icon('wrench') }} Réparations</a>
+      {% if grp == 'visas' %}
+      <p class="nav-titre">Visas et cartes de séjour</p>
+      <a href="{{ url_for('documents') }}" class="nav-sm nav-sm-documents {{ 'actif' if ep.startswith('document') }}">{{ icon('id') }} Visas et cartes de séjour
+        {% if docs_notif %}<span class="nav-compteur" aria-label="{{ docs_notif.total }} à renouveler">{{ docs_notif.total }}</span>{% endif %}</a>
+      <a href="{{ url_for('personnel') }}" class="nav-sous {{ 'actif' if ep.startswith('personne') }}">{{ icon('users') }} Personnel</a>
+      <a href="{{ url_for('entreprises') }}" class="nav-sous {{ 'actif' if ep.startswith('entreprise') }}">{{ icon('building') }} Entreprises</a>
+      {% elif grp == 'billets' %}
+      <p class="nav-titre">Billets d'avion</p>
+      <a href="{{ url_for('billets') }}" class="nav-sm nav-sm-billets {{ 'actif' if ep == 'billets' }}">{{ icon('plane') }} Billets d'avion</a>
+      {% if current_user.gere %}<a href="{{ url_for('billet_nouveau') }}" class="nav-sous {{ 'actif' if ep == 'billet_nouveau' }}">{{ icon('plus') }} Nouveau billet</a>{% endif %}
+      {% elif grp == 'loyers' %}
+      <p class="nav-titre">Logements et loyers</p>
+      <a href="{{ url_for('logements') }}" class="nav-sm nav-sm-loyers {{ 'actif' if ep.startswith('logement') }}">{{ icon('home') }} Logements
+        {% if loyers_notif %}<span class="nav-compteur">{{ loyers_notif.total }}</span>{% endif %}</a>
+      <a href="{{ url_for('loyers') }}" class="nav-sous {{ 'actif' if ep.startswith('loyer') }}">{{ icon('key') }} Paiements des loyers</a>
+      {% elif grp == 'electricite' %}
+      <p class="nav-titre">Électricité</p>
+      <a href="{{ url_for('factures', type_energie='electricite') }}" class="nav-sm nav-sm-electricite actif">{{ icon('bolt') }} Factures d'électricité</a>
+      {% elif grp == 'eau' %}
+      <p class="nav-titre">Eau</p>
+      <a href="{{ url_for('factures', type_energie='eau') }}" class="nav-sm nav-sm-eau actif">{{ icon('drop') }} Factures d'eau</a>
+      {% elif grp == 'reparations' %}
+      <p class="nav-titre">Réparations</p>
+      <a href="{{ url_for('reparations') }}" class="nav-sm nav-sm-reparations {{ 'actif' if ep == 'reparations' or ep == 'reparation_fiche' }}">{{ icon('wrench') }} Réparations</a>
+      {% if current_user.gere %}<a href="{{ url_for('reparation_nouvelle') }}" class="nav-sous {{ 'actif' if ep == 'reparation_nouvelle' }}">{{ icon('plus') }} Signaler un problème</a>{% endif %}
+      {% endif %}
       {% endif %}
 
       {% if current_user.role == 'admin' %}

@@ -352,7 +352,25 @@ class Logement(Tracable, db.Model):
         if self.batiment and self.numero:
             court = len(self.numero) <= 4 or self.numero[:1].isdigit()
             return f"{self.batiment} · {'Appt ' if court else ''}{self.numero}"
+        if self.batiment and self.residents:
+            premier = self.residents.replace(",", "\n").splitlines()[0].split(" – ")[0].strip()
+            plus = " …" if len([r for r in self.residents.splitlines() if r.strip()]) > 1 else ""
+            return f"{self.batiment} · {self.type_logement + ' · ' if self.type_logement and self.type_logement not in ('Appartement', 'Studio') else ''}{premier}{plus}"
         return f"{self.nom} · {self.quartier}" if self.quartier else self.nom
+
+    @property
+    def residents_liste(self):
+        """[(nom, poste)] à partir du texte « Nom – Poste » (une personne par ligne)."""
+        res = []
+        for ligne in (self.residents or "").splitlines():
+            ligne = ligne.strip()
+            if not ligne:
+                continue
+            nom, _, poste = ligne.partition(" – ")
+            if not poste:
+                nom, _, poste = ligne.partition(" - ")
+            res.append((nom.strip(), poste.strip()))
+        return res
 
     @property
     def fin_payee(self):

@@ -156,3 +156,14 @@
   <div class="actions">{{ caller() if caller }}</div>
 </div>
 {%- endmacro %}
+
+
+{% macro residents(l, compact=False) -%}
+{%- set liste = l.residents_liste -%}
+{%- if liste -%}
+<ul class="residents{{ ' residents-compact' if compact }}">
+  {%- for nom, poste in liste %}<li><span class="resident-nom">{{ nom }}</span>{% if poste %}<span class="resident-poste">{{ poste }}</span>{% endif %}</li>{% endfor -%}
+</ul>
+{%- elif l.occupants -%}{{ l.occupants|map(attribute='nom')|join(', ') }}
+{%- else -%}<span class="muted">—</span>{%- endif -%}
+{%- endmacro %}

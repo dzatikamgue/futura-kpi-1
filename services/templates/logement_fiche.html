@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, badge_facture, badge_reparation with context %}
+{% from "_macros.html" import icon, badge_facture, badge_reparation, residents with context %}
 {% block titre %}{{ l.nom }}{% endblock %}
 {% block ariane %}<a href="{{ url_for('logements') }}">Logements</a><span aria-current="page">{{ l.nom }}</span>{% endblock %}
 {% block contenu %}
@@ -7,7 +7,7 @@
   <div class="titre-module-g">
     <span class="sm-ico" aria-hidden="true">{{ icon('home', 22) }}</span>
     <div><p class="action-sur">{{ l.type_logement }}{% if l.ville %} · {{ l.ville }}{% endif %}</p><h1>{{ l.libelle }} {% if not l.actif %}<span class="badge">Rendu</span>{% endif %}</h1>
-    <p class="muted">{% if l.residents %}{{ icon('users', 14) }} {{ l.residents }}{% endif %}{% if l.quartier %} · {{ l.quartier }}{% endif %}{% if l.adresse %} · {{ l.adresse }}{% endif %}</p></div>
+    <p class="muted">{% if l.residents_liste %}{{ icon('users', 14) }} {{ l.residents_liste|length }} résident{{ 's' if l.residents_liste|length > 1 }}{% endif %}{% if l.quartier %} · {{ l.quartier }}{% endif %}{% if l.adresse %} · {{ l.adresse }}{% endif %}</p></div>
   </div>
   {% if current_user.gere %}
   <div class="actions">
@@ -72,7 +72,7 @@
       <dl class="fiche">
         <dt>Bâtiment</dt><dd>{{ l.batiment or '—' }}</dd>
         <dt>N° d'appartement</dt><dd>{{ l.numero or '—' }}</dd>
-        <dt>Résident(s)</dt><dd>{{ l.residents or '—' }}</dd>
+        <dt>Résident(s)</dt><dd>{{ residents(l) }}</dd>
         <dt>Date d'entrée</dt><dd>{{ l.date_entree|date }}</dd>
         <dt>Bailleur</dt><dd>{{ l.bailleur or '—' }}{% if l.bailleur_telephone %}<br><a class="lien petit" href="tel:{{ l.bailleur_telephone }}">{{ l.bailleur_telephone }}</a>{% endif %}</dd>
         <dt>Loyer</dt><dd>{{ l.loyer|fcfa }} / mois</dd>

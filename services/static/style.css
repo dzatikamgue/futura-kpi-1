@@ -955,3 +955,27 @@ body[class*="sm-"] .entete { box-shadow: inset 0 3px 0 var(--esp); }
   .notif-docs-ico, .bandeau-alertes-ico { display: none; }
   .notif-docs .muted.petit { display: none; }
 }
+
+/* Résidents : nom puis poste à côté */
+.residents { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.residents li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.resident-nom { font-weight: 500; color: var(--texte); }
+.resident-poste { font-size: 12.5px; color: var(--texte-2); }
+.resident-poste::before { content: "· "; }
+.residents-compact { gap: 2px; font-size: 13px; }
+.residents-compact { min-width: 300px; }
+.residents-compact li { flex-wrap: nowrap; }
+.residents-compact .resident-nom { white-space: nowrap; }
+.residents-compact .resident-poste { white-space: nowrap; }
+@media (max-width: 900px) { .residents-compact { min-width: 0; } .residents-compact li { flex-wrap: wrap; } }
+.residents-compact { min-width: 260px; }
+.residents-compact .resident-poste { white-space: normal; }
+.residents-compact { min-width: 220px; }
+.residents-compact li { display: block; }
+.residents-compact .resident-nom { white-space: nowrap; margin-right: 6px; }
+.residents-compact { min-width: 0; }
+.table-logements th { white-space: normal; vertical-align: bottom; }
+.table-logements .residents-compact { min-width: 250px; }
+@media (max-width: 900px) { .table-logements .residents-compact { min-width: 0; } }
+.table-logements th.num, .table-logements th { white-space: normal; }
+.table-logements td, .table-logements th { padding-left: 10px; padding-right: 10px; }

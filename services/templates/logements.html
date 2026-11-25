@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, vide, onglets with context %}
+{% from "_macros.html" import icon, vide, onglets, residents with context %}
 {% block titre %}Logements{% endblock %}
 {% block ariane %}<span aria-current="page">Logements</span>{% endblock %}
 {% block contenu %}
@@ -30,14 +30,14 @@
 </div>
 {% if liste %}
 <div class="carte carte-table"><div class="table-conteneur">
-<table class="table">
+<table class="table table-logements">
   <thead><tr><th>Bâtiment</th><th>Appt / étage</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période en cours</th><th class="num">Montant de la période</th></tr></thead>
   <tbody>
   {% for l in liste %}{% set niv = l.niveau_fin(seuil_loyer) %}
   <tr class="ligne-cliquable {{ 'ligne-expire' if niv in ('echue', 'critique') else 'ligne-alerte' if niv == 'alerte' }} {{ 'inactif' if not l.actif }}" data-href="{{ url_for('logement_fiche', lid=l.id) }}">
     <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=l.id) }}"><strong>{{ l.batiment or l.nom }}</strong></a>{% if l.quartier %}<br><span class="muted petit">{{ l.quartier }}</span>{% endif %}</td>
-    <td><strong>{{ l.numero or '—' }}</strong></td>
-    <td class="petit">{% if l.residents %}{{ l.residents }}{% elif l.occupants %}{{ l.occupants|map(attribute='nom')|join(', ') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td><strong>{{ l.numero or (l.type_logement if l.type_logement not in ('Appartement', 'Studio', None) else '—') }}</strong></td>
+    <td>{{ residents(l, compact=True) }}</td>
     <td class="num">{{ l.loyer|fcfa }}</td>
     <td class="num">{% if l.charges_mode == 'en_sus' %}{{ l.charges|fcfa }}{% elif l.charges_mode == 'incluses' %}<span class="muted petit">incluses</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     <td class="nowrap petit">{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}
