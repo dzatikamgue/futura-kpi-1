@@ -344,6 +344,8 @@ def import_initial():
         if not bat:
             continue
         q = Logement.query.filter(func.lower(Logement.batiment) == bat.lower())
+        if num and donnees.get("cle_residents"):          # même bâtiment + même n° : les résidents départagent
+            q = q.filter(Logement.residents == x.get("residents"))
         l = (q.filter(func.lower(Logement.numero) == num.lower()) if num else q.filter(Logement.nom == nom)).first()
         if l is None:
             l = Logement(nom=nom)
