@@ -979,3 +979,14 @@ body[class*="sm-"] .entete { box-shadow: inset 0 3px 0 var(--esp); }
 @media (max-width: 900px) { .table-logements .residents-compact { min-width: 0; } }
 .table-logements th.num, .table-logements th { white-space: normal; }
 .table-logements td, .table-logements th { padding-left: 10px; padding-right: 10px; }
+
+/* Logements : synthèse */
+.segmente { display: inline-flex; border: 1px solid var(--bord); border-radius: 8px; overflow: hidden; }
+.segmente a { padding: 7px 12px; font-size: 13px; color: var(--texte-2); text-decoration: none; }
+.segmente a + a { border-left: 1px solid var(--bord); }
+.segmente a.actif { background: var(--surface-2); color: var(--texte); font-weight: 600; }
+.kpis-logements { margin-bottom: var(--e4); }
+.ligne-selection td { background: var(--surface-2); }
+.titre-page .actions { display: flex; gap: var(--e3); align-items: center; flex-wrap: wrap; }
+.texte-fort { color: var(--texte); font-size: 13.5px; }
+.table-synthese tfoot th { font-size: 14px; color: var(--texte); font-weight: 650; text-transform: none; letter-spacing: 0; border-top: 2px solid var(--bord-fort, var(--bord)); }

@@ -1562,10 +1562,26 @@ def register_routes(app):
             q = q.filter(or_(Logement.nom.ilike(like), Logement.quartier.ilike(like), Logement.bailleur.ilike(like),
                              Logement.adresse.ilike(like), Logement.batiment.ilike(like), Logement.numero.ilike(like),
                              Logement.residents.ilike(like)))
-        liste = q.order_by(Logement.batiment, Logement.numero, Logement.nom).all()
+        liste = q.order_by(Logement.ville, Logement.batiment, Logement.numero, Logement.nom).all()
         batiments = sorted(b for (b,) in db.session.query(Logement.batiment).filter(Logement.batiment.isnot(None)).distinct())
-        return render_template("logements.html", liste=liste, batiments=batiments,
-                               total_loyers=sum(l.mensuel_total for l in liste if l.actif))
+        # Synthèse du groupe et par ville (logements loués uniquement, sans tenir compte des filtres)
+        loues = Logement.query.filter(Logement.actif.is_(True)).all()
+        par_ville = {}
+        for l in loues:
+            v = par_ville.setdefault(l.ville or "Ville non précisée", {"nb": 0, "loyer": 0, "charges": 0, "total": 0,
+                                                                      "caution": 0, "nb_caution": 0})
+            v["nb"] += 1
+            v["loyer"] += l.loyer_hors_charges
+            v["charges"] += l.charges_mensuelles
+            v["total"] += l.mensuel_total
+            if l.caution:
+                v["caution"] += l.caution
+                v["nb_caution"] += 1
+        villes = sorted(par_ville.items(), key=lambda kv: (kv[0] == "Ville non précisée", -kv[1]["nb"], kv[0]))
+        groupe = {k: sum(v[k] for v in par_ville.values()) for k in ("nb", "loyer", "charges", "total", "caution", "nb_caution")}
+        return render_template("logements.html", liste=liste, batiments=batiments, villes=villes, groupe=groupe,
+                               separees=request.args.get("charges") == "separees",
+                               noms_villes=sorted({l.ville for l in loues if l.ville}))
 
     def formulaire_logement(l=None):
         champs = F.champs_logement()

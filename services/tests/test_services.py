@@ -674,3 +674,23 @@ def test_purge_logements_importes(app, monkeypatch):
     admin = client(app, "admin")
     assert admin.get("/parametres/sauvegarde-logements").status_code == 200
     assert rh.get("/parametres/sauvegarde-logements").status_code in (302, 403)
+
+
+def test_synthese_logements_par_ville(app):
+    from models import Logement, db
+    with app.app_context():
+        db.session.add_all([
+            Logement(nom="V1", batiment="V", numero="1", ville="Douala", loyer=500000, charges=50000, charges_mode="en_sus",
+                     caution=1000000, bail_debut=date(2026, 6, 1), bail_fin=date(2026, 11, 30)),
+            Logement(nom="V2", batiment="V", numero="2", ville="Douala", loyer=300000, charges=30000, charges_mode="incluses"),
+            Logement(nom="V3", batiment="W", numero="1", ville="Kribi", loyer=200000, charges_mode="aucune",
+                     bail_debut=date(2026, 1, 1), bail_fin=date(2027, 2, 28))])
+        db.session.commit()
+        l3 = Logement.query.filter_by(nom="V3").one()
+        assert l3.mois_periode == 14
+    rh = client(app, "rh")
+    page = rh.get("/logements").get_data(as_text=True)
+    assert "Par ville" in page and "Kribi" in page and "Total groupe" in page and "14 mois" in page
+    assert "1 000 000" in page                                     # caution
+    sep = rh.get("/logements?charges=separees").get_data(as_text=True)
+    assert "Charges / mois" in sep and "270 000" in sep             # loyer hors charges (300 000 − 30 000)

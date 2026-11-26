@@ -45,7 +45,7 @@
       <div class="table-conteneur"><table class="table table-compacte">
         <thead><tr><th>Période payée</th><th>Payé le</th><th class="num">Montant</th>{% if current_user.gere %}<th class="num"><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
         <tbody>{% for x in hist %}
-          <tr><td><span class="nowrap">{{ x.periode_texte }}</span>{% if x.au == l.bail_fin %} <span class="badge badge-ok">En cours</span>{% endif %}{% if x.notes %}<br><span class="muted petit">{{ x.notes }}</span>{% endif %}</td>
+          <tr><td><span class="nowrap">{{ x.periode_texte }}</span> <span class="badge">{{ x.nb_mois }} mois</span>{% if x.au == l.bail_fin %} <span class="badge badge-ok">En cours</span>{% endif %}{% if x.notes %}<br><span class="muted petit">{{ x.notes }}</span>{% endif %}</td>
             <td>{% if x.date_paiement %}{{ x.date_paiement|date }}{% else %}<span class="muted">à compléter</span>{% endif %}
               {% if x.mode_paiement or x.reference %}<br><span class="muted petit">{{ x.mode_paiement or '' }}{{ ' · ' if x.mode_paiement and x.reference }}{{ x.reference or '' }}</span>{% endif %}</td>
             <td class="num nowrap">{{ x.montant|fcfa }}{% if x.montant_charges %}<br><span class="muted petit">dont charges {{ x.montant_charges|fcfa }}</span>{% endif %}</td>
@@ -71,16 +71,18 @@
       <div class="carte-entete"><h2>{{ icon('file', 18) }} Bail</h2></div>
       <dl class="fiche">
         <dt>Bâtiment</dt><dd>{{ l.batiment or '—' }}</dd>
+        <dt>Ville</dt><dd>{{ l.ville or '—' }}{{ ' · ' ~ l.quartier if l.quartier }}</dd>
         <dt>N° d'appartement</dt><dd>{{ l.numero or '—' }}</dd>
         <dt>Résident(s)</dt><dd>{{ residents(l) }}</dd>
         <dt>Date d'entrée</dt><dd>{{ l.date_entree|date }}</dd>
         <dt>Bailleur</dt><dd>{{ l.bailleur or '—' }}{% if l.bailleur_telephone %}<br><a class="lien petit" href="tel:{{ l.bailleur_telephone }}">{{ l.bailleur_telephone }}</a>{% endif %}</dd>
-        <dt>Loyer</dt><dd>{{ l.loyer|fcfa }} / mois</dd>
+        <dt>Loyer</dt><dd><strong>{{ l.mensuel_total|fcfa }}</strong> / mois{% if l.charges_mensuelles %} <span class="muted petit">(loyer {{ l.loyer_hors_charges|fcfa }} + charges {{ l.charges_mensuelles|fcfa }})</span>{% endif %}
+          <br><span class="muted petit">soit {{ (l.mensuel_total * 12)|fcfa }} par an</span></dd>
         <dt>Charges communes</dt><dd>{% if l.charges_mode == 'en_sus' %}<span class="badge badge-charges">En plus</span> {{ l.charges|fcfa }} / mois<br><span class="muted petit">Total mensuel : {{ l.mensuel_total|fcfa }}</span>
           {% elif l.charges_mode == 'incluses' %}<span class="badge badge-ok">Incluses</span>{% if l.charges %} dont {{ l.charges|fcfa }} / mois{% endif %}
           {% else %}<span class="muted">Aucune</span>{% endif %}</dd>
-        <dt>Périodicité</dt><dd>{{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois') }}</dd>
-        <dt>Caution</dt><dd>{{ l.caution|fcfa }}</dd>
+        <dt>Payé pour</dt><dd>{% if l.mois_periode %}<strong>{{ l.mois_periode }} mois</strong> <span class="muted petit">(période en cours)</span>{% else %}—{% endif %}</dd>
+        <dt>Caution versée</dt><dd>{% if l.caution %}<strong>{{ l.caution|fcfa }}</strong>{% if l.loyer %} <span class="muted petit">soit {{ '%g'|format((l.caution / l.loyer)|round(1)) }} mois de loyer</span>{% endif %}{% else %}<span class="muted">non renseignée</span>{% endif %}</dd>
         <dt>Période en cours</dt><dd>{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}{% if l.fin_payee %}<br><span class="muted petit">notification le {{ (l.fin_payee - timedelta_jours(seuil_loyer))|date }}</span>{% endif %}</dd>
         <dt>Montant d'une période</dt><dd>{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }} <span class="muted petit">({{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois')|lower }}{{ ', montant du fichier' if l.montant_periode }})</span></dd>
         <dt>Mode de paiement</dt><dd>{{ l.mode_paiement or '—' }}</dd>

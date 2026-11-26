@@ -336,6 +336,25 @@ class Logement(Tracable, db.Model):
         return (self.loyer or 0) + self.charges_en_sus
 
     @property
+    def charges_mensuelles(self):
+        """Charges communes par mois, qu'elles soient payées à part ou comprises dans le loyer (si leur montant est connu)."""
+        return (self.charges or 0) if self.charges_mode in ("en_sus", "incluses") else 0
+
+    @property
+    def loyer_hors_charges(self):
+        """Loyer seul, charges communes retirées quand elles sont comprises dans le loyer."""
+        if self.charges_mode == "incluses" and self.charges:
+            return max((self.loyer or 0) - self.charges, 0)
+        return self.loyer or 0
+
+    @property
+    def mois_periode(self):
+        """Nombre de mois payés pour la période en cours (d'après ses dates, sinon la périodicité)."""
+        if self.bail_debut and self.bail_fin:
+            return max(1, round(((self.bail_fin - self.bail_debut).days + 1) / 30.44))
+        return self.periodicite or None
+
+    @property
     def montant_echeance(self):
         return self.mensuel_total * (self.periodicite or 1)
 
@@ -478,6 +497,12 @@ class Loyer(Tracable, db.Model):
     @property
     def periode_fin(self):
         return mois_ajoutes(self.periode_debut, self.mois or 1)
+
+    @property
+    def nb_mois(self):
+        if self.du and self.au:
+            return max(1, round(((self.au - self.du).days + 1) / 30.44))
+        return self.mois or 1
 
     @property
     def periode_texte(self):

@@ -5,9 +5,50 @@
 {% block contenu %}
 <div class="titre-page">
   <div><p class="action-sur">Logements</p><h1>Logements de l'entreprise</h1>
-    <p class="muted">{{ liste|length }} logement{{ 's' if liste|length > 1 }} · {{ total_loyers|fcfa }} par mois (loyers + charges communes) · notification {{ seuil_loyer }} jours avant la fin de chaque période de loyer</p></div>
-  {% if current_user.gere %}<div class="actions"><a class="btn btn-primary" href="{{ url_for('logement_nouveau') }}">{{ icon('plus', 16) }} Nouveau logement</a></div>{% endif %}
+    <p class="muted">Notification {{ seuil_loyer }} jours avant la fin de chaque période de loyer.</p></div>
+  <div class="actions">
+    <div class="segmente" role="group" aria-label="Charges communes">
+      {% set args = request.args.to_dict() %}
+      <a class="{{ 'actif' if not separees }}" href="{{ url_for('logements', **dict(args, charges='comprises')) }}">Charges comprises</a>
+      <a class="{{ 'actif' if separees }}" href="{{ url_for('logements', **dict(args, charges='separees')) }}">Charges séparées</a>
+    </div>
+    {% if current_user.gere %}<a class="btn btn-primary" href="{{ url_for('logement_nouveau') }}">{{ icon('plus', 16) }} Nouveau logement</a>{% endif %}
+  </div>
 </div>
+
+<div class="kpis kpis-logements">
+  <div class="kpi"><span class="kpi-lib">Logements loués</span><strong class="kpi-val kpi-val-sm">{{ groupe.nb }}</strong>
+    <span class="kpi-sous">{{ villes|length }} ville{{ 's' if villes|length > 1 }}</span></div>
+  <div class="kpi"><span class="kpi-lib">Loyer mensuel · groupe</span><strong class="kpi-val kpi-val-sm">{{ groupe.total|fcfa }}</strong>
+    <span class="kpi-sous">{% if separees %}loyers {{ groupe.loyer|fcfa }} + charges {{ groupe.charges|fcfa }}{% else %}charges communes comprises{% endif %}</span></div>
+  <div class="kpi"><span class="kpi-lib">Loyer annuel · groupe</span><strong class="kpi-val kpi-val-sm">{{ (groupe.total * 12)|fcfa }}</strong>
+    <span class="kpi-sous">{% if separees %}dont charges {{ (groupe.charges * 12)|fcfa }}{% else %}mensuel × 12{% endif %}</span></div>
+  <div class="kpi"><span class="kpi-lib">Cautions versées</span><strong class="kpi-val kpi-val-sm">{{ groupe.caution|fcfa }}</strong>
+    <span class="kpi-sous">{{ groupe.nb_caution }} logement{{ 's' if groupe.nb_caution > 1 }} sur {{ groupe.nb }}</span></div>
+</div>
+
+{% if villes %}
+<section class="carte carte-table">
+  <div class="carte-entete pad"><h2>Par ville</h2><span class="kpi-sous">Logements loués · cliquez une ville pour filtrer la liste</span></div>
+  <div class="table-conteneur"><table class="table table-synthese">
+    <thead><tr><th>Ville</th><th class="num">Logements</th>
+      {% if separees %}<th class="num">Loyers / mois</th><th class="num">Charges / mois</th>{% endif %}
+      <th class="num">Total / mois</th><th class="num">Total / an</th><th class="num">Cautions versées</th></tr></thead>
+    <tbody>{% for nom, v in villes %}
+      <tr class="{{ 'ligne-selection' if request.args.get('ville') == nom }}">
+        <td>{% if nom != 'Ville non précisée' %}<a class="lien" href="{{ url_for('logements', ville=nom, charges=request.args.get('charges')) }}"><strong>{{ nom }}</strong></a>{% else %}<span class="muted">{{ nom }}</span>{% endif %}</td>
+        <td class="num">{{ v.nb }}</td>
+        {% if separees %}<td class="num">{{ v.loyer|fcfa }}</td><td class="num">{{ v.charges|fcfa }}</td>{% endif %}
+        <td class="num"><strong>{{ v.total|fcfa }}</strong></td><td class="num">{{ (v.total * 12)|fcfa }}</td>
+        <td class="num">{{ v.caution|fcfa if v.caution else '—' }}{% if v.nb_caution != v.nb %}<br><span class="muted petit">{{ v.nb_caution }}/{{ v.nb }} renseignée{{ 's' if v.nb_caution > 1 }}</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+    <tfoot><tr><th>Total groupe</th><th class="num">{{ groupe.nb }}</th>
+      {% if separees %}<th class="num">{{ groupe.loyer|fcfa }}</th><th class="num">{{ groupe.charges|fcfa }}</th>{% endif %}
+      <th class="num">{{ groupe.total|fcfa }}</th><th class="num">{{ (groupe.total * 12)|fcfa }}</th><th class="num">{{ groupe.caution|fcfa }}</th></tr></tfoot>
+  </table></div>
+</section>
+{% endif %}
+
 {% set proches = liste|selectattr('fin_payee')|selectattr('actif')|list %}
 {% set a_renouveler = [] %}{% for l in proches %}{% if l.niveau_fin(seuil_loyer) in ('alerte', 'critique', 'echue') %}{% set _ = a_renouveler.append(l) %}{% endif %}{% endfor %}
 {% if a_renouveler %}
@@ -21,6 +62,8 @@
   {{ onglets('statut', [('actifs', 'Loués', none), ('inactifs', 'Rendus', none), ('tous', 'Tous', none)], 'actifs') }}
   <form class="filtres-form" method="get">
     <input type="hidden" name="statut" value="{{ request.args.get('statut', 'actifs') }}">
+    <input type="hidden" name="charges" value="{{ request.args.get('charges', '') }}">
+    <select name="ville" data-auto-submit aria-label="Ville"><option value="">Toutes les villes</option>{% for v in noms_villes %}<option {{ 'selected' if request.args.get('ville') == v }}>{{ v }}</option>{% endfor %}</select>
     <select name="batiment" data-auto-submit aria-label="Bâtiment"><option value="">Tous les bâtiments</option>{% for b in batiments %}<option {{ 'selected' if request.args.get('batiment') == b }}>{{ b }}</option>{% endfor %}</select>
   </form>
   <form class="recherche" method="get" role="search">
@@ -31,22 +74,30 @@
 {% if liste %}
 <div class="carte carte-table"><div class="table-conteneur">
 <table class="table table-logements">
-  <thead><tr><th>Bâtiment</th><th>Appt / étage</th><th>Résident(s)</th><th class="num">Loyer / mois</th><th class="num">Charges communes</th><th>Période en cours</th><th class="num">Montant de la période</th></tr></thead>
+  <thead><tr><th>Bâtiment</th><th>Appt / étage</th><th>Résident(s)</th>
+    {% if separees %}<th class="num">Loyer / mois</th><th class="num">Charges / mois</th>{% else %}<th class="num">Loyer / mois</th>{% endif %}
+    <th>Période en cours · payé pour</th><th class="num">Caution</th></tr></thead>
   <tbody>
   {% for l in liste %}{% set niv = l.niveau_fin(seuil_loyer) %}
   <tr class="ligne-cliquable {{ 'ligne-expire' if niv in ('echue', 'critique') else 'ligne-alerte' if niv == 'alerte' }} {{ 'inactif' if not l.actif }}" data-href="{{ url_for('logement_fiche', lid=l.id) }}">
-    <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=l.id) }}"><strong>{{ l.batiment or l.nom }}</strong></a>{% if l.quartier %}<br><span class="muted petit">{{ l.quartier }}</span>{% endif %}</td>
+    <td class="col-fixe"><a class="lien" href="{{ url_for('logement_fiche', lid=l.id) }}"><strong>{{ l.batiment or l.nom }}</strong></a>
+      <br><span class="muted petit">{{ l.ville or 'Ville non précisée' }}{{ ' · ' ~ l.quartier if l.quartier }}</span></td>
     <td><strong>{{ l.numero or (l.type_logement if l.type_logement not in ('Appartement', 'Studio', None) else '—') }}</strong></td>
     <td>{{ residents(l, compact=True) }}</td>
-    <td class="num">{{ l.loyer|fcfa }}</td>
-    <td class="num">{% if l.charges_mode == 'en_sus' %}{{ l.charges|fcfa }}{% elif l.charges_mode == 'incluses' %}<span class="muted petit">incluses</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    {% if separees %}
+    <td class="num">{{ l.loyer_hors_charges|fcfa }}</td>
+    <td class="num">{% if l.charges_mensuelles %}{{ l.charges_mensuelles|fcfa }}<br><span class="muted petit">{{ 'à part' if l.charges_mode == 'en_sus' else 'dans le loyer' }}</span>{% elif l.charges_mode == 'incluses' %}<span class="muted petit">incluses, montant inconnu</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    {% else %}
+    <td class="num"><strong>{{ l.mensuel_total|fcfa }}</strong>{% if l.charges_mensuelles %}<br><span class="muted petit">dont charges {{ l.charges_mensuelles|fcfa }}</span>{% endif %}</td>
+    {% endif %}
     <td class="nowrap petit">{% if l.bail_debut or l.bail_fin %}{{ l.bail_debut|date }} → <strong>{{ l.bail_fin|date }}</strong>{% else %}<span class="muted">non renseignée</span>{% endif %}
+      {% if l.mois_periode %}<br><strong class="texte-fort">{{ l.mois_periode }} mois</strong>{% if l.montant_a_payer %} <span class="muted">· {{ l.montant_a_payer|fcfa }}</span>{% endif %}{% endif %}
       <br>{% if niv == 'echue' %}<span class="badge badge-ko">Loyer en retard · {{ -l.jours_avant_fin }} j</span>
       {% elif niv == 'critique' %}<span class="badge badge-ko">J-{{ l.jours_avant_fin }} · à payer</span>
       {% elif niv == 'alerte' %}<span class="badge badge-alerte">J-{{ l.jours_avant_fin }} · à payer</span>
-      {% elif niv == 'ok' %}<span class="badge badge-ok">payé · {{ l.jours_avant_fin }} j restants</span>{% endif %}</td>
-    <td class="num"><strong>{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }}</strong>{% if l.loyer %}<br><span class="muted petit">{{ PERIODICITES.get(l.periodicite, l.periodicite ~ ' mois')|lower }}</span>{% endif %}
+      {% elif niv == 'ok' %}<span class="badge badge-ok">payé · {{ l.jours_avant_fin }} j restants</span>{% endif %}
       {% if current_user.gere and l.actif %}<br><a class="btn btn-sm btn-ghost mt-1" href="{{ url_for('logement_periode_payee', lid=l.id) }}">{{ icon('check', 14) }} Période payée</a>{% endif %}</td>
+    <td class="num">{{ l.caution|fcfa if l.caution else '—' }}</td>
   </tr>
   {% endfor %}
   </tbody>
