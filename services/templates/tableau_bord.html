@@ -4,14 +4,14 @@
 {% block ariane %}<span aria-current="page">Tableau de bord</span>{% endblock %}
 {% block contenu %}
 <div class="titre-page">
-  <div><h1>Tableau de bord</h1><p class="muted">Situation au {{ aujourdhui|date }} · alerte {{ seuil }} jours avant l'expiration d'un document</p></div>
+  <div><h1>Tableau de bord</h1><p class="muted">Situation au {{ aujourdhui|date }}</p></div>
 </div>
 
 <div class="kpis">
-  <a class="kpi {{ 'kpi-ko' if kpis.docs_expires else '' }}" href="{{ url_for('documents', statut='a_traiter') }}">
-    <span class="kpi-lib">{{ icon('stamp', 16) }} Documents à renouveler</span>
-    <span class="kpi-val">{{ kpis.docs }}</span>
-    <span class="kpi-sous">{{ kpis.docs_expires }} déjà expiré{{ 's' if kpis.docs_expires > 1 }}</span>
+  <a class="kpi" href="{{ url_for('logements') }}">
+    <span class="kpi-lib">{{ icon('home', 16) }} Logements loués</span>
+    <span class="kpi-val">{{ kpis.logements }}</span>
+    <span class="kpi-sous">{{ kpis.loyer_mensuel|fcfa }} par mois</span>
   </a>
   <a class="kpi {{ 'kpi-ko' if kpis.loyers_nb else '' }}" href="{{ url_for('loyers') }}">
     <span class="kpi-lib">{{ icon('key', 16) }} Loyers en retard</span>

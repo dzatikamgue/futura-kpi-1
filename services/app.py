@@ -632,10 +632,13 @@ def couts_mensuels(nb=6):
             for m in mois]
 
 
-def a_surveiller():
-    """Liste unique des points d'attention, du plus grave au moins grave."""
+def a_surveiller(avec_documents=True):
+    """Liste unique des points d'attention, du plus grave au moins grave.
+
+    Sans les visas / cartes de séjour / passeports quand avec_documents=False (tableau de bord).
+    """
     s, items = seuil_docs(), []
-    for d in documents_en_vigueur().filter(Document.date_expiration <= aujourdhui() + timedelta(days=s)) \
+    for d in (documents_en_vigueur() if avec_documents else Document.query.filter(False)).filter(Document.date_expiration <= aujourdhui() + timedelta(days=s)) \
             .order_by(Document.date_expiration):
         j = d.jours_restants
         items.append(dict(niveau="critique" if j <= 15 else "alerte", icone="id" if d.type_doc == "carte_sejour" else "stamp",
@@ -646,7 +649,7 @@ def a_surveiller():
                           + f" ({d.date_expiration:%d/%m/%Y})"
                           + (f" · {RENOUVELLEMENT[d.renouvellement]}" if d.renouvellement else " · commencer les procédures de renouvellement"),
                           lien=url_for("document_fiche", did=d.id), tri=j))
-    for p in Personne.query.filter(Personne.actif.is_(True), Personne.passeport_expiration.isnot(None),
+    for p in Personne.query.filter(Personne.actif.is_(True) if avec_documents else False, Personne.passeport_expiration.isnot(None),
                                    Personne.passeport_expiration <= aujourdhui() + timedelta(days=s)):
         j = (p.passeport_expiration - aujourdhui()).days
         items.append(dict(niveau="critique" if j <= 15 else "alerte", icone="user", titre=f"Passeport de {p.nom}",
@@ -709,7 +712,7 @@ def register_filters(app):
         nb_alertes, docs_notif, loyers_notif = 0, None, None
         if current_user.is_authenticated and not current_user.occupant and request.endpoint not in ("static", None):
             ep = request.endpoint
-            nb_alertes = len(a_surveiller())
+            nb_alertes = len(a_surveiller(avec_documents=False))
             # Chaque sous-module n'affiche que ses propres alertes
             dans_docs = ep.startswith(("document", "entreprise", "personne", "personnel"))
             dans_logements = ep.startswith(("logement", "loyer"))
@@ -949,15 +952,14 @@ def register_routes(app):
     @app.route("/tableau-de-bord")
     @lecture
     def tableau_de_bord():
-        items = a_surveiller()
+        items = a_surveiller(avec_documents=False)          # le tableau de bord ne montre pas les visas
         couts = couts_mensuels(6)
         max_total = max([c["total"] for c in couts] + [1])
         dus = loyers_dus()
         imp = factures_impayees().all()
-        s_visa, s_carte = stats_documents("visa"), stats_documents("carte_sejour")  # noqa
+        loues = Logement.query.filter(Logement.actif.is_(True)).all()
         kpis = dict(
-            docs=s_visa["alerte"] + s_visa["expires"] + s_carte["alerte"] + s_carte["expires"],
-            docs_expires=s_visa["expires"] + s_carte["expires"],
+            logements=len(loues), loyer_mensuel=sum(l.mensuel_total for l in loues),
             loyers=sum(e["montant"] for e in dus), loyers_nb=len(dus),
             factures=sum(f.montant for f in imp), factures_nb=len(imp),
             reparations=Reparation.query.filter(Reparation.statut.in_(REPARATIONS_OUVERTES)).count(),

@@ -94,7 +94,7 @@ def test_document_alerte_et_renouvellement(app):
     assert "Visas et cartes de séjour" in liste and exp.strftime("%d/%m/%Y") in liste
     assert (exp - timedelta(days=365)).strftime("%d/%m/%Y") in liste
     page = rh.get("/tableau-de-bord").get_data(as_text=True)
-    assert "Visa de Anoop Kumar" in page and "Expire dans 20 jours" in page
+    assert "Visa de Anoop Kumar" not in page and "Documents à renouveler" not in page   # pas de visas au tableau de bord
     # Date d'expiration avant la délivrance : refusée
     r = rh.post("/documents/visa/nouveau", data={"personne_id": pid, "date_expiration": "2026-01-01",
                                                  "date_delivrance": "2026-06-01"})
@@ -325,7 +325,7 @@ def test_entreprises_et_filtre(app):
     assert f'href="/personnel/{p2}"' in fiche and f'href="/personnel/{p1}"' not in fiche and "Entreprise externe" in fiche
     liste = rh.get(f"/personnel?entreprise={x}").get_data(as_text=True)
     assert f'href="/personnel/{p2}"' in liste and f'href="/personnel/{p1}"' not in liste
-    assert "(SEG International)" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert "(SEG International)" not in rh.get("/tableau-de-bord").get_data(as_text=True)
     assert client(app, "dg").get("/entreprises/nouvelle").status_code == 403
     with app.app_context():
         assert Personne.query.filter_by(nom="Elias").one().entreprise.externe
