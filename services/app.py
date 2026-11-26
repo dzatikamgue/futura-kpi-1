@@ -340,13 +340,16 @@ def import_initial():
     nb_maj = 0
     for x in donnees.get("logements") or []:
         bat, num = str(x.get("batiment") or "").strip(), str(x.get("numero") or "").strip()
-        nom = (f"{bat} — {num or x.get('residents') or ''}").strip(" —")[:120]
+        nom = (x.get("nom_cle") or f"{bat} — {num or x.get('residents') or ''}").strip(" —")[:120]
         if not bat:
             continue
         q = Logement.query.filter(func.lower(Logement.batiment) == bat.lower())
         if num and donnees.get("cle_residents"):          # même bâtiment + même n° : les résidents départagent
             q = q.filter(Logement.residents == x.get("residents"))
         l = (q.filter(func.lower(Logement.numero) == num.lower()) if num else q.filter(Logement.nom == nom)).first()
+        if l is None and donnees.get("maj_seulement"):     # mise à jour seule : on ne crée jamais
+            print(f"Import : logement introuvable, ignoré ({nom[:60]})", flush=True)
+            continue
         if l is None:
             l = Logement(nom=nom)
             db.session.add(l)
