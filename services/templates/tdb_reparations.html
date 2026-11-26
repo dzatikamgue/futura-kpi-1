@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge_reparation with context %}
+{% from "_tdb.html" import kpi, barres, entete with context %}
+{% block titre %}Tableau de bord · Réparations{% endblock %}
+{% block ariane %}<a href="{{ url_for('reparations') }}">Réparations</a><span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block contenu %}
+{{ entete('Réparations des logements', 'Situation au ' ~ (aujourdhui|date),
+   [('Toutes les réparations', url_for('reparations'), 'wrench', False), ('Signaler un problème', url_for('reparation_nouvelle'), 'plus', True)]) }}
+<div class="kpis">
+  {{ kpi('En cours', kpis.ouvertes, kpis.nouvelles ~ ' nouvelle' ~ ('s' if kpis.nouvelles > 1) ~ ' à prendre en charge', 'wrench', url_for('reparations')) }}
+  {{ kpi('Urgentes', kpis.urgentes, 'non terminées', 'bell', url_for('reparations'), kpis.urgentes > 0) }}
+  {{ kpi('Terminées ce mois', kpis.terminees_mois, ('délai moyen ' ~ kpis.delai ~ ' j (90 derniers jours)') if kpis.delai is not none else 'délai moyen : —', 'check') }}
+  {{ kpi('Coût ' ~ aujourdhui.year, kpis.cout_an|fcfa, 'réparations signalées cette année', 'coins', '', False, True) }}
+</div>
+<div class="grille-2 mt-3">
+  <section class="carte carte-table">
+    <div class="carte-entete pad"><h2>{{ icon('calendar', 18) }} Plus anciennes demandes en cours</h2></div>
+    {% if anciennes %}<div class="table-conteneur"><table class="table">
+      <thead><tr><th>Demande</th><th>Logement</th><th>Statut</th><th class="num">Ouverte depuis</th></tr></thead>
+      <tbody>{% for r in anciennes %}<tr class="ligne-cliquable {{ 'ligne-expire' if r.urgence == 'urgente' }}" data-href="{{ url_for('reparation_fiche', rid=r.id) }}">
+        <td><a class="lien" href="{{ url_for('reparation_fiche', rid=r.id) }}"><strong>{{ r.titre }}</strong></a>{% if r.urgence == 'urgente' %} <span class="badge badge-ko">Urgente</span>{% endif %}<br><span class="muted petit">{{ r.categorie }}</span></td>
+        <td class="petit">{{ r.logement.libelle }}</td><td>{{ badge_reparation(r) }}</td><td class="num">{{ r.jours_ouverte }} j</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted pad">Aucune réparation en cours.</p>{% endif %}
+  </section>
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('dashboard', 18) }} Par statut</h2></div>
+      {{ barres(par_statut, max_statut, 'reparations') }}
+    </section>
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>Par catégorie · 12 mois</h2></div>
+      {% if categories %}<table class="table"><tbody>{% for c, v in categories %}<tr><td>{{ c }}</td><td class="num">{{ v[0] }}</td><td class="num">{{ v[1]|fcfa if v[1] else '—' }}</td></tr>{% endfor %}</tbody></table>
+      {% else %}<p class="muted pad">—</p>{% endif %}
+    </section>
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>Logements les plus concernés</h2></div>
+      {% if logements %}<table class="table"><tbody>{% for nom, v in logements %}<tr><td>{{ nom }}</td><td class="num">{{ v[1] }} en cours</td><td class="num muted">{{ v[0] }} au total</td></tr>{% endfor %}</tbody></table>
+      {% else %}<p class="muted pad">—</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

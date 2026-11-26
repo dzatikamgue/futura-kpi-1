@@ -1,0 +1,25 @@
+{# Briques communes des tableaux de bord des sous-modules #}
+{% macro kpi(lib, val, sous='', ico='', href='', ko=False, petit=False) -%}
+<{{ 'a href="' ~ href ~ '"' if href else 'div' }} class="kpi {{ 'kpi-ko' if ko }}">
+  <span class="kpi-lib">{% if ico %}{{ icon(ico, 16) }} {% endif %}{{ lib }}</span>
+  <span class="kpi-val {{ 'kpi-val-sm' if petit }}">{{ val }}</span>
+  {% if sous %}<span class="kpi-sous">{{ sous }}</span>{% endif %}
+</{{ 'a' if href else 'div' }}>
+{%- endmacro %}
+
+{% macro barres(lignes, maxi, code='', montant=False) -%}
+<ul class="barres">
+  {% for lib, v in lignes %}
+  <li><span class="barre-lib">{{ lib }}</span>
+    <span class="barre-piste"><span class="barre barre-{{ code }}" data-largeur="{{ ((v / maxi * 100) if maxi else 0)|round(1) }}"></span></span>
+    <span class="barre-val">{{ v|compact if montant else v }}</span></li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% macro entete(titre, sous_titre, liens=[]) -%}
+<div class="titre-page">
+  <div><p class="action-sur">Tableau de bord</p><h1>{{ titre }}</h1><p class="muted">{{ sous_titre }}</p></div>
+  {% if liens %}<div class="actions">{% for lib, url, ico, primaire in liens %}<a class="btn {{ 'btn-primary' if primaire else 'btn-ghost' }}" href="{{ url }}">{{ icon(ico, 16) }} {{ lib }}</a>{% endfor %}</div>{% endif %}
+</div>
+{%- endmacro %}

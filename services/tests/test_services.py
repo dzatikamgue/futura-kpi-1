@@ -62,7 +62,9 @@ def personne(c, nom="Anoop Kumar", eid=None):
 def test_connexion_et_roles(app):
     assert app.test_client().get("/").status_code == 302
     dg = client(app, "dg")
-    assert dg.get("/tableau-de-bord").status_code == 200
+    for u in ("/visas/tableau-de-bord", "/billets/tableau-de-bord", "/logements/tableau-de-bord",
+              "/factures/electricite/tableau-de-bord", "/factures/eau/tableau-de-bord", "/reparations/tableau-de-bord"):
+        assert dg.get(u).status_code == 200, u
     assert dg.get("/personnel/nouveau").status_code == 403
     assert client(app, "rh").get("/utilisateurs").status_code == 403
     assert client(app, "admin").get("/utilisateurs").status_code == 200
@@ -93,7 +95,8 @@ def test_document_alerte_et_renouvellement(app):
     liste = rh.get("/documents").get_data(as_text=True)
     assert "Visas et cartes de séjour" in liste and exp.strftime("%d/%m/%Y") in liste
     assert (exp - timedelta(days=365)).strftime("%d/%m/%Y") in liste
-    page = rh.get("/tableau-de-bord").get_data(as_text=True)
+    page = rh.get("/logements/tableau-de-bord").get_data(as_text=True)
+    assert "Anoop Kumar" in rh.get("/visas/tableau-de-bord").get_data(as_text=True)
     assert "Visa de Anoop Kumar" not in page and "Documents à renouveler" not in page   # pas de visas au tableau de bord
     # Date d'expiration avant la délivrance : refusée
     r = rh.post("/documents/visa/nouveau", data={"personne_id": pid, "date_expiration": "2026-01-01",
@@ -110,7 +113,7 @@ def test_document_alerte_et_renouvellement(app):
         ancien, nouveau = db.session.get(Document, did), Document.query.filter_by(numero="V2").one()
         assert ancien.remplace and ancien.renouvellement == "obtenu" and nouveau.niveau(30) == "ok"
     rh.get("/")  # consomme le message flash
-    assert "Expire dans" not in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert "Expire dans" not in rh.get("/logements/tableau-de-bord").get_data(as_text=True)
 
 
 def test_document_expire_et_filtres(app):
@@ -209,7 +212,8 @@ def test_reparation_occupant(app):
     assert occ2.get(f"/reparation/{rid}").status_code == 403
     assert "Fuite évier" not in occ2.get("/reparations").get_data(as_text=True)
     assert occ.get("/logements").status_code == 403
-    assert "Réparation urgente" in client(app, "dg").get("/tableau-de-bord").get_data(as_text=True)
+    tdb = client(app, "dg").get("/reparations/tableau-de-bord").get_data(as_text=True)
+    assert "Urgentes" in tdb and "Plus anciennes demandes en cours" in tdb
     # Le gestionnaire clôture : un commentaire est exigé
     rh = client(app, "rh")
     r = rh.post(f"/reparation/{rid}/suivi", data={"statut": "terminee"})
@@ -287,7 +291,8 @@ def test_utilisateur_occupant_exige_logement(app):
 
 def test_accueil_toutes_pages(app):
     rh = client(app, "rh")
-    for url in ["/", "/tableau-de-bord", "/personnel", "/documents", "/documents/visa", "/documents/carte_sejour", "/billets",
+    for url in ["/", "/visas/tableau-de-bord", "/billets/tableau-de-bord", "/logements/tableau-de-bord",
+                "/factures/electricite/tableau-de-bord", "/factures/eau/tableau-de-bord", "/reparations/tableau-de-bord", "/personnel", "/documents", "/documents/visa", "/documents/carte_sejour", "/billets",
                 "/logements", "/loyers", "/loyers?onglet=paiements", "/factures/electricite", "/factures/eau",
                 "/reparations", "/loyers/payer", "/billets/nouveau", "/logements/nouveau", "/entreprises",
                 "/entreprises/nouvelle"]:
@@ -325,7 +330,7 @@ def test_entreprises_et_filtre(app):
     assert f'href="/personnel/{p2}"' in fiche and f'href="/personnel/{p1}"' not in fiche and "Entreprise externe" in fiche
     liste = rh.get(f"/personnel?entreprise={x}").get_data(as_text=True)
     assert f'href="/personnel/{p2}"' in liste and f'href="/personnel/{p1}"' not in liste
-    assert "(SEG International)" not in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert "SEG International" in rh.get("/visas/tableau-de-bord").get_data(as_text=True)              # par entreprise
     assert client(app, "dg").get("/entreprises/nouvelle").status_code == 403
     with app.app_context():
         assert Personne.query.filter_by(nom="Elias").one().entreprise.externe
@@ -525,7 +530,7 @@ def test_logement_residents_et_notification(app, monkeypatch):
     assert "arrive en fin de période" not in rh.get("/").get_data(as_text=True)
     liste = rh.get("/logements").get_data(as_text=True)
     assert "Agent A, Agent B" in liste and "J-20" in liste and "2 100 000 FCFA" in liste
-    assert "Loyer à payer — BAT TEST · Appt 2B" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert "BAT TEST · Appt 2B" in rh.get("/logements/tableau-de-bord").get_data(as_text=True)          # fin de période proche
     # Sans bâtiment / n° ni nom : refusé
     r = rh.post("/logements/nouveau", data={"batiment": "X", "periodicite": "1", "jour_echeance": "5", "charges_mode": "aucune"})
     assert r.status_code == 200 and "Indiquez le bâtiment" in r.get_data(as_text=True)
@@ -552,7 +557,7 @@ def test_periode_payee(app):
         db.session.commit()
         lid, fin = l.id, l.bail_fin
     rh = client(app, "rh")
-    assert "Loyer à payer — Q · Appt 1" in rh.get("/tableau-de-bord").get_data(as_text=True)
+    assert "Q · Appt 1" in rh.get("/logements/tableau-de-bord").get_data(as_text=True)
     form = rh.get(f"/logement/{lid}/periode-payee").get_data(as_text=True)
     debut = fin + timedelta(days=1)
     assert f'value="{debut.isoformat()}"' in form and 'value="3 300 000"' in form
@@ -564,7 +569,8 @@ def test_periode_payee(app):
     with app.app_context():
         l = db.session.get(Logement, lid)
         assert l.bail_fin == nfin and l.prochaine_debut is None and Loyer.query.count() == 1
-    assert "Loyer à payer — Q · Appt 1" not in rh.get("/tableau-de-bord").get_data(as_text=True)
+    rh.get("/logements")                                                     # consomme le message flash
+    assert "Aucune fin de période dans les 60 prochains jours" in rh.get("/logements/tableau-de-bord").get_data(as_text=True)
     page = rh.get("/logements").get_data(as_text=True)
     assert "Période en cours" in page and "Non payée" not in page
 
@@ -689,8 +695,9 @@ def test_synthese_logements_par_ville(app):
         l3 = Logement.query.filter_by(nom="V3").one()
         assert l3.mois_periode == 14
     rh = client(app, "rh")
-    page = rh.get("/logements").get_data(as_text=True)
+    page = rh.get("/logements/tableau-de-bord").get_data(as_text=True)
     assert "Par ville" in page and "Kribi" in page and "Total groupe" in page and "14 mois" in page
-    assert "1 000 000" in page                                     # caution
+    assert "Fréquence de paiement" in page
+    assert "1 000 000" in rh.get("/logements").get_data(as_text=True)    # caution dans la liste
     sep = rh.get("/logements?charges=separees").get_data(as_text=True)
     assert "Charges / mois" in sep and "270 000" in sep             # loyer hors charges (300 000 − 30 000)

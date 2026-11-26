@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% from "_tdb.html" import kpi, barres, entete with context %}
+{% block titre %}Tableau de bord · Billets d'avion{% endblock %}
+{% block ariane %}<a href="{{ url_for('billets') }}">Billets d'avion</a><span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block contenu %}
+{{ entete("Billets d'avion", 'Situation au ' ~ (aujourdhui|date),
+   [('Tous les billets', url_for('billets'), 'plane', False)] + ([('Nouveau billet', url_for('billet_nouveau'), 'plus', True)] if current_user.gere else [])) }}
+<div class="kpis">
+  {{ kpi('Voyages à venir', kpis.a_venir, kpis.sous_30 ~ ' dans les 30 jours · ' ~ kpis.reserves ~ ' réservé' ~ ('s' if kpis.reserves > 1) ~ ' non émis', 'calendar', url_for('billets')) }}
+  {{ kpi('Billets ' ~ annee, kpis.annee_nb, 'hors billets annulés', 'plane') }}
+  {{ kpi('Coût ' ~ annee, kpis.annee_cout|fcfa, 'départs de l\'année', 'coins', '', False, True) }}
+  {{ kpi('Coût ce mois-ci', kpis.mois_cout|fcfa, kpis.mois_nb ~ ' billet' ~ ('s' if kpis.mois_nb > 1), 'coins', '', False, True) }}
+</div>
+<div class="grille-2 mt-3">
+  <section class="carte carte-table">
+    <div class="carte-entete pad"><h2>{{ icon('calendar', 18) }} Prochains départs</h2></div>
+    {% if a_venir %}<div class="table-conteneur"><table class="table">
+      <thead><tr><th>Voyageur</th><th>Trajet</th><th>Départ</th><th>Statut</th></tr></thead>
+      <tbody>{% for b in a_venir %}<tr class="ligne-cliquable" data-href="{{ url_for('billet_fiche', bid=b.id) }}">
+        <td><a class="lien" href="{{ url_for('billet_fiche', bid=b.id) }}"><strong>{{ b.personne.nom }}</strong></a><br><span class="muted petit">{{ MOTIFS_BILLET[b.motif] }}</span></td>
+        <td>{{ b.depart }} → {{ b.arrivee }}</td><td class="nowrap">{{ b.date_depart|date }}</td>
+        <td><span class="badge {{ 'badge-alerte' if b.statut == 'reserve' else 'badge-ok' }}">{{ STATUTS_BILLET[b.statut] }}</span></td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted pad">Aucun voyage prévu.</p>{% endif %}
+  </section>
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('coins', 18) }} Coût des billets · 6 derniers mois</h2></div>
+      {{ barres(evolution, max_evo, 'billets', True) }}
+    </section>
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>Par motif · {{ annee }}</h2></div>
+      {% if par_motif %}<table class="table"><tbody>{% for m, v in par_motif %}<tr><td>{{ m }}</td><td class="num">{{ v[0] }} billet{{ 's' if v[0] > 1 }}</td><td class="num"><strong>{{ v[1]|fcfa }}</strong></td></tr>{% endfor %}</tbody></table>
+      {% else %}<p class="muted pad">Aucun billet cette année.</p>{% endif %}
+    </section>
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>Destinations · {{ annee }}</h2></div>
+      {% if par_dest %}<table class="table"><tbody>{% for d, v in par_dest %}<tr><td>{{ d }}</td><td class="num">{{ v[0] }} billet{{ 's' if v[0] > 1 }}</td><td class="num">{{ v[1]|fcfa }}</td></tr>{% endfor %}</tbody></table>
+      {% else %}<p class="muted pad">—</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

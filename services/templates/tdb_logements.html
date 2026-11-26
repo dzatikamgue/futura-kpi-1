@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% from "_tdb.html" import barres, entete with context %}
+{% block titre %}Tableau de bord · Logements{% endblock %}
+{% block ariane %}<a href="{{ url_for('logements') }}">Logements</a><span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block contenu %}
+<div class="titre-page">
+  <div><p class="action-sur">Tableau de bord</p><h1>Logements et loyers</h1><p class="muted">Situation au {{ aujourdhui|date }} · logements loués</p></div>
+  <div class="actions">
+    <div class="segmente" role="group" aria-label="Charges communes">
+      <a class="{{ 'actif' if not separees }}" href="{{ url_for('logement_tableau_bord') }}">Charges comprises</a>
+      <a class="{{ 'actif' if separees }}" href="{{ url_for('logement_tableau_bord', charges='separees') }}">Charges séparées</a>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('logements', charges=request.args.get('charges')) }}">{{ icon('home', 16) }} Tous les logements</a>
+  </div>
+</div>
+<div class="kpis kpis-logements">
+  <div class="kpi"><span class="kpi-lib">Logements loués</span><strong class="kpi-val kpi-val-sm">{{ groupe.nb }}</strong>
+    <span class="kpi-sous">{{ villes|length }} ville{{ 's' if villes|length > 1 }}</span></div>
+  <div class="kpi"><span class="kpi-lib">Loyer mensuel · groupe</span><strong class="kpi-val kpi-val-sm">{{ groupe.total|fcfa }}</strong>
+    <span class="kpi-sous">{% if separees %}loyers {{ groupe.loyer|fcfa }} + charges {{ groupe.charges|fcfa }}{% else %}charges communes comprises{% endif %}</span></div>
+  <div class="kpi"><span class="kpi-lib">Loyer annuel · groupe</span><strong class="kpi-val kpi-val-sm">{{ (groupe.total * 12)|fcfa }}</strong>
+    <span class="kpi-sous">{% if separees %}dont charges {{ (groupe.charges * 12)|fcfa }}{% else %}mensuel × 12{% endif %}</span></div>
+  <div class="kpi"><span class="kpi-lib">Cautions versées</span><strong class="kpi-val kpi-val-sm">{{ groupe.caution|fcfa }}</strong>
+    <span class="kpi-sous">{{ groupe.nb_caution }} logement{{ 's' if groupe.nb_caution > 1 }} sur {{ groupe.nb }}</span></div>
+</div>
+
+{% if villes %}
+<section class="carte carte-table">
+  <div class="carte-entete pad"><h2>Par ville</h2><span class="kpi-sous">Logements loués · cliquez une ville pour filtrer la liste</span></div>
+  <div class="table-conteneur"><table class="table table-synthese">
+    <thead><tr><th>Ville</th><th class="num">Logements</th>
+      {% if separees %}<th class="num">Loyers / mois</th><th class="num">Charges / mois</th>{% endif %}
+      <th class="num">Total / mois</th><th class="num">Total / an</th><th class="num">Cautions versées</th></tr></thead>
+    <tbody>{% for nom, v in villes %}
+      <tr class="{{ 'ligne-selection' if request.args.get('ville') == nom }}">
+        <td>{% if nom != 'Ville non précisée' %}<a class="lien" href="{{ url_for('logements', ville=nom, charges=request.args.get('charges')) }}"><strong>{{ nom }}</strong></a>{% else %}<span class="muted">{{ nom }}</span>{% endif %}</td>
+        <td class="num">{{ v.nb }}</td>
+        {% if separees %}<td class="num">{{ v.loyer|fcfa }}</td><td class="num">{{ v.charges|fcfa }}</td>{% endif %}
+        <td class="num"><strong>{{ v.total|fcfa }}</strong></td><td class="num">{{ (v.total * 12)|fcfa }}</td>
+        <td class="num">{{ v.caution|fcfa if v.caution else '—' }}{% if v.nb_caution != v.nb %}<br><span class="muted petit">{{ v.nb_caution }}/{{ v.nb }} renseignée{{ 's' if v.nb_caution > 1 }}</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+    <tfoot><tr><th>Total groupe</th><th class="num">{{ groupe.nb }}</th>
+      {% if separees %}<th class="num">{{ groupe.loyer|fcfa }}</th><th class="num">{{ groupe.charges|fcfa }}</th>{% endif %}
+      <th class="num">{{ groupe.total|fcfa }}</th><th class="num">{{ (groupe.total * 12)|fcfa }}</th><th class="num">{{ groupe.caution|fcfa }}</th></tr></tfoot>
+  </table></div>
+</section>
+{% endif %}
+
+
+<div class="grille-2 mt-3">
+  <section class="carte carte-table">
+    <div class="carte-entete pad"><h2>{{ icon('bell', 18) }} Fins de période dans les 60 jours</h2></div>
+    {% if fins %}<div class="table-conteneur"><table class="table">
+      <thead><tr><th>Logement</th><th>Fin de période</th><th class="num">Prochain paiement</th></tr></thead>
+      <tbody>{% for l in fins %}{% set jr = l.jours_avant_fin %}
+        <tr class="ligne-cliquable {{ 'ligne-expire' if jr < 0 else 'ligne-alerte' if jr <= seuil_loyer }}" data-href="{{ url_for('logement_fiche', lid=l.id) }}">
+          <td><a class="lien" href="{{ url_for('logement_fiche', lid=l.id) }}"><strong>{{ l.libelle }}</strong></a><br><span class="muted petit">{{ l.ville or '' }}</span></td>
+          <td class="nowrap">{{ l.fin_payee|date }}<br><span class="petit {{ 'texte-ko' if jr < 0 }}">{{ 'dépassée de ' ~ (-jr) ~ ' j' if jr < 0 else 'dans ' ~ jr ~ ' j' }}</span></td>
+          <td class="num">{{ l.montant_a_payer|fcfa if l.montant_a_payer else '—' }}{% if l.mois_periode %}<br><span class="muted petit">{{ l.mois_periode }} mois</span>{% endif %}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted pad">Aucune fin de période dans les 60 prochains jours.</p>{% endif %}
+  </section>
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('calendar', 18) }} Fréquence de paiement</h2></div>
+      <p class="muted petit">Nombre de mois payés pour la période en cours</p>
+      {{ barres(frequences, max_freq, 'loyers') }}
+    </section>
+    <section class="carte carte-table">
+      <div class="carte-entete pad"><h2>{{ icon('building', 18) }} Par bâtiment</h2></div>
+      <table class="table"><tbody>{% for b, v in batiments %}<tr><td>{{ b }}</td><td class="num">{{ v[0] }} logement{{ 's' if v[0] > 1 }}</td><td class="num"><strong>{{ v[1]|fcfa }}</strong><span class="muted petit"> /mois</span></td></tr>{% endfor %}</tbody></table>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -39,8 +39,6 @@
       <a href="{{ url_for('reparation_nouvelle') }}" class="{{ 'actif' if ep == 'reparation_nouvelle' }}">{{ icon('plus') }} Signaler un problème</a>
       {% else %}
       <a href="{{ url_for('accueil') }}" class="{{ 'actif' if ep == 'accueil' }}">{{ icon('layers') }} Sous-modules</a>
-      <a href="{{ url_for('tableau_de_bord') }}" class="{{ 'actif' if ep == 'tableau_de_bord' }}">{{ icon('dashboard') }} Tableau de bord
-        {% if nb_alertes %}<span class="nav-compteur" aria-label="{{ nb_alertes }} point(s) à surveiller">{{ nb_alertes }}</span>{% endif %}</a>
 
       {# Chaque sous-module ne montre que ses propres liens #}
       {% if ep.startswith(('personne', 'document', 'entreprise')) %}{% set grp = 'visas' %}
@@ -52,27 +50,33 @@
 
       {% if grp == 'visas' %}
       <p class="nav-titre">Visas et cartes de séjour</p>
-      <a href="{{ url_for('documents') }}" class="nav-sm nav-sm-documents {{ 'actif' if ep.startswith('document') }}">{{ icon('id') }} Visas et cartes de séjour
+      <a href="{{ url_for('document_tableau_bord') }}" class="nav-sous {{ 'actif' if ep == 'document_tableau_bord' }}">{{ icon('dashboard') }} Tableau de bord</a>
+      <a href="{{ url_for('documents') }}" class="nav-sm nav-sm-documents {{ 'actif' if ep.startswith('document') and ep != 'document_tableau_bord' }}">{{ icon('id') }} Visas et cartes de séjour
         {% if docs_notif %}<span class="nav-compteur" aria-label="{{ docs_notif.total }} à renouveler">{{ docs_notif.total }}</span>{% endif %}</a>
       <a href="{{ url_for('personnel') }}" class="nav-sous {{ 'actif' if ep.startswith('personne') }}">{{ icon('users') }} Personnel</a>
       <a href="{{ url_for('entreprises') }}" class="nav-sous {{ 'actif' if ep.startswith('entreprise') }}">{{ icon('building') }} Entreprises</a>
       {% elif grp == 'billets' %}
       <p class="nav-titre">Billets d'avion</p>
+      <a href="{{ url_for('billet_tableau_bord') }}" class="nav-sous {{ 'actif' if ep == 'billet_tableau_bord' }}">{{ icon('dashboard') }} Tableau de bord</a>
       <a href="{{ url_for('billets') }}" class="nav-sm nav-sm-billets {{ 'actif' if ep == 'billets' }}">{{ icon('plane') }} Billets d'avion</a>
       {% if current_user.gere %}<a href="{{ url_for('billet_nouveau') }}" class="nav-sous {{ 'actif' if ep == 'billet_nouveau' }}">{{ icon('plus') }} Nouveau billet</a>{% endif %}
       {% elif grp == 'loyers' %}
       <p class="nav-titre">Logements et loyers</p>
-      <a href="{{ url_for('logements') }}" class="nav-sm nav-sm-loyers {{ 'actif' if ep.startswith('logement') }}">{{ icon('home') }} Logements
+      <a href="{{ url_for('logement_tableau_bord') }}" class="nav-sous {{ 'actif' if ep == 'logement_tableau_bord' }}">{{ icon('dashboard') }} Tableau de bord</a>
+      <a href="{{ url_for('logements') }}" class="nav-sm nav-sm-loyers {{ 'actif' if ep.startswith('logement') and ep != 'logement_tableau_bord' }}">{{ icon('home') }} Logements
         {% if loyers_notif %}<span class="nav-compteur">{{ loyers_notif.total }}</span>{% endif %}</a>
       <a href="{{ url_for('loyers') }}" class="nav-sous {{ 'actif' if ep.startswith('loyer') }}">{{ icon('key') }} Paiements des loyers</a>
       {% elif grp == 'electricite' %}
       <p class="nav-titre">Électricité</p>
-      <a href="{{ url_for('factures', type_energie='electricite') }}" class="nav-sm nav-sm-electricite actif">{{ icon('bolt') }} Factures d'électricité</a>
+      <a href="{{ url_for('facture_tableau_bord', type_energie='electricite') }}" class="nav-sous {{ 'actif' if ep == 'facture_tableau_bord' }}">{{ icon('dashboard') }} Tableau de bord</a>
+      <a href="{{ url_for('factures', type_energie='electricite') }}" class="nav-sm nav-sm-electricite {{ 'actif' if ep != 'facture_tableau_bord' }}">{{ icon('bolt') }} Factures d'électricité</a>
       {% elif grp == 'eau' %}
       <p class="nav-titre">Eau</p>
-      <a href="{{ url_for('factures', type_energie='eau') }}" class="nav-sm nav-sm-eau actif">{{ icon('drop') }} Factures d'eau</a>
+      <a href="{{ url_for('facture_tableau_bord', type_energie='eau') }}" class="nav-sous {{ 'actif' if ep == 'facture_tableau_bord' }}">{{ icon('dashboard') }} Tableau de bord</a>
+      <a href="{{ url_for('factures', type_energie='eau') }}" class="nav-sm nav-sm-eau {{ 'actif' if ep != 'facture_tableau_bord' }}">{{ icon('drop') }} Factures d'eau</a>
       {% elif grp == 'reparations' %}
       <p class="nav-titre">Réparations</p>
+      <a href="{{ url_for('reparation_tableau_bord') }}" class="nav-sous {{ 'actif' if ep == 'reparation_tableau_bord' }}">{{ icon('dashboard') }} Tableau de bord</a>
       <a href="{{ url_for('reparations') }}" class="nav-sm nav-sm-reparations {{ 'actif' if ep == 'reparations' or ep == 'reparation_fiche' }}">{{ icon('wrench') }} Réparations</a>
       {% if current_user.gere %}<a href="{{ url_for('reparation_nouvelle') }}" class="nav-sous {{ 'actif' if ep == 'reparation_nouvelle' }}">{{ icon('plus') }} Signaler un problème</a>{% endif %}
       {% endif %}
@@ -114,7 +118,7 @@
           {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="status">{{ msg }}<button class="flash-fermer" aria-label="Fermer">×</button></div>{% endfor %}
         </div>{% endif %}
       {% endwith %}
-      {% if docs_notif and request.endpoint not in ('documents', 'document_fiche', 'document_renouveler') %}
+      {% if docs_notif and request.endpoint not in ('documents', 'document_fiche', 'document_renouveler', 'document_tableau_bord') %}
       <a class="notif-docs {{ 'notif-docs-ko' if docs_notif.expires }}" href="{{ url_for('documents', statut='a_traiter') }}" role="status">
         <span class="notif-docs-ico" aria-hidden="true">{{ icon('bell', 18) }}</span>
         <span><strong>{{ docs_notif.total }} visa{{ 's' if docs_notif.total > 1 }} / carte{{ 's' if docs_notif.total > 1 }} de séjour expire{{ 'nt' if docs_notif.total > 1 }} dans moins de {{ seuil }} jours{% if docs_notif.expires %} ({{ docs_notif.expires }} déjà expiré{{ 's' if docs_notif.expires > 1 }}){% endif %}.</strong>
@@ -123,7 +127,7 @@
         <span class="espace-ouvrir">Voir {{ icon('arrow', 16) }}</span>
       </a>
       {% endif %}
-      {% if loyers_notif and request.endpoint not in ('logements', 'logement_fiche', 'logement_modifier') %}
+      {% if loyers_notif and request.endpoint not in ('logements', 'logement_fiche', 'logement_modifier', 'logement_tableau_bord') %}
       <a class="notif-docs {{ 'notif-docs-ko' if loyers_notif.echus }}" href="{{ url_for('logements', fin='proche') }}" role="status">
         <span class="notif-docs-ico" aria-hidden="true">{{ icon('home', 18) }}</span>
         <span><strong>{{ loyers_notif.total }} loyer{{ 's' if loyers_notif.total > 1 }} arrive{{ 'nt' if loyers_notif.total > 1 }} en fin de période dans moins de {{ seuil_loyer }} jours{% if loyers_notif.echus %} ({{ loyers_notif.echus }} déjà terminé{{ 's' if loyers_notif.echus > 1 }}){% endif %}.</strong>

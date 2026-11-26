@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% from "_tdb.html" import kpi, barres, entete with context %}
+{% block titre %}Tableau de bord · Visas et cartes de séjour{% endblock %}
+{% block ariane %}<a href="{{ url_for('documents') }}">Visas et cartes de séjour</a><span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block contenu %}
+{{ entete('Visas et cartes de séjour', 'Situation au ' ~ (aujourdhui|date) ~ ' · alerte ' ~ seuil ~ ' jours avant l\'expiration',
+   [('Tous les documents', url_for('documents'), 'id', False)] + ([('Nouveau visa', url_for('document_nouveau', type_doc='visa'), 'plus', True)] if current_user.gere else [])) }}
+<div class="kpis">
+  {{ kpi('Personnes suivies', kpis.personnes, kpis.visas ~ ' visa' ~ ('s' if kpis.visas > 1) ~ ' · ' ~ kpis.cartes ~ ' carte' ~ ('s' if kpis.cartes > 1) ~ ' de séjour', 'users', url_for('personnel')) }}
+  {{ kpi('Documents valides', kpis.valides, 'plus de ' ~ seuil ~ ' jours de validité', 'check', url_for('documents')) }}
+  {{ kpi('À renouveler', kpis.a_renouveler, 'expirent dans moins de ' ~ seuil ~ ' jours', 'bell', url_for('documents', statut='a_traiter'), kpis.a_renouveler > 0) }}
+  {{ kpi('Expirés', kpis.expires, kpis.demarches ~ ' démarche' ~ ('s' if kpis.demarches > 1) ~ ' de renouvellement en cours', 'stamp', url_for('documents', statut='a_traiter'), kpis.expires > 0) }}
+</div>
+<div class="grille-2 mt-3">
+  <section class="carte carte-table">
+    <div class="carte-entete pad"><h2>{{ icon('building', 18) }} Par entreprise</h2></div>
+    {% if par_ent %}<div class="table-conteneur"><table class="table table-synthese">
+      <thead><tr><th>Entreprise</th><th class="num">Personnes</th><th class="num">Visas</th><th class="num">Cartes</th><th class="num">À renouveler</th><th class="num">Expirés</th></tr></thead>
+      <tbody>{% for nom, v in par_ent %}<tr><td><strong>{{ nom }}</strong></td><td class="num">{{ v.personnes }}</td><td class="num">{{ v.visas }}</td><td class="num">{{ v.cartes }}</td>
+        <td class="num">{% if v.a_renouveler %}<span class="badge badge-alerte">{{ v.a_renouveler }}</span>{% else %}—{% endif %}</td>
+        <td class="num">{% if v.expires %}<span class="badge badge-ko">{{ v.expires }}</span>{% else %}—{% endif %}</td></tr>{% endfor %}</tbody>
+      <tfoot><tr><th>Total</th><th class="num">{{ kpis.personnes }}</th><th class="num">{{ kpis.visas }}</th><th class="num">{{ kpis.cartes }}</th><th class="num">{{ kpis.a_renouveler }}</th><th class="num">{{ kpis.expires }}</th></tr></tfoot>
+    </table></div>{% else %}<p class="muted pad">Aucun document enregistré.</p>{% endif %}
+  </section>
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('calendar', 18) }} Expirations des 6 prochains mois</h2></div>
+      {{ barres(echeancier, max_ech, 'documents') }}
+    </section>
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('users', 18) }} Par nationalité</h2></div>
+      {% if nationalites %}{{ barres(nationalites, nationalites[0][1], 'documents') }}{% else %}<p class="muted">—</p>{% endif %}
+    </section>
+  </div>
+</div>
+<section class="carte carte-table mt-3">
+  <div class="carte-entete pad"><h2>{{ icon('bell', 18) }} Prochaines expirations (90 jours)</h2><a class="lien petit" href="{{ url_for('documents', statut='a_traiter') }}">Voir tout</a></div>
+  {% if prochaines %}<div class="table-conteneur"><table class="table">
+    <thead><tr><th>Personne</th><th>Document</th><th>Entreprise</th><th>Expire le</th><th>Démarche</th></tr></thead>
+    <tbody>{% for d in prochaines %}{% set jr = d.jours_restants %}
+      <tr class="ligne-cliquable {{ 'ligne-expire' if jr < 0 else 'ligne-alerte' if jr <= seuil }}" data-href="{{ url_for('document_fiche', did=d.id) }}">
+        <td><a class="lien" href="{{ url_for('document_fiche', did=d.id) }}"><strong>{{ d.personne.nom }}</strong></a></td>
+        <td>{{ d.type_libelle }}</td><td class="muted">{{ d.personne.entreprise_nom or '—' }}</td>
+        <td class="nowrap">{{ d.date_expiration|date }}<br><span class="petit {{ 'texte-ko' if jr < 0 }}">{{ 'expiré depuis ' ~ (-jr) ~ ' j' if jr < 0 else 'dans ' ~ jr ~ ' j' }}</span></td>
+        <td class="petit">{{ RENOUVELLEMENT[d.renouvellement] }}</td></tr>{% endfor %}</tbody>
+  </table></div>{% else %}<p class="muted pad">Aucune expiration dans les 90 prochains jours.</p>{% endif %}
+</section>
+{% endblock %}

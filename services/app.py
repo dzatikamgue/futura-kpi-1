@@ -907,7 +907,7 @@ def register_routes(app):
                                           (s["expires"], "expirés", "ko")],
                                    pied=f"{Entreprise.query.filter_by(actif=True).count()} entreprise(s) · {sv['total']} visa(s) · "
                                         f"{sc['total']} carte(s) de séjour · alerte {seuil_docs()} j avant la fin",
-                                   alerte=s["alerte"] + s["expires"], lien=url_for("documents"))
+                                   alerte=s["alerte"] + s["expires"], lien=url_for("document_tableau_bord"))
         a_venir = Billet.query.filter(Billet.date_depart >= aujourdhui(), Billet.statut.in_(("reserve", "emis")))
         debut_annee = aujourdhui().replace(month=1, day=1)
         ce_mois = Billet.query.filter(Billet.date_depart >= aujourdhui().replace(day=1),
@@ -919,13 +919,13 @@ def register_routes(app):
         cartes["billets"] = dict(stats=[(a_venir.count(), "à venir", ""), (ce_mois, "ce mois-ci", ""),
                                         (prochains, "sous 14 jours", "alerte" if prochains else "")],
                                  pied=f"{_milliers(cout_an)} FCFA dépensés en {aujourdhui().year}",
-                                 alerte=0, info=prochains, lien=url_for("billets"))
+                                 alerte=0, info=prochains, lien=url_for("billet_tableau_bord"))
         dus = loyers_dus()
         nb_logements = Logement.query.filter_by(actif=True).count()
         cartes["loyers"] = dict(stats=[(nb_logements, "logements", ""), (len(dus), "en retard", "ko"),
                                        (len(loyers_a_venir()), "dus sous 30 j", "")],
                                 pied=f"{_milliers(sum(e['montant'] for e in dus))} FCFA d'impayés",
-                                alerte=len(dus), lien=url_for("loyers"))
+                                alerte=len(dus), lien=url_for("logement_tableau_bord"))
         for code in ("electricite", "eau"):
             imp = factures_impayees(code).all()
             retard = [f for f in imp if f.niveau == "retard"]
@@ -934,7 +934,7 @@ def register_routes(app):
             cartes[code] = dict(stats=[(len(imp), "à payer", ""), (len(retard), "en retard", "ko"),
                                        (mois_c, "le mois dernier", "")],
                                 pied=f"{_milliers(sum(f.montant for f in imp))} FCFA à payer",
-                                alerte=len(retard), lien=url_for("factures", type_energie=code))
+                                alerte=len(retard), lien=url_for("facture_tableau_bord", type_energie=code))
         ouvertes = Reparation.query.filter(Reparation.statut.in_(REPARATIONS_OUVERTES))
         urgentes = ouvertes.filter(Reparation.urgence == "urgente").count()
         terminees = Reparation.query.filter(Reparation.statut == "terminee",
@@ -943,7 +943,7 @@ def register_routes(app):
         cartes["reparations"] = dict(stats=[(ouvertes.count(), "en cours", ""), (urgentes, "urgentes", "ko"),
                                             (terminees, "terminées ce mois", "ok")],
                                      pied=f"{nouvelles} nouvelle{'s' if nouvelles > 1 else ''} demande{'s' if nouvelles > 1 else ''} à prendre en charge",
-                                     alerte=urgentes, info=nouvelles, lien=url_for("reparations"))
+                                     alerte=urgentes, info=nouvelles, lien=url_for("reparation_tableau_bord"))
         familles = {}
         for code, m in SOUS_MODULES.items():
             familles.setdefault(m["famille"], []).append(dict(m, code=code, **cartes[code]))
@@ -952,27 +952,182 @@ def register_routes(app):
     @app.route("/tableau-de-bord")
     @lecture
     def tableau_de_bord():
-        items = a_surveiller(avec_documents=False)          # le tableau de bord ne montre pas les visas
-        couts = couts_mensuels(6)
-        max_total = max([c["total"] for c in couts] + [1])
+        """Remplacé par un tableau de bord par sous-module : retour à la liste des sous-modules."""
+        return redirect(url_for("accueil"))
+
+    # ---------------- Tableaux de bord : un par sous-module ---------------- #
+
+    def _mois_derniers(nb):
+        debut = mois_ajoutes(aujourdhui().replace(day=1), -(nb - 1))
+        return [mois_ajoutes(debut, i) for i in range(nb)]
+
+    @app.route("/visas/tableau-de-bord")
+    @lecture
+    def document_tableau_bord():
+        s, auj = seuil_docs(), aujourdhui()
+        docs = documents_en_vigueur().options(selectinload(Document.personne).selectinload(Personne.entreprise)).all()
+        def j(d): return (d.date_expiration - auj).days
+        valides = [d for d in docs if j(d) > s]
+        a_renouveler = [d for d in docs if 0 <= j(d) <= s]
+        expires = [d for d in docs if j(d) < 0]
+        demarches = [d for d in docs if d.renouvellement in ("a_lancer", "en_cours")]
+        personnes = {d.personne_id for d in docs}
+        kpis = dict(personnes=len(personnes), visas=sum(1 for d in docs if d.type_doc == "visa"),
+                    cartes=sum(1 for d in docs if d.type_doc == "carte_sejour"), valides=len(valides),
+                    a_renouveler=len(a_renouveler), expires=len(expires), demarches=len(demarches))
+        par_ent = {}
+        for d in docs:
+            e = par_ent.setdefault(d.personne.entreprise_nom or "Sans entreprise",
+                                   dict(personnes=set(), visas=0, cartes=0, a_renouveler=0, expires=0))
+            e["personnes"].add(d.personne_id)
+            e["visas" if d.type_doc == "visa" else "cartes"] += 1
+            if j(d) < 0:
+                e["expires"] += 1
+            elif j(d) <= s:
+                e["a_renouveler"] += 1
+        par_ent = sorted(((k, dict(v, personnes=len(v["personnes"]))) for k, v in par_ent.items()),
+                         key=lambda kv: -kv[1]["personnes"])
+        nat = defaultdict(set)
+        for d in docs:
+            nat[(d.personne.nationalite or "Non précisée").strip().title()].add(d.personne_id)
+        nationalites = sorted(((k, len(v)) for k, v in nat.items()), key=lambda kv: -kv[1])
+        mois = [mois_ajoutes(auj.replace(day=1), i) for i in range(6)]
+        echeancier = [(mois_libelle(m, court=True), sum(1 for d in docs if d.date_expiration.replace(day=1) == m)) for m in mois]
+        prochaines = sorted((d for d in docs if j(d) <= 90), key=lambda d: d.date_expiration)[:12]
+        return render_template("tdb_visas.html", kpis=kpis, par_ent=par_ent, nationalites=nationalites[:10],
+                               echeancier=echeancier, max_ech=max([n for _, n in echeancier] + [1]),
+                               prochaines=prochaines, seuil=s)
+
+    @app.route("/billets/tableau-de-bord")
+    @lecture
+    def billet_tableau_bord():
+        auj = aujourdhui()
+        debut_an = auj.replace(month=1, day=1)
+        valides = Billet.query.options(selectinload(Billet.personne)).filter(Billet.statut != "annule")
+        annee = valides.filter(Billet.date_depart >= debut_an, Billet.date_depart < debut_an.replace(year=auj.year + 1)).all()
+        a_venir = valides.filter(Billet.date_depart >= auj, Billet.statut.in_(("reserve", "emis"))) \
+            .order_by(Billet.date_depart).all()
+        ce_mois = [b for b in annee if b.date_depart.replace(day=1) == auj.replace(day=1)]
+        kpis = dict(a_venir=len(a_venir), sous_30=sum(1 for b in a_venir if (b.date_depart - auj).days <= 30),
+                    annee_nb=len(annee), annee_cout=sum(b.montant or 0 for b in annee),
+                    mois_nb=len(ce_mois), mois_cout=sum(b.montant or 0 for b in ce_mois),
+                    reserves=sum(1 for b in a_venir if b.statut == "reserve"))
+        par_motif = defaultdict(lambda: [0, 0])
+        par_dest = defaultdict(lambda: [0, 0])
+        for b in annee:
+            par_motif[MOTIFS_BILLET.get(b.motif, b.motif)][0] += 1
+            par_motif[MOTIFS_BILLET.get(b.motif, b.motif)][1] += b.montant or 0
+            par_dest[b.arrivee][0] += 1
+            par_dest[b.arrivee][1] += b.montant or 0
+        mois = _mois_derniers(6)
+        evolution = [(mois_libelle(m, court=True), sum(b.montant or 0 for b in valides.filter(
+            Billet.date_depart >= m, Billet.date_depart < mois_ajoutes(m, 1)))) for m in mois]
+        return render_template("tdb_billets.html", kpis=kpis, a_venir=a_venir[:10], annee=auj.year,
+                               par_motif=sorted(par_motif.items(), key=lambda kv: -kv[1][1]),
+                               par_dest=sorted(par_dest.items(), key=lambda kv: -kv[1][0])[:8],
+                               evolution=evolution, max_evo=max([v for _, v in evolution] + [1]))
+
+    @app.route("/logements/tableau-de-bord")
+    @lecture
+    def logement_tableau_bord():
+        loues = Logement.query.options(selectinload(Logement.loyers)).filter(Logement.actif.is_(True)).all()
+        par_ville = {}
+        for l in loues:
+            v = par_ville.setdefault(l.ville or "Ville non précisée", {"nb": 0, "loyer": 0, "charges": 0, "total": 0,
+                                                                      "caution": 0, "nb_caution": 0})
+            v["nb"] += 1
+            v["loyer"] += l.loyer_hors_charges
+            v["charges"] += l.charges_mensuelles
+            v["total"] += l.mensuel_total
+            if l.caution:
+                v["caution"] += l.caution
+                v["nb_caution"] += 1
+        villes = sorted(par_ville.items(), key=lambda kv: (kv[0] == "Ville non précisée", -kv[1]["nb"], kv[0]))
+        groupe = {k: sum(v[k] for v in par_ville.values()) for k in ("nb", "loyer", "charges", "total", "caution", "nb_caution")}
+        freq = defaultdict(int)
+        for l in loues:
+            freq[l.mois_periode or 0] += 1
+        frequences = sorted(((f"{k} mois" if k else "Non renseignée", n) for k, n in freq.items()),
+                            key=lambda kv: (kv[0] == "Non renseignée", int(kv[0].split()[0]) if kv[0][0].isdigit() else 0))
+        fins = sorted((l for l in loues if l.jours_avant_fin is not None and l.jours_avant_fin <= 60),
+                      key=lambda l: l.fin_payee)
         dus = loyers_dus()
-        imp = factures_impayees().all()
-        loues = Logement.query.filter(Logement.actif.is_(True)).all()
-        kpis = dict(
-            logements=len(loues), loyer_mensuel=sum(l.mensuel_total for l in loues),
-            loyers=sum(e["montant"] for e in dus), loyers_nb=len(dus),
-            factures=sum(f.montant for f in imp), factures_nb=len(imp),
-            reparations=Reparation.query.filter(Reparation.statut.in_(REPARATIONS_OUVERTES)).count(),
-            reparations_urgentes=Reparation.query.filter(Reparation.statut.in_(REPARATIONS_OUVERTES),
-                                                         Reparation.urgence == "urgente").count(),
-        )
-        billets = Billet.query.options(selectinload(Billet.personne)) \
-            .filter(Billet.date_depart >= aujourdhui(), Billet.statut.in_(("reserve", "emis"))) \
-            .order_by(Billet.date_depart).limit(6).all()
-        postes = [("loyers", "Loyers"), ("electricite", "Électricité"), ("eau", "Eau"),
-                  ("reparations", "Réparations"), ("billets", "Billets d'avion")]
-        return render_template("tableau_bord.html", items=items, couts=couts, max_total=max_total, kpis=kpis,
-                               billets=billets, postes=postes, a_venir=loyers_a_venir(15))
+        bat = defaultdict(lambda: [0, 0])
+        for l in loues:
+            bat[l.batiment or l.nom][0] += 1
+            bat[l.batiment or l.nom][1] += l.mensuel_total
+        return render_template("tdb_logements.html", villes=villes, groupe=groupe, frequences=frequences,
+                               max_freq=max([n for _, n in frequences] + [1]), fins=fins, dus=dus,
+                               batiments=sorted(bat.items(), key=lambda kv: -kv[1][1])[:10],
+                               separees=request.args.get("charges") == "separees")
+
+    @app.route("/factures/<type_energie>/tableau-de-bord")
+    @lecture
+    def facture_tableau_bord(type_energie):
+        if type_energie not in TYPES_ENERGIE:
+            abort(404)
+        auj = aujourdhui()
+        q = FactureEnergie.query.options(selectinload(FactureEnergie.logement)).filter(FactureEnergie.type_energie == type_energie)
+        imp = q.filter(FactureEnergie.date_paiement.is_(None)).all()
+        retard = [f for f in imp if f.date_echeance and f.date_echeance < auj]
+        douze = mois_ajoutes(auj.replace(day=1), -11)
+        recentes = q.filter(FactureEnergie.periode >= douze).all()
+        annee = [f for f in recentes if f.periode.year == auj.year]
+        kpis = dict(a_payer=sum(f.montant for f in imp), a_payer_nb=len(imp),
+                    retard=sum(f.montant for f in retard), retard_nb=len(retard),
+                    annee=sum(f.montant for f in annee), annee_nb=len(annee),
+                    moyenne=round(sum(f.montant for f in recentes) / 12) if recentes else 0,
+                    conso=sum(float(f.consommation or 0) for f in recentes))
+        mois = _mois_derniers(6)
+        evolution = [(mois_libelle(m, court=True), sum(f.montant for f in recentes if f.periode == m)) for m in mois]
+        par_log = defaultdict(lambda: [0, 0.0, 0])
+        for f in recentes:
+            k = f.logement.libelle
+            par_log[k][0] += f.montant
+            par_log[k][1] += float(f.consommation or 0)
+            par_log[k][2] += 1
+        proches = sorted((f for f in imp if f.date_echeance and 0 <= (f.date_echeance - auj).days <= 15),
+                         key=lambda f: f.date_echeance)
+        return render_template("tdb_factures.html", type_energie=type_energie, sm=type_energie,
+                               libelle=TYPES_ENERGIE[type_energie], unite=UNITES[type_energie], kpis=kpis,
+                               evolution=evolution, max_evo=max([v for _, v in evolution] + [1]),
+                               par_log=sorted(par_log.items(), key=lambda kv: -kv[1][0])[:10],
+                               retard=sorted(retard, key=lambda f: f.date_echeance), proches=proches)
+
+    @app.route("/reparations/tableau-de-bord")
+    @lecture
+    def reparation_tableau_bord():
+        if current_user.occupant:
+            return redirect(url_for("reparations"))
+        maintenant = now()
+        debut_mois = maintenant.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        debut_an = debut_mois.replace(month=1)
+        toutes = Reparation.query.options(selectinload(Reparation.logement)).all()
+        ouvertes = [r for r in toutes if r.statut in REPARATIONS_OUVERTES]
+        closes_90 = [r for r in toutes if r.cloturee_le and r.cloturee_le >= maintenant - timedelta(days=90)]
+        delais = [(r.cloturee_le - r.signale_le).days for r in closes_90 if r.signale_le]
+        kpis = dict(ouvertes=len(ouvertes), urgentes=sum(1 for r in ouvertes if r.urgence == "urgente"),
+                    nouvelles=sum(1 for r in ouvertes if r.statut == "signalee"),
+                    terminees_mois=sum(1 for r in toutes if r.statut == "terminee" and r.cloturee_le and r.cloturee_le >= debut_mois),
+                    delai=round(sum(delais) / len(delais)) if delais else None,
+                    cout_an=sum(r.cout or 0 for r in toutes if r.signale_le >= debut_an))
+        par_statut = [(STATUTS_REPARATION[k], sum(1 for r in toutes if r.statut == k)) for k in STATUTS_REPARATION]
+        cat = defaultdict(lambda: [0, 0])
+        for r in toutes:
+            if r.signale_le >= maintenant - timedelta(days=365):
+                cat[r.categorie or "Autre"][0] += 1
+                cat[r.categorie or "Autre"][1] += r.cout or 0
+        log = defaultdict(lambda: [0, 0])
+        for r in toutes:
+            log[r.logement.libelle][0] += 1
+            if r.statut in REPARATIONS_OUVERTES:
+                log[r.logement.libelle][1] += 1
+        anciennes = sorted(ouvertes, key=lambda r: r.signale_le)[:8]
+        return render_template("tdb_reparations.html", kpis=kpis, par_statut=par_statut,
+                               max_statut=max([n for _, n in par_statut] + [1]),
+                               categories=sorted(cat.items(), key=lambda kv: -kv[1][0]),
+                               logements=sorted(log.items(), key=lambda kv: (-kv[1][1], -kv[1][0]))[:8],
+                               anciennes=anciennes)
 
     # ---------------- Personnel ---------------- #
 

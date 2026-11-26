@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% from "_tdb.html" import kpi, barres, entete with context %}
+{% block titre %}Tableau de bord · {{ libelle }}{% endblock %}
+{% block sous_module %}{{ type_energie }}{% endblock %}
+{% block ariane %}<a href="{{ url_for('factures', type_energie=type_energie) }}">{{ libelle }}</a><span aria-current="page">Tableau de bord</span>{% endblock %}
+{% block contenu %}
+{{ entete(libelle, 'Situation au ' ~ (aujourdhui|date) ~ ' · 12 derniers mois',
+   [('Toutes les factures', url_for('factures', type_energie=type_energie), 'bolt' if type_energie == 'electricite' else 'drop', False)]
+   + ([('Nouvelle facture', url_for('facture_nouvelle', type_energie=type_energie), 'plus', True)] if current_user.gere else [])) }}
+<div class="kpis">
+  {{ kpi('À payer', kpis.a_payer|fcfa, kpis.a_payer_nb ~ ' facture' ~ ('s' if kpis.a_payer_nb > 1) ~ ' non payée' ~ ('s' if kpis.a_payer_nb > 1), 'coins', url_for('factures', type_energie=type_energie), False, True) }}
+  {{ kpi('En retard', kpis.retard|fcfa, kpis.retard_nb ~ ' facture' ~ ('s' if kpis.retard_nb > 1) ~ ' échue' ~ ('s' if kpis.retard_nb > 1), 'bell', url_for('factures', type_energie=type_energie), kpis.retard_nb > 0, True) }}
+  {{ kpi('Facturé ' ~ aujourdhui.year, kpis.annee|fcfa, kpis.annee_nb ~ ' facture' ~ ('s' if kpis.annee_nb > 1), 'calendar', '', False, True) }}
+  {{ kpi('Moyenne mensuelle', kpis.moyenne|fcfa, 'sur 12 mois · ' ~ ('%.0f'|format(kpis.conso)) ~ ' ' ~ unite ~ ' consommés', 'dashboard', '', False, True) }}
+</div>
+<div class="grille-2 mt-3">
+  <section class="carte carte-table">
+    <div class="carte-entete pad"><h2>{{ icon('home', 18) }} Par logement · 12 mois</h2></div>
+    {% if par_log %}<div class="table-conteneur"><table class="table">
+      <thead><tr><th>Logement</th><th class="num">Factures</th><th class="num">Consommation</th><th class="num">Montant</th></tr></thead>
+      <tbody>{% for nom, v in par_log %}<tr><td><strong>{{ nom }}</strong></td><td class="num">{{ v[2] }}</td><td class="num">{{ '%.0f'|format(v[1]) }} {{ unite }}</td><td class="num"><strong>{{ v[0]|fcfa }}</strong></td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted pad">Aucune facture sur les 12 derniers mois.</p>{% endif %}
+  </section>
+  <div class="colonne">
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('coins', 18) }} Montant facturé · 6 derniers mois</h2></div>
+      {{ barres(evolution, max_evo, type_energie, True) }}
+    </section>
+    <section class="carte">
+      <div class="carte-entete"><h2>{{ icon('bell', 18) }} En retard et à échéance sous 15 jours</h2></div>
+      {% if retard or proches %}<ul class="liste-surveiller">
+        {% for f in retard + proches %}<li><a class="lien" href="{{ url_for('factures', type_energie=type_energie, q=f.logement.batiment) }}"><strong>{{ f.logement.libelle }}</strong></a>
+          <span class="muted petit">{{ f.periode|mois }} · {{ f.montant|fcfa }}</span>
+          <span class="badge {{ 'badge-ko' if f in retard else 'badge-alerte' }}">{{ f.date_echeance|date }}</span></li>{% endfor %}
+      </ul>{% else %}<p class="muted">Aucune facture en retard ni à échéance proche.</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
